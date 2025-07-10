@@ -1,0 +1,624 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6428445A2E2057C200DC9E8A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 642844592E2057C200DC9E8A /* FirebaseAuth */; };
+		6428445C2E2057C200DC9E8A /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6428445B2E2057C200DC9E8A /* FirebaseCore */; };
+		6428445E2E2057C200DC9E8A /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6428445D2E2057C200DC9E8A /* FirebaseCrashlytics */; };
+		642844602E2057C200DC9E8A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 6428445F2E2057C200DC9E8A /* FirebaseFirestore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6428441B2E20429E00DC9E8A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 642844052E20429B00DC9E8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6428440C2E20429B00DC9E8A;
+			remoteInfo = Spot;
+		};
+		642844252E20429E00DC9E8A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 642844052E20429B00DC9E8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6428440C2E20429B00DC9E8A;
+			remoteInfo = Spot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		6428440D2E20429B00DC9E8A /* Spot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6428441A2E20429E00DC9E8A /* SpotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		642844242E20429E00DC9E8A /* SpotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		642844502E204FE200DC9E8A /* Exceptions for "Spot" folder in "Spot" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6428440C2E20429B00DC9E8A /* Spot */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		6428440F2E20429B00DC9E8A /* Spot */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				642844502E204FE200DC9E8A /* Exceptions for "Spot" folder in "Spot" target */,
+			);
+			path = Spot;
+			sourceTree = "<group>";
+		};
+		6428441D2E20429E00DC9E8A /* SpotTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SpotTests;
+			sourceTree = "<group>";
+		};
+		642844272E20429E00DC9E8A /* SpotUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SpotUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6428440A2E20429B00DC9E8A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6428445E2E2057C200DC9E8A /* FirebaseCrashlytics in Frameworks */,
+				642844602E2057C200DC9E8A /* FirebaseFirestore in Frameworks */,
+				6428445C2E2057C200DC9E8A /* FirebaseCore in Frameworks */,
+				6428445A2E2057C200DC9E8A /* FirebaseAuth in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844172E20429E00DC9E8A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844212E20429E00DC9E8A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		642844042E20429B00DC9E8A = {
+			isa = PBXGroup;
+			children = (
+				6428440F2E20429B00DC9E8A /* Spot */,
+				6428441D2E20429E00DC9E8A /* SpotTests */,
+				642844272E20429E00DC9E8A /* SpotUITests */,
+				6428440E2E20429B00DC9E8A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6428440E2E20429B00DC9E8A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6428440D2E20429B00DC9E8A /* Spot.app */,
+				6428441A2E20429E00DC9E8A /* SpotTests.xctest */,
+				642844242E20429E00DC9E8A /* SpotUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6428440C2E20429B00DC9E8A /* Spot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6428442E2E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "Spot" */;
+			buildPhases = (
+				642844092E20429B00DC9E8A /* Sources */,
+				6428440A2E20429B00DC9E8A /* Frameworks */,
+				6428440B2E20429B00DC9E8A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6428440F2E20429B00DC9E8A /* Spot */,
+			);
+			name = Spot;
+			packageProductDependencies = (
+				642844592E2057C200DC9E8A /* FirebaseAuth */,
+				6428445B2E2057C200DC9E8A /* FirebaseCore */,
+				6428445D2E2057C200DC9E8A /* FirebaseCrashlytics */,
+				6428445F2E2057C200DC9E8A /* FirebaseFirestore */,
+			);
+			productName = Spot;
+			productReference = 6428440D2E20429B00DC9E8A /* Spot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		642844192E20429E00DC9E8A /* SpotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 642844312E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "SpotTests" */;
+			buildPhases = (
+				642844162E20429E00DC9E8A /* Sources */,
+				642844172E20429E00DC9E8A /* Frameworks */,
+				642844182E20429E00DC9E8A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6428441C2E20429E00DC9E8A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6428441D2E20429E00DC9E8A /* SpotTests */,
+			);
+			name = SpotTests;
+			packageProductDependencies = (
+			);
+			productName = SpotTests;
+			productReference = 6428441A2E20429E00DC9E8A /* SpotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		642844232E20429E00DC9E8A /* SpotUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 642844342E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "SpotUITests" */;
+			buildPhases = (
+				642844202E20429E00DC9E8A /* Sources */,
+				642844212E20429E00DC9E8A /* Frameworks */,
+				642844222E20429E00DC9E8A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				642844262E20429E00DC9E8A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				642844272E20429E00DC9E8A /* SpotUITests */,
+			);
+			name = SpotUITests;
+			packageProductDependencies = (
+			);
+			productName = SpotUITests;
+			productReference = 642844242E20429E00DC9E8A /* SpotUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		642844052E20429B00DC9E8A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					6428440C2E20429B00DC9E8A = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					642844192E20429E00DC9E8A = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = 6428440C2E20429B00DC9E8A;
+					};
+					642844232E20429E00DC9E8A = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = 6428440C2E20429B00DC9E8A;
+					};
+				};
+			};
+			buildConfigurationList = 642844082E20429B00DC9E8A /* Build configuration list for PBXProject "Spot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 642844042E20429B00DC9E8A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6428440E2E20429B00DC9E8A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6428440C2E20429B00DC9E8A /* Spot */,
+				642844192E20429E00DC9E8A /* SpotTests */,
+				642844232E20429E00DC9E8A /* SpotUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6428440B2E20429B00DC9E8A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844182E20429E00DC9E8A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844222E20429E00DC9E8A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		642844092E20429B00DC9E8A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844162E20429E00DC9E8A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		642844202E20429E00DC9E8A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6428441C2E20429E00DC9E8A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6428440C2E20429B00DC9E8A /* Spot */;
+			targetProxy = 6428441B2E20429E00DC9E8A /* PBXContainerItemProxy */;
+		};
+		642844262E20429E00DC9E8A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6428440C2E20429B00DC9E8A /* Spot */;
+			targetProxy = 642844252E20429E00DC9E8A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		6428442C2E20429E00DC9E8A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		6428442D2E20429E00DC9E8A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		6428442F2E20429E00DC9E8A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spot/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot needs your location to help you find nearby places";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.edwardwynman.Spot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		642844302E20429E00DC9E8A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spot/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot needs your location to help you find nearby places";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.edwardwynman.Spot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		642844322E20429E00DC9E8A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = come.edwardwynman.SpotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spot";
+			};
+			name = Debug;
+		};
+		642844332E20429E00DC9E8A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = come.edwardwynman.SpotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spot";
+			};
+			name = Release;
+		};
+		642844352E20429E00DC9E8A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = come.edwardwynman.SpotUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Spot;
+			};
+			name = Debug;
+		};
+		642844362E20429E00DC9E8A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = come.edwardwynman.SpotUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Spot;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		642844082E20429B00DC9E8A /* Build configuration list for PBXProject "Spot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6428442C2E20429E00DC9E8A /* Debug */,
+				6428442D2E20429E00DC9E8A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6428442E2E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "Spot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6428442F2E20429E00DC9E8A /* Debug */,
+				642844302E20429E00DC9E8A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		642844312E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "SpotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				642844322E20429E00DC9E8A /* Debug */,
+				642844332E20429E00DC9E8A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		642844342E20429E00DC9E8A /* Build configuration list for PBXNativeTarget "SpotUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				642844352E20429E00DC9E8A /* Debug */,
+				642844362E20429E00DC9E8A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.15.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		642844592E2057C200DC9E8A /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		6428445B2E2057C200DC9E8A /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		6428445D2E2057C200DC9E8A /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		6428445F2E2057C200DC9E8A /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 642844052E20429B00DC9E8A /* Project object */;
+}

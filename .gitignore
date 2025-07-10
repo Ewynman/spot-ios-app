@@ -1,0 +1,28 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# SwiftPM
+Packages/
+.swiftpm/
+.build/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/
+
+# Firebase
+GoogleService-Info.plist
+
+# User data
+*.xcworkspace
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+
+GoogleService-Info
