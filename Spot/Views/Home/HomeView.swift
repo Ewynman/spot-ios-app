@@ -12,7 +12,7 @@ import FirebaseFirestore
 struct HomeView: View {
     @State private var username: String = ""
     @State private var isLoading = true
-
+   @State private var showUploadView = false
     var body: some View {
         NavigationStack {
             ZStack {
@@ -33,6 +33,23 @@ struct HomeView: View {
                             .padding(.horizontal)
 
                         Spacer()
+                        // Upload Spot Button
+                        Button(action: {
+                            showUploadView = true
+                        }) {
+                            Text("Post a Spot")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color(hex: "#3F7F5F"))
+                                .cornerRadius(20)
+                                .padding(.horizontal)
+                        }
+
+                        NavigationLink(destination: SpotUploadView(), isActive: $showUploadView) {
+                            EmptyView()
+                        }
                     }
                 }
             }

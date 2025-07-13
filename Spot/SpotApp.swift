@@ -10,15 +10,16 @@ import FirebaseCore
 
 @main
 struct SpotApp: App {
-    
-    // Firebase initialization
+    @StateObject private var authViewModel = AuthViewModel()
+
     init() {
         FirebaseApp.configure()
     }
-    
+
     var body: some Scene {
         WindowGroup {
-            WelcomeView()
+            RootView()
+                .environmentObject(authViewModel)
         }
     }
 }
