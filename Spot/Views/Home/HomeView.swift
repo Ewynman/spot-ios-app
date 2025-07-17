@@ -23,13 +23,13 @@ struct HomeView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Welcome, \(username) 👋")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
                             .padding(.horizontal)
 
                         Text("This is your feed!")
-                            .font(.system(size: 16, design: .rounded))
-                            .foregroundColor(.gray)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
                             .padding(.horizontal)
 
                         Spacer()
@@ -38,23 +38,22 @@ struct HomeView: View {
                             showUploadView = true
                         }) {
                             Text("Post a Spot")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
                                 .padding()
                                 .frame(maxWidth: .infinity)
-                                .background(Color(hex: "#3F7F5F"))
+                                .background(Constants.Colors.primary)
                                 .cornerRadius(20)
                                 .padding(.horizontal)
-                        }
-
-                        NavigationLink(destination: SpotUploadView(), isActive: $showUploadView) {
-                            EmptyView()
                         }
                     }
                 }
             }
             .onAppear {
                 fetchUsername()
+            }
+            .navigationDestination(isPresented: $showUploadView) {
+                SpotUploadView()
             }
         }
     }

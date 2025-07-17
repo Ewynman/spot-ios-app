@@ -15,7 +15,7 @@ final class SpotUploader {
     static let shared = SpotUploader()
     private init() {}
 
-    func uploadSpot(image: UIImage, caption: String, vibeTag: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func uploadSpot(image: UIImage, caption: String, vibeTag: String, latitude: Double, longitude: Double, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let uid = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not logged in."])))
             return
@@ -52,8 +52,9 @@ final class SpotUploader {
                     "imageURL": imageUrl,
                     "caption": caption,
                     "vibeTag": vibeTag,
+                    "latitude": latitude,
+                    "longitude": longitude,
                     "createdAt": FieldValue.serverTimestamp()
-                    // Add "location" field later when integrating location manager
                 ]
 
                 Firestore.firestore().collection("spots").addDocument(data: data) { error in

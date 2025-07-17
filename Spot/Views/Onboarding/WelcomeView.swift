@@ -22,12 +22,12 @@ struct WelcomeView: View {
                 VStack {
                     VStack(spacing: 8) {
                         Text("SPOT")
-                            .font(Constants.Fonts.title())
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.logoTitle())
+                            .foregroundColor(Constants.Colors.primary)
 
                         Text("Your Favorite Places Shared")
-                            .font(Constants.Fonts.body())
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
                     }
                     .padding(.top, 60)
 
@@ -37,39 +37,36 @@ struct WelcomeView: View {
                         navigateToNext = true
                     }) {
                         Text("Get Started")
+                            .font(FontManager.buttonText())
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color(hex:"#3F7F5F"))
-                            .foregroundColor(.white)
+                            .background(Constants.Colors.primary)
+                            .foregroundColor(Constants.Colors.buttonText)
                             .cornerRadius(40)
                             .padding(.horizontal, 32)
                     }
 
                     HStack {
                         Text("Already have an account?")
-                            .font(Constants.Fonts.small())
-                            .foregroundColor(.white)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.buttonText)
 
                         Button("Login") {
                             showLogin = true
                         }
-                        .font(Constants.Fonts.small())
+                        .font(FontManager.primaryText())
                         .fontWeight(.black)
-                        .foregroundColor(.white)
+                        .foregroundColor(Constants.Colors.buttonText)
                         .underline()
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 24)
-
-                    NavigationLink(destination: LocationPermissionView(), isActive: $navigateToNext) {
-                        EmptyView()
-                    }
-                    .hidden()
-
-                    NavigationLink(destination: LoginView(), isActive: $showLogin) {
-                        EmptyView()
-                    }
-                    .hidden()
+                }
+                .navigationDestination(isPresented: $navigateToNext) {
+                    LocationPermissionView()
+                }
+                .navigationDestination(isPresented: $showLogin) {
+                    LoginView()
                 }
             }
         }

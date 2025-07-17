@@ -5,10 +5,21 @@
 //  Created by Edward Wynman on 7/10/25.
 //
 
-import SwiftUICore
+import SwiftUI
 
 struct LaunchView: View {
     var body: some View {
-        Text("Welcome to Spot")
+        ZStack {
+            Constants.Colors.background
+                .ignoresSafeArea()
+            
+            Text("SPOT")
+                .font(FontManager.logoTitle())
+                .foregroundColor(Constants.Colors.primary)
+        }
     }
+}
+
+#Preview {
+    LaunchView()
 }

@@ -2,7 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Spot uses your location to show nearby spots and add your spot to the map</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Spot sends you alerts about new spots nearby</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>SFProRounded-Black.otf</string>
+		<string>SFProRounded-Bold.otf</string>
+		<string>SFProRounded-Regular.otf</string>
+		<string>SFProRounded-Semibold.otf</string>
+	</array>
 </dict>
 </plist>

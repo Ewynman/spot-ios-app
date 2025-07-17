@@ -13,7 +13,7 @@ final class AuthService {
     static let shared = AuthService()
     private init() {}
 
-    func signUp(email: String, password: String, username: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func signUp(email: String, password: String, username: String, profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
         Auth.auth().createUser(withEmail: email, password: password) { result, error in
             if let error = error {
                 print("🔥 Firebase signup error: \(error.localizedDescription)")
@@ -23,13 +23,14 @@ final class AuthService {
             }
 
             guard let uid = result?.user.uid else {
-                completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid user ID"])))
+                completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid user ID"])))
                 return
             }
 
             let userData: [String: Any] = [
                 "email": email,
                 "username": username,
+                "profileImageURL": profileImageURL,
                 "createdAt": FieldValue.serverTimestamp()
             ]
 

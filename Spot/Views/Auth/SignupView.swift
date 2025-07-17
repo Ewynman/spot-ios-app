@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+import PhotosUI
+import FirebaseFirestore
+import FirebaseAuth
 
 struct SignupView: View {
     @State private var email = ""
@@ -13,10 +16,13 @@ struct SignupView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var agreedToTerms = false
+    @State private var selectedProfileImage: UIImage?
+    @State private var photoPickerItem: PhotosPickerItem?
 
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showLogin = false
+    @Environment(\.dismiss) var dismiss
 
     var body: some View {
         NavigationStack {
@@ -24,10 +30,59 @@ struct SignupView: View {
                 Constants.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: 24) {
+                    // Custom Back Button
+                    HStack {
+                        CustomBackButton {
+                            dismiss()
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
                     Text("Sign Up")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(Color(hex: "#2D4A3D"))
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(Constants.Colors.primary)
                         .padding(.top, 40)
+
+                    // Profile Picture Picker
+                    VStack(spacing: 12) {
+                        Text("Add Profile Picture")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                        
+                        PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                            ZStack {
+                                if let image = selectedProfileImage {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 100, height: 100)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                } else {
+                                    Circle()
+                                        .fill(Constants.Colors.background)
+                                        .frame(width: 100, height: 100)
+                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                        .overlay(
+                                            Image(systemName: "person.fill")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(Constants.Colors.primary)
+                                        )
+                                }
+                            }
+                        }
+                        .onChange(of: photoPickerItem) { newItem in
+                            Task {
+                                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                   let uiImage = UIImage(data: data) {
+                                    selectedProfileImage = uiImage
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 32)
 
                     VStack(spacing: 12) {
                         CustomTextField(placeholder: "Email", text: $email)
@@ -42,15 +97,16 @@ struct SignupView: View {
                             agreedToTerms.toggle()
                         }) {
                             Image(systemName: agreedToTerms ? "checkmark.square.fill" : "square")
-                                .foregroundColor(Color(hex: "#3F7F5F"))
+                                .foregroundColor(Constants.Colors.primary)
                         }
 
                         Text("I agree to the ")
-                            .font(.system(size: 13, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D")) +
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary) +
                         Text("Terms Of Service")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.primaryText())
+                            .fontWeight(.semibold)
+                            .foregroundColor(Constants.Colors.primary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 32)
@@ -71,29 +127,23 @@ struct SignupView: View {
                             return
                         }
 
+                        guard selectedProfileImage != nil else {
+                            errorMessage = "Please add a profile picture."
+                            return
+                        }
+
                         isLoading = true
                         errorMessage = nil
 
-                        AuthService.shared.signUp(email: email, password: password, username: username) { result in
-                            DispatchQueue.main.async {
-                                isLoading = false
-                                switch result {
-                                case .success:
-                                    print("✅ Signed up!")
-                                    // TODO: Navigate to home view
-                                case .failure(let error):
-                                    errorMessage = error.localizedDescription
-                                    print("❌ Signup failed: \(error.localizedDescription)")
-                                }
-                            }
-                        }
+                        // Upload profile picture first, then create user
+                        uploadProfilePictureAndSignUp()
                     }) {
                         Text(isLoading ? "Signing Up..." : "Sign Up")
-                            .foregroundColor(.white)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.buttonText)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color(hex: "#3F7F5F"))
+                            .background(Constants.Colors.primary)
                             .cornerRadius(20)
                     }
                     .disabled(isLoading)
@@ -103,7 +153,7 @@ struct SignupView: View {
                     if let error = errorMessage {
                         Text(error)
                             .foregroundColor(.red)
-                            .font(.system(size: 13, design: .rounded))
+                            .font(FontManager.primaryText())
                             .padding(.top, 4)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -111,15 +161,15 @@ struct SignupView: View {
 
                     HStack(spacing: 4) {
                         Text("Already have an account?")
-                            .font(.system(size: 13, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
 
                         Button(action: {
                             showLogin = true
                         }) {
                             Text("Log in")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(Color(hex: "#2D4A3D"))
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
                         }
                     }
 
@@ -130,6 +180,59 @@ struct SignupView: View {
                     EmptyView()
                 }
                 .hidden()
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+    }
+    
+    private func uploadProfilePictureAndSignUp() {
+        guard let profileImage = selectedProfileImage else { return }
+        
+        // First create the user account
+        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "") { result in
+            switch result {
+            case .success:
+                // Now upload the profile picture with the new user's UID
+                guard let uid = Auth.auth().currentUser?.uid else {
+                    DispatchQueue.main.async {
+                        isLoading = false
+                        errorMessage = "Failed to get user ID"
+                    }
+                    return
+                }
+                
+                ProfilePictureUploader.shared.uploadProfilePictureForSignup(image: profileImage, uid: uid) { uploadResult in
+                    switch uploadResult {
+                    case .success(let imageURL):
+                        // Update the user document with the profile picture URL
+                        let userData: [String: Any] = [
+                            "profileImageURL": imageURL
+                        ]
+                        
+                        Firestore.firestore().collection("users").document(uid).updateData(userData) { error in
+                            DispatchQueue.main.async {
+                                isLoading = false
+                                if let error = error {
+                                    errorMessage = "Failed to update profile picture: \(error.localizedDescription)"
+                                } else {
+                                    print("✅ Signed up with profile picture!")
+                                    // Navigate to home view
+                                }
+                            }
+                        }
+                    case .failure(let error):
+                        DispatchQueue.main.async {
+                            isLoading = false
+                            errorMessage = "Failed to upload profile picture: \(error.localizedDescription)"
+                        }
+                    }
+                }
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    isLoading = false
+                    errorMessage = error.localizedDescription
+                    print("❌ Signup failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -145,13 +248,13 @@ struct CustomTextField: View {
     var body: some View {
         TextField(placeholder, text: $text)
             .padding()
-            .background(Color.white)
+            .background(Constants.Colors.background)
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color(hex: "#2D4A3D"), lineWidth: 1)
+                    .stroke(Constants.Colors.primary, lineWidth: 1)
             )
-            .font(.system(size: 14, design: .rounded))
+            .font(FontManager.primaryText())
             .autocapitalization(.none)
             .textInputAutocapitalization(.never)
     }
@@ -164,13 +267,13 @@ struct CustomSecureField: View {
     var body: some View {
         SecureField(placeholder, text: $text)
             .padding()
-            .background(Color.white)
+            .background(Constants.Colors.background)
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color(hex: "#2D4A3D"), lineWidth: 1)
+                    .stroke(Constants.Colors.primary, lineWidth: 1)
             )
-            .font(.system(size: 14, design: .rounded))
+            .font(FontManager.primaryText())
     }
 }
 

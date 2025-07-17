@@ -294,6 +294,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				642844582E2057C200DC9E8A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				648D6FF52E28936B00461275 /* XCRemoteSwiftPackageReference "fonts" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6428440E2E20429B00DC9E8A /* Products */;
@@ -662,6 +663,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 11.15.0;
+			};
+		};
+		648D6FF52E28936B00461275 /* XCRemoteSwiftPackageReference "fonts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/fonts";
+			requirement = {
+				branch = main;
+				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

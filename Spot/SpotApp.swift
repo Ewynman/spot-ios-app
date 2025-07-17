@@ -11,6 +11,7 @@ import FirebaseCore
 @main
 struct SpotApp: App {
     @StateObject private var authViewModel = AuthViewModel()
+    @State private var showLaunchScreen = true
 
     init() {
         FirebaseApp.configure()
@@ -18,8 +19,22 @@ struct SpotApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(authViewModel)
+            ZStack {
+                if showLaunchScreen {
+                    LaunchView()
+                        .onAppear {
+                            // Show launch screen for 2 seconds
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    showLaunchScreen = false
+                                }
+                            }
+                        }
+                } else {
+                    RootView()
+                        .environmentObject(authViewModel)
+                }
+            }
         }
     }
 }

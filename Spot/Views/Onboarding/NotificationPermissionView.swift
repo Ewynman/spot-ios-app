@@ -20,12 +20,8 @@ struct NotificationPermissionView: View {
 
                     // Custom Back Button
                     HStack {
-                        Button(action: {
+                        CustomBackButton {
                             dismiss()
-                        }) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundColor(Color(hex: "#3F7F5F"))
                         }
                         Spacer()
                     }
@@ -35,18 +31,18 @@ struct NotificationPermissionView: View {
                     // Title
                     VStack(spacing: 8) {
                         Text("Allow")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
 
                         Text("Notification Access")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
                     }
 
                     Text("Spot will let you know when new spots are nearby or when friends post something cool.")
-                        .font(.system(size: 14, design: .rounded))
+                        .font(FontManager.primaryText())
                         .multilineTextAlignment(.center)
-                        .foregroundColor(Color(hex: "#2D4A3D"))
+                        .foregroundColor(Constants.Colors.primary)
 
                     Spacer()
 
@@ -74,11 +70,11 @@ struct NotificationPermissionView: View {
                             }
                         }) {
                             Text("Allow Notifications")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(Color(hex: "#3F7F5F"))
+                                .background(Constants.Colors.primary)
                                 .cornerRadius(20)
                         }
 
@@ -86,8 +82,8 @@ struct NotificationPermissionView: View {
                             navigateToSignup = true
                         }) {
                             Text("Maybe Later")
-                                .font(.system(size: 14, design: .rounded))
-                                .foregroundColor(Color(hex: "#2D4A3D"))
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.primary)
                         }
                     }
                     .padding(.horizontal, 32)

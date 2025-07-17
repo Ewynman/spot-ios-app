@@ -10,27 +10,11 @@ import SwiftUI
 enum Constants {
     
     enum Colors {
-        static let primary = Color(hex: "#26852B")
-        static let primaryDark = Color(hex: "#1E6E23")
-        static let primaryLight = Color(hex: "#E0EADC")
-        static let secondary = Color(hex: "#4478B6")
-        static let secondaryLight = Color(hex: "#E1E4F0")
-        static let textPrimary = Color(hex: "#1A1A1A")
-        static let background = Color(hex: "#F5F3EF")
-    }
-
-    enum Fonts {
-        static func title() -> Font {
-            .custom("SFProRounded-Bold", size: 40)
-        }
-
-        static func body() -> Font {
-            .custom("SFProRounded-Regular", size: 16)
-        }
-
-        static func small() -> Font {
-            .custom("SFProRounded-Regular", size: 14)
-        }
+        static let background = Color(hex: "#F5F3EF")      // Main background color, button text color
+        static let buttonText = Color(hex: "#F5F3EF")      // Button text color
+        static let primary = Color(hex: "#1D2C24")         // Button color, icon, and main text color
+        static let textPrimary = Color(hex: "#1D2C24")     // Main text color (all text except button text)
+        static let accent = Color(hex: "#DEE6D8")          // Accent color for vibe tags only
     }
 }
 

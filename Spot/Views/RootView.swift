@@ -15,7 +15,7 @@ struct RootView: View {
             if authViewModel.isLoading {
                 ProgressView("Loading...")
             } else if authViewModel.isAuthenticated {
-                HomeView()
+                HomepageView()
             } else {
                 WelcomeView()
             }

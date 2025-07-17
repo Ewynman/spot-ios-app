@@ -22,8 +22,8 @@ struct LoginView: View {
 
                 VStack(spacing: 24) {
                     Text("Log In")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(Color(hex: "#2D4A3D"))
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(Constants.Colors.primary)
                         .padding(.top, 40)
 
                     // Fields
@@ -57,11 +57,11 @@ struct LoginView: View {
                         }
                     }) {
                         Text(isLoading ? "Logging In..." : "Login")
-                            .foregroundColor(.white)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.buttonText)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color(hex: "#3F7F5F"))
+                            .background(Constants.Colors.primary)
                             .cornerRadius(20)
                     }
                     .disabled(isLoading)
@@ -71,7 +71,7 @@ struct LoginView: View {
                     if let error = errorMessage {
                         Text(error)
                             .foregroundColor(.red)
-                            .font(.system(size: 13, design: .rounded))
+                            .font(FontManager.primaryText())
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
                             .padding(.horizontal, 32)
@@ -80,22 +80,21 @@ struct LoginView: View {
                     // Link to Sign Up
                     HStack(spacing: 4) {
                         Text("Don’t have an account?")
-                            .font(.system(size: 13, design: .rounded))
-                            .foregroundColor(Color(hex: "#2D4A3D"))
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
 
                         NavigationLink(destination: SignupView()) {
                             Text("Sign Up")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(Color(hex: "#2D4A3D"))
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
                         }
                     }
 
                     Spacer()
                 }
-
-                NavigationLink(destination: HomeView(), isActive: $isLoggedIn) {
-                    EmptyView()
-                }
+            }
+            .navigationDestination(isPresented: $isLoggedIn) {
+                HomepageView()
             }
         }
     }

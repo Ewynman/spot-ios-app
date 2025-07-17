@@ -33,8 +33,8 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func signUp(email: String, password: String, username: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signUp(email: email, password: password, username: username) { result in
+    func signUp(email: String, password: String, username: String,profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: profileImageURL) { result in
             DispatchQueue.main.async {
                 completion(result)
             }

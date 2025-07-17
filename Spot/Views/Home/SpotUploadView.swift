@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import CoreLocation
 
 struct SpotUploadView: View {
     @State private var selectedImage: UIImage?
@@ -15,6 +16,7 @@ struct SpotUploadView: View {
     @State private var vibeTag: String = ""
     @State private var isUploading: Bool = false
     @State private var uploadMessage: String?
+    @StateObject private var locationManager = LocationManager()
 
     var body: some View {
         NavigationStack {
@@ -53,31 +55,33 @@ struct SpotUploadView: View {
                     // Caption
                     TextField("Enter a caption...", text: $caption)
                         .padding()
-                        .background(Color.white)
+                        .background(Constants.Colors.background)
                         .cornerRadius(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(hex: "#2D4A3D"), lineWidth: 1)
+                                .stroke(Constants.Colors.primary, lineWidth: 1)
                         )
+                        .font(FontManager.primaryText())
 
                     // Vibe tag
                     TextField("Enter a vibe tag...", text: $vibeTag)
                         .padding()
-                        .background(Color.white)
+                        .background(Constants.Colors.background)
                         .cornerRadius(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(hex: "#2D4A3D"), lineWidth: 1)
+                                .stroke(Constants.Colors.accent, lineWidth: 1)
                         )
+                        .font(FontManager.primaryText())
 
                     // Upload Button
                     Button(action: uploadSpot) {
                         Text(isUploading ? "Uploading..." : "Post Spot")
-                            .foregroundColor(.white)
-                            .fontWeight(.semibold)
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.buttonText)
                             .padding()
                             .frame(maxWidth: .infinity)
-                            .background(Color(hex: "#3F7F5F"))
+                            .background(Constants.Colors.primary)
                             .cornerRadius(20)
                     }
                     .disabled(isUploading || selectedImage == nil)
@@ -92,7 +96,7 @@ struct SpotUploadView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Upload Spot")
+            .navigationTitle(Text("Upload Spot").font(FontManager.sectionHeader()))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -103,7 +107,10 @@ struct SpotUploadView: View {
         isUploading = true
         uploadMessage = nil
 
-        SpotUploader.shared.uploadSpot(image: image, caption: caption, vibeTag: vibeTag) { result in
+        // Get current location
+        let latitude = locationManager.location?.coordinate.latitude ?? 40.7128 // Default to NYC
+        let longitude = locationManager.location?.coordinate.longitude ?? -74.0060
+        SpotUploader.shared.uploadSpot(image: image, caption: caption, vibeTag: vibeTag, latitude: latitude, longitude: longitude) { result in
             DispatchQueue.main.async {
                 isUploading = false
                 switch result {
@@ -117,6 +124,25 @@ struct SpotUploadView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Location Manager
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let locationManager = CLLocationManager()
+    @Published var location: CLLocation?
+    
+    override init() {
+        super.init()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        self.location = location
     }
 }
 
