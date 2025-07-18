@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Spot uses your camera to take photos of your spots</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Spot uses your photo library to select photos for your spots</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Spot uses your location to show nearby spots and add your spot to the map</string>
 	<key>NSUserNotificationsUsageDescription</key>

@@ -26,9 +26,9 @@ struct HomepageView: View {
                 BottomNavigationView()
             }
             .background(Color(hex: "F5F3EF"))
-        }
-        .navigationDestination(isPresented: $showUploadView) {
-            SpotUploadView()
+            .navigationDestination(isPresented: $showUploadView) {
+                PostFlowView()
+            }
         }
         .onAppear {
             loadSpots()
