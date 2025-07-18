@@ -111,7 +111,10 @@ struct PhotoSelectionView: View {
             Task {
                 if let data = try? await newItem?.loadTransferable(type: Data.self),
                    let uiImage = UIImage(data: data) {
+                    SpotLogger.info("User selected photo from gallery")
                     selectedImage = uiImage
+                } else {
+                    SpotLogger.warning("Failed to load photo from gallery")
                 }
             }
         }
@@ -148,12 +151,16 @@ struct CameraView: UIViewControllerRepresentable {
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
+                SpotLogger.info("User captured photo with camera")
                 parent.selectedImage = image
+            } else {
+                SpotLogger.warning("Failed to capture photo with camera")
             }
             parent.dismiss()
         }
         
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            SpotLogger.debug("User cancelled camera capture")
             parent.dismiss()
         }
     }

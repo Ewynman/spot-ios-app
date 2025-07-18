@@ -71,6 +71,7 @@ struct PostFlowView: View {
     
     private func handleBack() {
         if currentStep > 1 {
+            SpotLogger.debug("User went back from step \(currentStep) to step \(currentStep - 1)")
             withAnimation(.easeInOut(duration: 0.3)) {
                 currentStep -= 1
             }
@@ -79,6 +80,7 @@ struct PostFlowView: View {
     
     private func handleNext() {
         if currentStep < totalSteps {
+            SpotLogger.debug("User progressed from step \(currentStep) to step \(currentStep + 1)")
             withAnimation(.easeInOut(duration: 0.3)) {
                 currentStep += 1
             }
@@ -86,6 +88,9 @@ struct PostFlowView: View {
     }
     
     private func handleFinish() {
+        SpotLogger.info("User completed post flow")
+        SpotLogger.debug("Post data - Image: \(selectedImage != nil), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
+        
         // TODO: Upload the post
         print("Posting with:")
         print("- Image: \(selectedImage != nil)")

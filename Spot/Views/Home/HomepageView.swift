@@ -45,12 +45,15 @@ struct HomepageView: View {
     }
     
     private func loadMapSpots() {
+        SpotLogger.debug("Loading spots for map")
         SpotService.shared.fetchSpotsForMap { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let spots):
+                    SpotLogger.info("Loaded \(spots.count) spots for map")
                     self.mapSpots = spots
                 case .failure(let error):
+                    SpotLogger.error("Failed to load map spots: \(error.localizedDescription)")
                     print("Failed to load map spots: \(error.localizedDescription)")
                 }
             }
@@ -70,7 +73,10 @@ struct TopNavigationView: View {
                     .foregroundColor(Constants.Colors.primary)
                 Spacer()
                 Button(action: {
+                    print("➕ Plus button tapped!")
+                    SpotLogger.info("User tapped + button to start post flow")
                     showUploadView = true
+                    print("showUploadView set to: \(showUploadView)")
                 }) {
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
@@ -96,6 +102,7 @@ struct TabNavigationView: View {
         HStack(spacing: 32) {
             ForEach(tabs, id: \.self) { tab in
                 TabItemView(tab: tab, isSelected: selectedTab == tab) {
+                    SpotLogger.debug("User switched to tab: \(tab)")
                     withAnimation(.easeInOut(duration: 0.2)) {
                         selectedTab = tab
                     }

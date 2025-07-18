@@ -174,12 +174,15 @@ struct LocationSelectionView: View {
     }
     
     private func loadNearbyPlaces() {
+        SpotLogger.debug("Loading nearby places")
         guard let location = locationManager.location else {
+            SpotLogger.warning("No current location available, using default region")
             // If no location, use default region
             searchNearbyPlaces(in: region)
             return
         }
         
+        SpotLogger.info("Got current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
         // Update region to current location
         region = MKCoordinateRegion(
             center: location.coordinate,
@@ -199,9 +202,12 @@ struct LocationSelectionView: View {
         let search = MKLocalSearch(request: request)
         search.start { response, error in
             DispatchQueue.main.async {
-                isLoadingNearby = false
-                if let response = response {
-                    nearbyPlaces = Array(response.mapItems.prefix(10)) // Limit to 10 nearby places
+                self.isLoadingNearby = false
+                if let error = error {
+                    SpotLogger.error("Failed to search nearby places: \(error.localizedDescription)")
+                } else if let response = response {
+                    SpotLogger.info("Found \(response.mapItems.count) nearby places")
+                    self.nearbyPlaces = Array(response.mapItems.prefix(10)) // Limit to 10 nearby places
                 }
             }
         }
@@ -213,6 +219,7 @@ struct LocationSelectionView: View {
             return
         }
         
+        SpotLogger.debug("Searching for places with query: \(query)")
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         request.region = region
@@ -220,8 +227,11 @@ struct LocationSelectionView: View {
         let search = MKLocalSearch(request: request)
         search.start { response, error in
             DispatchQueue.main.async {
-                if let response = response {
-                    searchResults = response.mapItems
+                if let error = error {
+                    SpotLogger.error("Failed to search places: \(error.localizedDescription)")
+                } else if let response = response {
+                    SpotLogger.info("Found \(response.mapItems.count) search results for '\(query)'")
+                    self.searchResults = response.mapItems
                 }
             }
         }
@@ -240,6 +250,7 @@ struct LocationResultRow: View {
                 placeName: item.name ?? "Unknown Location",
                 address: item.placemark.thoroughfare
             )
+            SpotLogger.info("User selected location: \(locationData.placeName)")
             onSelect(locationData)
         }) {
             HStack(spacing: 12) {
@@ -284,6 +295,7 @@ struct NearbyPlaceRow: View {
                 placeName: item.name ?? "Unknown Location",
                 address: item.placemark.thoroughfare
             )
+            SpotLogger.info("User selected location: \(locationData.placeName)")
             onSelect(locationData)
         }) {
             HStack(spacing: 12) {

@@ -50,6 +50,7 @@ struct VibeSelectionView: View {
                             vibe: vibe,
                             isSelected: selectedVibe == vibe,
                             onTap: {
+                                SpotLogger.info("User selected vibe: \(vibe)")
                                 selectedVibe = vibe
                             }
                         )
