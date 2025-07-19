@@ -26,14 +26,29 @@ class AuthViewModel: ObservableObject {
 
     private func listenToAuthState() {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            DispatchQueue.main.async {
-                self?.isAuthenticated = (user != nil)
-                self?.isLoading = false
+            if let user = user {
+                SpotLogger.debug("Auth state changed - user signed in: \(user.uid)")
+                // Verify user exists in Firestore
+                AuthService.shared.verifyUserExists { exists in
+                    DispatchQueue.main.async {
+                        self?.isAuthenticated = exists
+                        self?.isLoading = false
+                        if !exists {
+                            SpotLogger.warning("User authenticated but no Firestore document exists")
+                        }
+                    }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    SpotLogger.debug("Auth state changed - no user")
+                    self?.isAuthenticated = false
+                    self?.isLoading = false
+                }
             }
         }
     }
 
-    func signUp(email: String, password: String, username: String,profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func signUp(email: String, password: String, username: String, profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
         AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: profileImageURL) { result in
             DispatchQueue.main.async {
                 completion(result)

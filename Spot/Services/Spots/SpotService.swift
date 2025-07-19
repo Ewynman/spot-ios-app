@@ -12,7 +12,16 @@ import FirebaseAuth
 final class SpotService {
     static let shared = SpotService()
     private init() {}
-
+    
+    private var cachedSpots: [Spot] = []
+    private var lastFetchTime: Date?
+    private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
+    
+    private var isCacheValid: Bool {
+        guard let lastFetch = lastFetchTime else { return false }
+        return Date().timeIntervalSince(lastFetch) < cacheValidityDuration
+    }
+    
     func createSpot(imageURL: String, latitude: Double, longitude: Double, vibeTag: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated."])))
@@ -37,11 +46,18 @@ final class SpotService {
         }
     }
     
-    func fetchSpotsForMap(completion: @escaping (Result<[Spot], Error>) -> Void) {
+    func fetchSpotsForMap(forceRefresh: Bool = false, completion: @escaping (Result<[Spot], Error>) -> Void) {
+        // Return cached spots if available and cache is still valid
+        if !forceRefresh && !cachedSpots.isEmpty && isCacheValid {
+            SpotLogger.info("Returning \(cachedSpots.count) cached spots")
+            completion(.success(cachedSpots))
+            return
+        }
+        
         SpotLogger.debug("Running fetchSpotsForMap query with order by 'createdAt'")
         Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
-            .getDocuments { snapshot, error in
+            .getDocuments { [weak self] snapshot, error in
                 if let error = error {
                     SpotLogger.error("fetchSpotsForMap error: \(error.localizedDescription)")
                     completion(.failure(error))
@@ -81,7 +97,12 @@ final class SpotService {
                         createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
                     )
                 }
-                SpotLogger.info("fetchSpotsForMap: Parsed \(spots.count) spots")
+                
+                // Update cache
+                self?.cachedSpots = spots
+                self?.lastFetchTime = Date()
+                
+                SpotLogger.info("fetchSpotsForMap: Parsed and cached \(spots.count) spots")
                 completion(.success(spots))
             }
     }

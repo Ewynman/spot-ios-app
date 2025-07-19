@@ -44,7 +44,7 @@ struct SpotCard: View {
                 }
                 
                 // Username
-                Text(spot.username ?? "")
+                Text(spot.username ?? "User")
                     .font(FontManager.primaryText())
                     .fontWeight(.semibold)
                     .foregroundColor(Constants.Colors.primary)
@@ -59,24 +59,36 @@ struct SpotCard: View {
                 }
             }
             .padding(.horizontal,10)
+            
             // Spot Image
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Constants.Colors.background)
                 GeometryReader { geo in
-                    AsyncImage(url: URL(string: spot.imageURL ?? "")) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: geo.size.width, height: 220)
-                            .clipped()
-                            .cornerRadius(12)
-                    } placeholder: {
+                    if let imageURL = spot.imageURL, !imageURL.isEmpty {
+                        AsyncImage(url: URL(string: imageURL)) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: 220)
+                                .clipped()
+                                .cornerRadius(12)
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Constants.Colors.background)
+                                .frame(width: geo.size.width, height: 220)
+                                .overlay(
+                                    ProgressView()
+                                        .foregroundColor(Constants.Colors.primary)
+                                )
+                        }
+                    } else {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Constants.Colors.background)
                             .frame(width: geo.size.width, height: 220)
                             .overlay(
-                                ProgressView()
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
                                     .foregroundColor(Constants.Colors.primary)
                             )
                     }
@@ -85,6 +97,7 @@ struct SpotCard: View {
             }
             .frame(height: 220)
             .padding(.horizontal, 5)
+            
             // Interaction Bar
             HStack {
                 // Like Button

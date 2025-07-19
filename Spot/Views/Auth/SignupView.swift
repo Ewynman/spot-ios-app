@@ -187,49 +187,47 @@ struct SignupView: View {
     private func uploadProfilePictureAndSignUp() {
         guard let profileImage = selectedProfileImage else { return }
         
-        // First create the user account
+        isLoading = true
+        errorMessage = nil
+        
+        // First create user with empty profile picture URL
         AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "") { result in
             switch result {
             case .success:
-                // Now upload the profile picture with the new user's UID
-                guard let uid = Auth.auth().currentUser?.uid else {
+                // Now that we're authenticated, upload the profile picture
+                ProfilePictureUploader.shared.uploadProfilePicture(image: profileImage) { uploadResult in
                     DispatchQueue.main.async {
-                        isLoading = false
-                        errorMessage = "Failed to get user ID"
-                    }
-                    return
-                }
-                
-                ProfilePictureUploader.shared.uploadProfilePictureForSignup(image: profileImage, uid: uid) { uploadResult in
-                    switch uploadResult {
-                    case .success(let imageURL):
-                        // Update the user document with the profile picture URL
-                        let userData: [String: Any] = [
-                            "profileImageURL": imageURL
-                        ]
-                        
-                        Firestore.firestore().collection("users").document(uid).updateData(userData) { error in
-                            DispatchQueue.main.async {
-                                isLoading = false
+                        switch uploadResult {
+                        case .success(let imageURL):
+                            // Update the user's document with the profile picture URL
+                            guard let uid = Auth.auth().currentUser?.uid else {
+                                self.isLoading = false
+                                self.errorMessage = "Failed to get user ID"
+                                return
+                            }
+                            
+                            let userData: [String: Any] = [
+                                "profileImageURL": imageURL
+                            ]
+                            
+                            Firestore.firestore().collection("users").document(uid).updateData(userData) { error in
+                                self.isLoading = false
                                 if let error = error {
-                                    errorMessage = "Failed to update profile picture: \(error.localizedDescription)"
+                                    self.errorMessage = "Failed to update profile picture: \(error.localizedDescription)"
                                 } else {
-                            print("✅ Signed up with profile picture!")
-                                    // Navigate to home view
+                                    print("✅ Signed up and uploaded profile picture!")
                                 }
                             }
-                        }
                         case .failure(let error):
-                        DispatchQueue.main.async {
-                            isLoading = false
-                            errorMessage = "Failed to upload profile picture: \(error.localizedDescription)"
+                            self.isLoading = false
+                            self.errorMessage = "Failed to upload profile picture: \(error.localizedDescription)"
                         }
                     }
                 }
             case .failure(let error):
                 DispatchQueue.main.async {
-                    isLoading = false
-                    errorMessage = error.localizedDescription
+                    self.isLoading = false
+                    self.errorMessage = error.localizedDescription
                     print("❌ Signup failed: \(error.localizedDescription)")
                 }
             }

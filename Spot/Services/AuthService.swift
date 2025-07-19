@@ -12,6 +12,30 @@ import FirebaseFirestore
 final class AuthService {
     static let shared = AuthService()
     private init() {}
+    
+    func verifyUserExists(completion: @escaping (Bool) -> Void) {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            SpotLogger.debug("No current user, skipping verification")
+            completion(false)
+            return
+        }
+        
+        SpotLogger.debug("Verifying user document exists for uid: \(uid)")
+        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
+            if let error = error {
+                SpotLogger.error("Error verifying user: \(error.localizedDescription)")
+                completion(false)
+                return
+            }
+            
+            let exists = snapshot?.exists ?? false
+            if !exists {
+                SpotLogger.warning("User document not found in Firestore, signing out")
+                try? Auth.auth().signOut()
+            }
+            completion(exists)
+        }
+    }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
         Auth.auth().createUser(withEmail: email, password: password) { result, error in

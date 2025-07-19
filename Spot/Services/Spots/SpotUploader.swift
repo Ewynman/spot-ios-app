@@ -14,8 +14,104 @@ import UIKit
 final class SpotUploader {
     static let shared = SpotUploader()
     private init() {}
+    
+    static func incrementUserVibeStat(userId: String, vibeTag: String) {
+        SpotLogger.debug("Incrementing vibe stat for user \(userId) - vibe: \(vibeTag)")
+        let userRef = Firestore.firestore().collection("users").document(userId)
+        
+        userRef.getDocument { snapshot, error in
+            if let error = error {
+                SpotLogger.error("Failed to get user doc for vibe stats: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = snapshot?.data() else {
+                SpotLogger.error("No user data found for vibe stats")
+                return
+            }
+            
+            // Get existing vibeStats or create new
+            var vibeStats = data["vibeStats"] as? [String: Int] ?? [:]
+            
+            // Increment the count for this vibe
+            vibeStats[vibeTag] = (vibeStats[vibeTag] ?? 0) + 1
+            
+            // Update the user document
+            userRef.updateData([
+                "vibeStats": vibeStats
+            ]) { error in
+                if let error = error {
+                    SpotLogger.error("Failed to update vibe stats: \(error.localizedDescription)")
+                } else {
+                    SpotLogger.info("Updated vibe stats for user \(userId) - \(vibeTag): \(vibeStats[vibeTag] ?? 1)")
+                }
+            }
+        }
+    }
+    
+    private func getCurrentUserData(completion: @escaping (Result<(String, String?), Error>) -> Void) {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            return
+        }
+        
+        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
+            if let error = error {
+                SpotLogger.error("Failed to fetch user data: \(error.localizedDescription)")
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = snapshot?.data(),
+                  let username = data["username"] as? String else {
+                SpotLogger.error("Invalid user data format")
+                completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
+                return
+            }
+            
+            let profileImageURL = data["profileImageURL"] as? String
+            completion(.success((username, profileImageURL)))
+        }
+    }
 
     func uploadSpot(
+        image: UIImage,
+        vibeTag: String,
+        latitude: Double,
+        longitude: Double,
+        placeName: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            SpotLogger.error("User not authenticated for spot upload")
+            return
+        }
+        
+        // First get current user data
+        getCurrentUserData { [weak self] result in
+            switch result {
+            case .success(let userData):
+                let (username, profileImageURL) = userData
+                self?.performSpotUpload(
+                    image: image,
+                    vibeTag: vibeTag,
+                    latitude: latitude,
+                    longitude: longitude,
+                    placeName: placeName,
+                    userId: userId,
+                    username: username,
+                    userProfileImageURL: profileImageURL,
+                    completion: completion
+                )
+            case .failure(let error):
+                SpotLogger.error("Failed to get user data: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    private func performSpotUpload(
         image: UIImage,
         vibeTag: String,
         latitude: Double,
@@ -69,7 +165,9 @@ final class SpotUploader {
                     "vibeTag": vibeTag,
                     "latitude": latitude,
                     "longitude": longitude,
-                    "placeName": placeName,
+                    "locationName": placeName,
+                    "likes": 0,
+                    "saves": 0,
                     "createdAt": FieldValue.serverTimestamp()
                 ]
 
@@ -78,18 +176,11 @@ final class SpotUploader {
                         SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
                         completion(.failure(error))
                     } else {
-                        SpotLogger.firebase("Spot posted successfully: \(postId)")
+                        SpotLogger.info("Spot created successfully!")
                         completion(.success(()))
                     }
                 }
             }
         }
-    }
-
-    static func incrementUserVibeStat(userId: String, vibeTag: String) {
-        let userRef = Firestore.firestore().collection("users").document(userId)
-        let vibeKey = "vibeStats.\(vibeTag)"
-        userRef.setData([vibeKey: FieldValue.increment(Int64(1))], merge: true)
-        SpotLogger.info("Incremented vibeStats for user \(userId) and vibe \(vibeTag)")
     }
 }

@@ -117,7 +117,6 @@ struct PostFlowView: View {
         guard let image = selectedImage,
               let location = selectedLocation,
               !selectedVibe.isEmpty,
-              let user = Auth.auth().currentUser,
               !location.placeName.isEmpty,
               location.coordinate.latitude != 0,
               location.coordinate.longitude != 0
@@ -127,25 +126,21 @@ struct PostFlowView: View {
         }
         
         isUploading = true
-        let userId = user.uid
-        let username = user.displayName ?? "User"
-        let userProfileImageURL = user.photoURL?.absoluteString
         
         SpotUploader.shared.uploadSpot(
             image: image,
             vibeTag: selectedVibe,
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
-            placeName: location.placeName,
-            userId: userId,
-            username: username,
-            userProfileImageURL: userProfileImageURL
+            placeName: location.placeName
         ) { result in
             DispatchQueue.main.async {
                 isUploading = false
                 switch result {
                 case .success:
-                    SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
+                    if let userId = Auth.auth().currentUser?.uid {
+                        SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
+                    }
                     showToastWith(message: "Spot posted!", isError: false)
                     SpotLogger.info("Spot posted and vibeStats updated")
                     onPostSuccess?()

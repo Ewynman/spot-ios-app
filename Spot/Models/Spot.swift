@@ -9,7 +9,7 @@ import Foundation
 import FirebaseFirestore
 import CoreLocation
 
-struct Spot: Identifiable, Codable {
+struct Spot: Identifiable, Codable, Equatable {
     @DocumentID var id: String?
     var userId: String?
     var username: String?
@@ -24,4 +24,22 @@ struct Spot: Identifiable, Codable {
     var isLiked: Bool?
     var isSaved: Bool?
     var createdAt: Date?
+    
+    static func == (lhs: Spot, rhs: Spot) -> Bool {
+        // Compare all relevant fields
+        return lhs.id == rhs.id &&
+               lhs.userId == rhs.userId &&
+               lhs.username == rhs.username &&
+               lhs.userProfileImageURL == rhs.userProfileImageURL &&
+               lhs.imageURL == rhs.imageURL &&
+               lhs.caption == rhs.caption &&
+               lhs.vibeTag == rhs.vibeTag &&
+               lhs.latitude == rhs.latitude &&
+               lhs.longitude == rhs.longitude &&
+               lhs.locationName == rhs.locationName &&
+               lhs.likes == rhs.likes &&
+               lhs.isLiked == rhs.isLiked &&
+               lhs.isSaved == rhs.isSaved &&
+               lhs.createdAt == rhs.createdAt
+    }
 }

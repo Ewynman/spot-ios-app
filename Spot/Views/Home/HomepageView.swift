@@ -9,73 +9,137 @@ class FeedViewModel: ObservableObject {
     @Published var hasMore = true
     private var lastDocument: DocumentSnapshot?
     private let pageSize = 10
+    private var loadTask: Task<Void, Never>?
+    
+    // Cache management
+    private var cachedSpots: [Spot] = []
+    private var lastCacheTime: Date?
+    private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
+    
+    private var isCacheValid: Bool {
+        guard let lastTime = lastCacheTime else { return false }
+        return Date().timeIntervalSince(lastTime) < cacheValidityDuration
+    }
     
     func loadInitialSpots() {
-        SpotLogger.debug("FeedViewModel: Running feed query with order by 'createdAt'")
+        // Cancel any existing load task
+        loadTask?.cancel()
+        
+        // If cache is valid, use it immediately
+        if !cachedSpots.isEmpty && isCacheValid {
+            spots = cachedSpots
+            mapSpots = cachedSpots
+            SpotLogger.info("Using cached spots: \(cachedSpots.count) spots")
+            // Still refresh in background for updates
+            refreshInBackground()
+            return
+        }
+        
+        SpotLogger.debug("FeedViewModel: Running initial feed query")
         isLoading = true
-        let query = Firestore.firestore().collection("spots")
-            .order(by: "createdAt", descending: true)
-            .limit(to: pageSize)
-        query.getDocuments { snapshot, error in
-            DispatchQueue.main.async {
-                self.isLoading = false
-                if let error = error {
-                    SpotLogger.error("FeedViewModel: Failed to load spots: \(error.localizedDescription)")
-                    self.spots = []
-                    self.hasMore = false
-                    return
-                }
-                guard let snapshot = snapshot else {
-                    SpotLogger.warning("FeedViewModel: No documents returned for feed")
-                    self.spots = []
-                    self.hasMore = false
-                    return
-                }
-                self.spots = snapshot.documents.compactMap { doc in
+        
+        loadTask = Task {
+            do {
+                let query = Firestore.firestore().collection("spots")
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: pageSize)
+                
+                let snapshot = try await query.getDocuments()
+                
+                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
                     do {
-                        let spot = try doc.data(as: Spot.self)
-                        return spot
+                        return try doc.data(as: Spot.self)
                     } catch {
-                        SpotLogger.error("FeedViewModel: Failed to decode spot doc id: \(doc.documentID) - \(error)")
+                        SpotLogger.error("Failed to decode spot: \(error.localizedDescription)")
                         return nil
                     }
                 }
-                SpotLogger.info("FeedViewModel: Parsed \(self.spots.count) spots for feed")
-                self.lastDocument = snapshot.documents.last
-                self.hasMore = snapshot.documents.count == self.pageSize
+                
+                await MainActor.run {
+                    self.spots = newSpots
+                    self.mapSpots = newSpots
+                    self.lastDocument = snapshot.documents.last
+                    self.hasMore = snapshot.documents.count == self.pageSize
+                    self.isLoading = false
+                    
+                    // Update cache
+                    self.cachedSpots = newSpots
+                    self.lastCacheTime = Date()
+                    
+                    SpotLogger.info("Loaded and cached \(newSpots.count) spots")
+                }
+            } catch {
+                SpotLogger.error("Failed to load spots: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isLoading = false
+                    self.spots = []
+                    self.mapSpots = []
+                    self.hasMore = false
+                }
+            }
+        }
+    }
+    
+    private func refreshInBackground() {
+        Task {
+            do {
+                let query = Firestore.firestore().collection("spots")
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: pageSize)
+                
+                let snapshot = try await query.getDocuments()
+                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
+                    try? doc.data(as: Spot.self)
+                }
+                
+                // Only update if there are changes
+                if !newSpots.isEmpty && newSpots != spots {
+                    await MainActor.run {
+                        self.spots = newSpots
+                        self.mapSpots = newSpots
+                        self.cachedSpots = newSpots
+                        self.lastCacheTime = Date()
+                        self.lastDocument = snapshot.documents.last
+                        self.hasMore = snapshot.documents.count == self.pageSize
+                        SpotLogger.info("Updated feed with \(newSpots.count) spots")
+                    }
+                }
+            } catch {
+                SpotLogger.error("Background refresh failed: \(error.localizedDescription)")
             }
         }
     }
     
     func loadMoreSpots() {
         guard !isLoading, hasMore, let lastDoc = lastDocument else { return }
-        SpotLogger.debug("FeedViewModel: Loading more spots for feed")
+        
         isLoading = true
-        let query = Firestore.firestore().collection("spots")
-            .order(by: "createdAt", descending: true)
-            .start(afterDocument: lastDoc)
-            .limit(to: pageSize)
-        query.getDocuments { snapshot, error in
-            DispatchQueue.main.async {
-                self.isLoading = false
-                if let error = error {
-                    SpotLogger.error("FeedViewModel: Failed to load more spots: \(error.localizedDescription)")
+        loadTask = Task {
+            do {
+                let query = Firestore.firestore().collection("spots")
+                    .order(by: "createdAt", descending: true)
+                    .start(afterDocument: lastDoc)
+                    .limit(to: pageSize)
+                
+                let snapshot = try await query.getDocuments()
+                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
+                    try? doc.data(as: Spot.self)
+                }
+                
+                await MainActor.run {
+                    self.spots.append(contentsOf: newSpots)
+                    self.mapSpots.append(contentsOf: newSpots)
+                    self.lastDocument = snapshot.documents.last
+                    self.hasMore = snapshot.documents.count == self.pageSize
+                    self.isLoading = false
+                    SpotLogger.info("Loaded \(newSpots.count) more spots")
+                }
+            } catch {
+                SpotLogger.error("Failed to load more spots: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isLoading = false
                     self.hasMore = false
-                    return
                 }
-                guard let snapshot = snapshot else {
-                    SpotLogger.warning("FeedViewModel: No more documents returned for feed")
-                    self.hasMore = false
-                    return
-                }
-                let newSpots = snapshot.documents.compactMap { doc in
-                    SpotLogger.debug("FeedViewModel: Parsing spot doc id: \(doc.documentID)")
-                    return try? doc.data(as: Spot.self)
-                }
-                SpotLogger.info("FeedViewModel: Parsed \(newSpots.count) new spots for feed")
-                self.spots.append(contentsOf: newSpots)
-                self.lastDocument = snapshot.documents.last
-                self.hasMore = snapshot.documents.count == self.pageSize
             }
         }
     }
@@ -84,7 +148,10 @@ class FeedViewModel: ObservableObject {
         lastDocument = nil
         hasMore = true
         loadInitialSpots()
-        loadMapSpots()
+    }
+    
+    deinit {
+        loadTask?.cancel()
     }
     
     func loadMapSpots() {
@@ -105,27 +172,41 @@ class FeedViewModel: ObservableObject {
 
 struct HomepageView: View {
     @StateObject private var feedVM = FeedViewModel()
-    @State private var selectedTab = "Feed"
+    @State private var selectedTab = "Home"
     @State private var showUploadView = false
-    private let tabs = ["Feed", "Map"]
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Top Navigation with SPOT branding
-                TopNavigationView(showUploadView: $showUploadView)
-                // Tab Navigation
-                TabNavigationView(selectedTab: $selectedTab, tabs: tabs)
-                // Feed Content
-                FeedContentView(
-                    isLoading: $feedVM.isLoading,
-                    spots: feedVM.spots,
-                    mapSpots: feedVM.mapSpots,
-                    selectedTab: selectedTab,
-                    onScrolledToBottom: { feedVM.loadMoreSpots() }
-                )
+                // Show different content based on selected tab
+                if selectedTab == "Profile" {
+                    ProfileView()
+                } else {
+                    // Top Navigation with SPOT branding
+                    TopNavigationView(
+                        title: "SPOT",
+                        rightButton: .plus,
+                        showUploadView: $showUploadView
+                    )
+                    
+                    if selectedTab == "Home" {
+                        // Feed Content
+                        FeedContentView(
+                            isLoading: $feedVM.isLoading,
+                            spots: feedVM.spots,
+                            mapSpots: feedVM.mapSpots,
+                            selectedTab: selectedTab,
+                            onScrolledToBottom: { feedVM.loadMoreSpots() },
+                            onRefresh: { feedVM.refreshFeed() }
+                        )
+                    } else {
+                        // Search View (to be implemented)
+                        Text("Search")
+                    }
+                }
+                
                 // Bottom Navigation
-                BottomNavigationView()
+                BottomNavigationView(selectedTab: $selectedTab)
             }
             .background(Color(hex: "F5F3EF"))
             .navigationDestination(isPresented: $showUploadView) {
@@ -141,38 +222,6 @@ struct HomepageView: View {
     }
 }
 
-// MARK: - Top Navigation Component
-struct TopNavigationView: View {
-    @Binding var showUploadView: Bool
-    
-    var body: some View {
-                VStack(spacing: 16) {
-                    HStack {
-                Text("SPOT")
-                    .font(FontManager.logoTitle())
-                    .foregroundColor(Constants.Colors.primary)
-                        Spacer()
-                        Button(action: {
-                    print("➕ Plus button tapped!")
-                    SpotLogger.info("User tapped + button to start post flow")
-                            showUploadView = true
-                    print("showUploadView set to: \(showUploadView)")
-                        }) {
-                            Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                                .frame(width: 40, height: 40)
-                                .background(Constants.Colors.primary)
-                                .clipShape(Circle())
-                        }
-                    }
-                    .padding(.horizontal, 16)
-        }
-        .padding(.top, 8)
-        .background(Color(hex: "F5F3EF"))
-    }
-}
-                    
 // MARK: - Tab Navigation Component
 struct TabNavigationView: View {
     @Binding var selectedTab: String
@@ -221,6 +270,7 @@ struct FeedContentView: View {
     let mapSpots: [Spot]
     let selectedTab: String
     let onScrolledToBottom: () -> Void
+    let onRefresh: () -> Void
     
     var validSpots: [Spot] {
         spots.filter { spot in
@@ -237,10 +287,14 @@ struct FeedContentView: View {
         Group {
             if selectedTab == "Map" {
                 MapView(spots: mapSpots)
-            } else if isLoading {
+            } else if isLoading && spots.isEmpty {
                 LoadingView()
             } else if !validSpots.isEmpty {
                 ScrollView {
+                    RefreshControl(coordinateSpace: .named("RefreshControl")) {
+                        onRefresh()
+                    }
+                    
                     LazyVStack(spacing: 0) {
                         ForEach(validSpots) { spot in
                             SpotCard(spot: spot)
@@ -261,12 +315,47 @@ struct FeedContentView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .coordinateSpace(name: "RefreshControl")
                 .background(Color(hex: "F5F3EF"))
             } else {
                 EmptyFeedView()
             }
         }
         .background(Color(hex: "F5F3EF"))
+    }
+}
+
+struct RefreshControl: View {
+    let coordinateSpace: CoordinateSpace
+    let onRefresh: () -> Void
+    
+    @State private var isRefreshing = false
+    
+    var body: some View {
+        GeometryReader { geo in
+            if geo.frame(in: coordinateSpace).midY > 50 {
+                Spacer()
+                    .onAppear {
+                        if !isRefreshing {
+                            isRefreshing = true
+                            onRefresh()
+                        }
+                    }
+            } else if geo.frame(in: coordinateSpace).midY < 0 {
+                Spacer()
+                    .onAppear {
+                        isRefreshing = false
+                    }
+            }
+            HStack {
+                Spacer()
+                if isRefreshing {
+                    ProgressView()
+                }
+                Spacer()
+            }
+        }
+        .padding(.top, -50)
     }
 }
 
@@ -324,21 +413,31 @@ struct SpotsListView: View {
                 
 // MARK: - Bottom Navigation Component
 struct BottomNavigationView: View {
+    @Binding var selectedTab: String
+    
     var body: some View {
-                HStack(spacing: 0) {
-            BottomNavItem(icon: "house.fill", title: "Home", isSelected: true)
-            BottomNavItem(icon: "magnifyingglass", title: "Search", isSelected: false)
-            BottomNavItem(icon: "person", title: "Profile", isSelected: false)
-                }
+        HStack(spacing: 0) {
+            Button(action: { selectedTab = "Home" }) {
+                BottomNavItem(icon: "house.fill", title: "Home", isSelected: selectedTab == "Home")
+            }
+            
+            Button(action: { selectedTab = "Search" }) {
+                BottomNavItem(icon: "magnifyingglass", title: "Search", isSelected: selectedTab == "Search")
+            }
+            
+            Button(action: { selectedTab = "Profile" }) {
+                BottomNavItem(icon: "person", title: "Profile", isSelected: selectedTab == "Profile")
+            }
+        }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Constants.Colors.background)
-                .overlay(
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 1),
-                    alignment: .top
-                )
+        .overlay(
+            Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(height: 1),
+            alignment: .top
+        )
     }
 }
 
