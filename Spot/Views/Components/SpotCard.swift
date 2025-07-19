@@ -7,15 +7,15 @@ struct SpotCard: View {
     
     init(spot: Spot) {
         self.spot = spot
-        self._isLiked = State(initialValue: spot.isLiked)
-        self._isSaved = State(initialValue: spot.isSaved)
+        self._isLiked = State(initialValue: spot.isLiked ?? false)
+        self._isSaved = State(initialValue: spot.isSaved ?? false)
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing:12) {
             // User Info Header
             HStack {
-                if let profileImageURL = spot.userProfileImageURL {
+                if let profileImageURL = spot.userProfileImageURL, !profileImageURL.isEmpty {
                     AsyncImage(url: URL(string: profileImageURL)) { image in
                         image
                             .resizable()
@@ -44,7 +44,7 @@ struct SpotCard: View {
                 }
                 
                 // Username
-                Text(spot.username)
+                Text(spot.username ?? "")
                     .font(FontManager.primaryText())
                     .fontWeight(.semibold)
                     .foregroundColor(Constants.Colors.primary)
@@ -52,83 +52,86 @@ struct SpotCard: View {
                 Spacer()
                 
                 // Location
-                if let locationName = spot.locationName {
+                if let locationName = spot.locationName, !locationName.isEmpty {
                     Text(locationName)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
                 }
             }
-            .padding(.horizontal,16)
+            .padding(.horizontal,10)
             // Spot Image
-            AsyncImage(url: URL(string: spot.imageURL)) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 300)
-                    .clipped()
-                    .cornerRadius(12)
-            } placeholder: {
+            ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Constants.Colors.background)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 300)
-                    .overlay(
-                        ProgressView()
-                            .foregroundColor(Constants.Colors.primary)
-                    )
+                GeometryReader { geo in
+                    AsyncImage(url: URL(string: spot.imageURL ?? "")) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geo.size.width, height: 220)
+                            .clipped()
+                            .cornerRadius(12)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Constants.Colors.background)
+                            .frame(width: geo.size.width, height: 220)
+                            .overlay(
+                                ProgressView()
+                                    .foregroundColor(Constants.Colors.primary)
+                            )
+                    }
+                }
+                .frame(height: 220)
             }
-            .padding(.horizontal,16)
+            .frame(height: 220)
+            .padding(.horizontal, 5)
             // Interaction Bar
             HStack {
                 // Like Button
-                Button(action: {
-                    isLiked.toggle()
-                    // TODO: Update like count in Firebase
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .foregroundColor(isLiked ? .red : Constants.Colors.primary)
-                        Text("\(spot.likes)")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                    }
+                Button(action: { isLiked.toggle() }) {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .foregroundColor(isLiked ? .red : .gray)
                 }
-                
                 // Save Button
-                Button(action: {
-                    isSaved.toggle()
-                    // TODO: Update save status in Firebase
-                }) {
+                Button(action: { isSaved.toggle() }) {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                        .foregroundColor(isSaved ? Constants.Colors.primary : Constants.Colors.primary)
+                        .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
                 }
-                
                 Spacer()
-                
                 // Vibe Tag
-                Text(spot.vibeTag)
-                    .font(FontManager.primaryText())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Constants.Colors.accent)
-                    .foregroundColor(Constants.Colors.primary)
-                    .cornerRadius(16)
+                if let vibe = spot.vibeTag, !vibe.isEmpty {
+                    Text(vibe)
+                        .font(FontManager.primaryText())
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 12)
+                        .background(Constants.Colors.accent)
+                        .cornerRadius(12)
+                }
             }
-            .padding(.horizontal,16)
-            // Caption (if exists)
-            if let caption = spot.caption, !caption.isEmpty {
-                Text(caption)
-                    .font(FontManager.primaryText())
-                    .foregroundColor(Constants.Colors.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-            }
+            .padding(.horizontal,10)
+            .padding(.bottom, 8)
         }
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .background(Constants.Colors.background)
+        .padding(.horizontal, 0)
+        .padding(.vertical, 4)
     }
-} 
+}
+
+#Preview {
+    SpotCard(spot: Spot(
+        id: "test123",
+        userId: "user123",
+        username: "TestUser",
+        userProfileImageURL: nil,
+        imageURL: "https://via.placeholder.com/300",
+        caption: "A cool spot!",
+        vibeTag: "Chill Spot",
+        latitude: 37.78,
+        longitude: -122.4,
+        locationName: "Test Location",
+        likes: 5,
+        isLiked: false,
+        isSaved: false,
+    ))
+}

@@ -176,10 +176,9 @@ struct SignupView: View {
                     Spacer()
                 }
 
-                NavigationLink(destination: LoginView(), isActive: $showLogin) {
-                    EmptyView()
+                .navigationDestination(isPresented: $showLogin) {
+                    LoginView()
                 }
-                .hidden()
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -215,12 +214,12 @@ struct SignupView: View {
                                 if let error = error {
                                     errorMessage = "Failed to update profile picture: \(error.localizedDescription)"
                                 } else {
-                                    print("✅ Signed up with profile picture!")
+                            print("✅ Signed up with profile picture!")
                                     // Navigate to home view
                                 }
                             }
                         }
-                    case .failure(let error):
+                        case .failure(let error):
                         DispatchQueue.main.async {
                             isLoading = false
                             errorMessage = "Failed to upload profile picture: \(error.localizedDescription)"

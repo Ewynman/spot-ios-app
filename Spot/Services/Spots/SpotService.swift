@@ -25,7 +25,7 @@ final class SpotService {
             "latitude": latitude,
             "longitude": longitude,
             "vibeTag": vibeTag,
-            "timestamp": FieldValue.serverTimestamp()
+            "createdAt": FieldValue.serverTimestamp()
         ]
 
         Firestore.firestore().collection("spots").addDocument(data: data) { error in
@@ -38,30 +38,32 @@ final class SpotService {
     }
     
     func fetchSpotsForMap(completion: @escaping (Result<[Spot], Error>) -> Void) {
+        SpotLogger.debug("Running fetchSpotsForMap query with order by 'createdAt'")
         Firestore.firestore().collection("spots")
-            .whereField("latitude", isGreaterThan: 0) // Only spots with location data
-            .order(by: "timestamp", descending: true)
+            .order(by: "createdAt", descending: true)
             .getDocuments { snapshot, error in
                 if let error = error {
+                    SpotLogger.error("fetchSpotsForMap error: \(error.localizedDescription)")
                     completion(.failure(error))
                     return
                 }
                 
                 guard let documents = snapshot?.documents else {
+                    SpotLogger.warning("fetchSpotsForMap: No documents returned")
                     completion(.success([]))
                     return
                 }
                 
                 let spots = documents.compactMap { document -> Spot? in
                     let data = document.data()
-                    
+                    SpotLogger.debug("Parsing spot doc id: \(document.documentID)")
                     guard let userId = data["userId"] as? String,
                           let imageURL = data["imageURL"] as? String,
                           let latitude = data["latitude"] as? Double,
                           let longitude = data["longitude"] as? Double else {
+                        SpotLogger.warning("Skipping doc id \(document.documentID) due to missing fields")
                         return nil
                     }
-                    
                     return Spot(
                         id: document.documentID,
                         userId: userId,
@@ -76,10 +78,10 @@ final class SpotService {
                         likes: data["likes"] as? Int ?? 0,
                         isLiked: data["isLiked"] as? Bool ?? false,
                         isSaved: data["isSaved"] as? Bool ?? false,
-                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue()
+                        createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
                     )
                 }
-                
+                SpotLogger.info("fetchSpotsForMap: Parsed \(spots.count) spots")
                 completion(.success(spots))
             }
     }

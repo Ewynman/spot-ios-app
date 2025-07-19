@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAuth
 import CoreLocation
 
 struct PostFlowView: View {
@@ -7,44 +8,66 @@ struct PostFlowView: View {
     @State private var selectedImage: UIImage?
     @State private var selectedLocation: LocationData?
     @State private var selectedVibe: String = ""
+    @State private var isUploading = false
+    @State private var showToast = false
+    @State private var toastMessage = ""
+    @State private var toastIsError = false
+    
+    var onPostSuccess: (() -> Void)? = nil
     
     private let totalSteps = 3
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Progress Indicator
-                ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
-                
-                // Step Content
-                Group {
-                    switch currentStep {
-                    case 1:
-                        PhotoSelectionView(selectedImage: $selectedImage)
-                    case 2:
-                        LocationSelectionView(selectedLocation: $selectedLocation)
-                    case 3:
-                        VibeSelectionView(selectedVibe: $selectedVibe)
-                    default:
-                        EmptyView()
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    // Progress Indicator
+                    ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
+                    
+                    // Step Content
+                    Group {
+                        switch currentStep {
+                        case 1:
+                            PhotoSelectionView(selectedImage: $selectedImage)
+                        case 2:
+                            LocationSelectionView(selectedLocation: $selectedLocation)
+                        case 3:
+                            VibeSelectionView(selectedVibe: $selectedVibe)
+                        default:
+                            EmptyView()
+                        }
                     }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing),
+                        removal: .move(edge: .leading)
+                    ))
+                    
+                    // Navigation Buttons
+                    NavigationButtonsView(
+                        currentStep: $currentStep,
+                        totalSteps: totalSteps,
+                        canProceed: canProceedToNextStep,
+                        onBack: handleBack,
+                        onNext: handleNext,
+                        onFinish: handleFinish
+                    )
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
+                .background(Color(hex: "F5F3EF"))
                 
-                // Navigation Buttons
-                NavigationButtonsView(
-                    currentStep: $currentStep,
-                    totalSteps: totalSteps,
-                    canProceed: canProceedToNextStep,
-                    onBack: handleBack,
-                    onNext: handleNext,
-                    onFinish: handleFinish
-                )
+                // Progress Bar
+                if isUploading {
+                    ProgressBarView()
+                        .transition(.move(edge: .bottom))
+                        .padding(.bottom, 60) // Just above bottom app bar
+                }
+                
+                // Toast
+                if showToast {
+                    ToastView(message: toastMessage, isError: toastIsError)
+                        .padding(.bottom, 100)
+                        .transition(.move(edge: .bottom))
+                }
             }
-            .background(Color(hex: "F5F3EF"))
         }
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -91,13 +114,63 @@ struct PostFlowView: View {
         SpotLogger.info("User completed post flow")
         SpotLogger.debug("Post data - Image: \(selectedImage != nil), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
         
-        // TODO: Upload the post
-        print("Posting with:")
-        print("- Image: \(selectedImage != nil)")
-        print("- Location: \(selectedLocation?.placeName ?? "None")")
-        print("- Vibe: \(selectedVibe)")
+        guard let image = selectedImage,
+              let location = selectedLocation,
+              !selectedVibe.isEmpty,
+              let user = Auth.auth().currentUser,
+              !location.placeName.isEmpty,
+              location.coordinate.latitude != 0,
+              location.coordinate.longitude != 0
+        else {
+            showToastWith(message: "All fields are required to post a spot.", isError: true)
+            return
+        }
         
-        dismiss()
+        isUploading = true
+        let userId = user.uid
+        let username = user.displayName ?? "User"
+        let userProfileImageURL = user.photoURL?.absoluteString
+        
+        SpotUploader.shared.uploadSpot(
+            image: image,
+            vibeTag: selectedVibe,
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude,
+            placeName: location.placeName,
+            userId: userId,
+            username: username,
+            userProfileImageURL: userProfileImageURL
+        ) { result in
+            DispatchQueue.main.async {
+                isUploading = false
+                switch result {
+                case .success:
+                    SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
+                    showToastWith(message: "Spot posted!", isError: false)
+                    SpotLogger.info("Spot posted and vibeStats updated")
+                    onPostSuccess?()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        dismiss()
+                    }
+                case .failure(let error):
+                    showToastWith(message: error.localizedDescription, isError: true)
+                    SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func showToastWith(message: String, isError: Bool) {
+        toastMessage = message
+        toastIsError = isError
+        withAnimation {
+            showToast = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation {
+                showToast = false
+            }
+        }
     }
 }
 
@@ -174,6 +247,49 @@ struct LocationData: Identifiable, Equatable {
     }
 }
 
+// MARK: - Progress Bar View
+struct ProgressBarView: View {
+    @State private var progress: CGFloat = 0.0
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 4)
+                Capsule()
+                    .fill(Constants.Colors.primary)
+                    .frame(width: geo.size.width * progress, height: 4)
+                    .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: progress)
+            }
+            .onAppear {
+                progress = 0.7
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    progress = 1.0
+                }
+            }
+        }
+        .frame(height: 4)
+        .padding(.horizontal, 0)
+    }
+}
+
+// MARK: - Toast View
+struct ToastView: View {
+    let message: String
+    let isError: Bool
+    var body: some View {
+        Text(message)
+            .font(FontManager.primaryText())
+            .foregroundColor(.white)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(isError ? Color.red : Constants.Colors.primary)
+            .cornerRadius(20)
+            .shadow(radius: 4)
+    }
+}
+
 #Preview {
     PostFlowView()
 }
+ 

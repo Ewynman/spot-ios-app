@@ -55,12 +55,6 @@ struct LocationPermissionView: View {
                         .padding(.horizontal, 0)
 
                     Spacer()
-
-                    // Navigation trigger
-                    NavigationLink(destination: NotificationPermissionView(), isActive: $navigateToNotifications) {
-                        EmptyView()
-                    }
-
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
@@ -89,6 +83,9 @@ struct LocationPermissionView: View {
                     Spacer()
                 }
                 .padding(.top)
+            }
+            .navigationDestination(isPresented: $navigateToNotifications) {
+                NotificationPermissionView()
             }
         }
         .navigationBarBackButtonHidden(true)

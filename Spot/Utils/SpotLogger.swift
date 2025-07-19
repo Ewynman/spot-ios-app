@@ -54,6 +54,7 @@ final class SpotLogger {
         let paddedLevel = level.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0)
         let logMessage = "[SpotLogger][\(paddedLevel)] [\(timestamp)] \(fileName):\(line) | \(function) | \(message)"
         print(logMessage)
+        print("") // Add blank line for readability
         // TODO: Add Firebase/remote logging here if needed
     }
 }

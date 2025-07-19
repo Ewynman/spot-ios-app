@@ -58,11 +58,6 @@ struct NotificationPermissionView: View {
 
                     // Action Buttons
                     VStack(spacing: 12) {
-                        // 👇 Invisible NavigationLink triggered by state
-                        NavigationLink(destination: SignupView(), isActive: $navigateToSignup) {
-                            EmptyView()
-                        }
-
                         Button(action: {
                             PermissionManager.shared.requestNotificationPermission { granted in
                                 print("Notifications granted: \(granted)")
@@ -91,6 +86,9 @@ struct NotificationPermissionView: View {
                     Spacer()
                 }
                 .padding(.top)
+            }
+            .navigationDestination(isPresented: $navigateToSignup) {
+                SignupView()
             }
         }
         .navigationBarBackButtonHidden(true)
