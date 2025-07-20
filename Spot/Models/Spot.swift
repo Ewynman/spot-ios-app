@@ -7,6 +7,7 @@
 
 import Foundation
 import FirebaseFirestore
+import FirebaseFirestore
 import CoreLocation
 
 struct Spot: Identifiable, Codable, Equatable {
@@ -25,21 +26,36 @@ struct Spot: Identifiable, Codable, Equatable {
     var isSaved: Bool?
     var createdAt: Date?
     
+    static func fromDocument(_ document: QueryDocumentSnapshot) async throws -> Spot? {
+        do {
+            var spot = try document.data(as: Spot.self)
+            
+            // If we have location data, format it as City, State
+            if let latitude = spot.latitude,
+               let longitude = spot.longitude {
+                let location = CLLocation(latitude: latitude, longitude: longitude)
+                let geocoder = CLGeocoder()
+                
+                do {
+                    let placemarks = try await geocoder.reverseGeocodeLocation(location)
+                    if let placemark = placemarks.first,
+                       let city = placemark.locality,
+                       let state = placemark.administrativeArea {
+                        spot.locationName = "\(city), \(state)"
+                    }
+                } catch {
+                    SpotLogger.error("Geocoding failed for spot: \(error.localizedDescription)")
+                }
+            }
+            
+            return spot
+        } catch {
+            SpotLogger.error("Failed to decode spot: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
     static func == (lhs: Spot, rhs: Spot) -> Bool {
-        // Compare all relevant fields
-        return lhs.id == rhs.id &&
-               lhs.userId == rhs.userId &&
-               lhs.username == rhs.username &&
-               lhs.userProfileImageURL == rhs.userProfileImageURL &&
-               lhs.imageURL == rhs.imageURL &&
-               lhs.caption == rhs.caption &&
-               lhs.vibeTag == rhs.vibeTag &&
-               lhs.latitude == rhs.latitude &&
-               lhs.longitude == rhs.longitude &&
-               lhs.locationName == rhs.locationName &&
-               lhs.likes == rhs.likes &&
-               lhs.isLiked == rhs.isLiked &&
-               lhs.isSaved == rhs.isSaved &&
-               lhs.createdAt == rhs.createdAt
+        lhs.id == rhs.id
     }
 }

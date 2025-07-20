@@ -1,12 +1,167 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import CoreLocation // Added for geocoding
 
 class ProfileViewModel: ObservableObject {
     @Published var user: User?
     @Published var spots: [Spot] = []
     @Published var isLoading = false
     @Published var error: Error?
+    private var loadTask: Task<Void, Never>?
+    
+    deinit {
+        loadTask?.cancel()
+    }
+    
+    func loadUserProfile() {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
+        isLoading = true
+        error = nil
+        
+        loadTask?.cancel()
+        loadTask = Task {
+            do {
+                let docRef = Firestore.firestore().collection("users").document(userId)
+                let snapshot = try await docRef.getDocument()
+                
+                guard let data = snapshot.data() else {
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.error = ProfileError.userNotFound
+                    }
+                    return
+                }
+                
+                let username = data["username"] as? String ?? "User"
+                let profileImageURL = data["profileImageURL"] as? String
+                let vibeStats = data["vibeStats"] as? [String: Int]
+                let createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
+                
+                let user = User(
+                    id: userId,
+                    username: username,
+                    profileImageURL: profileImageURL,
+                    isPrivate: false,
+                    isCurrentUser: true,
+                    vibeStats: vibeStats,
+                    createdAt: createdAt
+                )
+                
+                await MainActor.run {
+                    self.user = user
+                    self.isLoading = false
+                }
+                
+                SpotLogger.info("Loaded profile for user: \(username)")
+                loadUserSpots()
+            } catch {
+                SpotLogger.error("Failed to load user profile: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = error
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    func loadUserSpots() {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
+        loadTask?.cancel()
+        loadTask = Task {
+            do {
+                let query = Firestore.firestore()
+                    .collection("spots")
+                    .whereField("userId", isEqualTo: userId)
+                    .order(by: "createdAt", descending: true)
+                
+                let snapshot = try await query.getDocuments()
+                
+                let spots = try await withThrowingTaskGroup(of: Spot?.self) { group in
+                    for document in snapshot.documents {
+                        group.addTask {
+                            return try await Spot.fromDocument(document)
+                        }
+                    }
+                    
+                    var validSpots: [Spot] = []
+                    for try await spot in group {
+                        if let spot = spot {
+                            validSpots.append(spot)
+                        }
+                    }
+                    return validSpots
+                }
+                
+                await MainActor.run {
+                    self.spots = spots
+                }
+                
+                SpotLogger.info("Loaded \(spots.count) spots for user: \(userId)")
+            } catch {
+                SpotLogger.error("Failed to load user spots: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = error
+                }
+            }
+        }
+    }
+    
+    func togglePrivateProfile() {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
+        Task {
+            do {
+                let userRef = Firestore.firestore().collection("users").document(userId)
+                let currentPrivacy = user?.isPrivate ?? false
+                
+                try await userRef.updateData([
+                    "isPrivate": !currentPrivacy
+                ])
+                
+                await MainActor.run {
+                    // Create a new User instance with updated privacy
+                    if var updatedUser = self.user {
+                        updatedUser.isPrivate = !currentPrivacy
+                        self.user = updatedUser
+                    }
+                }
+                
+                SpotLogger.info("Updated profile privacy: \(!currentPrivacy)")
+            } catch {
+                SpotLogger.error("Failed to toggle profile privacy: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = error
+                }
+            }
+        }
+    }
+    
+    func requestAccess() {
+        guard let targetUserId = user?.id,
+              let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        Task {
+            do {
+                let requestData: [String: Any] = [
+                    "fromUserId": currentUserId,
+                    "toUserId": targetUserId,
+                    "status": "pending",
+                    "createdAt": FieldValue.serverTimestamp()
+                ]
+                
+                try await Firestore.firestore().collection("accessRequests").addDocument(data: requestData)
+                SpotLogger.info("Sent access request to user: \(targetUserId)")
+            } catch {
+                SpotLogger.error("Failed to send access request: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = error
+                }
+            }
+        }
+    }
     
     // MARK: - Preview Data
     static let previewViewModel: ProfileViewModel = {
@@ -103,28 +258,6 @@ class ProfileViewModel: ObservableObject {
         vm.spots = []
         return vm
     }()
-    
-    // MARK: - Methods for Firebase Integration (to be implemented)
-    func loadUserProfile(userId: String? = nil) {
-        // If userId is nil, load current user's profile
-        // Otherwise load the specified user's profile
-        // This will be implemented when we add Firebase
-    }
-    
-    func loadUserSpots(userId: String? = nil) {
-        // Load spots for the current profile
-        // This will be implemented when we add Firebase
-    }
-    
-    func togglePrivateProfile() {
-        // Toggle the profile privacy setting
-        // This will be implemented when we add Firebase
-    }
-    
-    func requestAccess() {
-        // Send access request to private profile
-        // This will be implemented when we add Firebase
-    }
 }
 
 // MARK: - Error Types
@@ -134,6 +267,7 @@ extension ProfileViewModel {
         case spotsFetchFailed
         case unauthorized
         case unknown
+        case missingIndex
         
         var errorDescription: String? {
             switch self {
@@ -145,6 +279,8 @@ extension ProfileViewModel {
                 return "You don't have access to view this profile"
             case .unknown:
                 return "An unknown error occurred"
+            case .missingIndex:
+                return "Database index is being created. Please try again in a few minutes."
             }
         }
     }

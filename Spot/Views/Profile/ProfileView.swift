@@ -6,11 +6,9 @@ struct ProfileView: View {
     @State private var selectedTab = "Spots"
     @State private var showMenu = false
     private let tabs = ["Spots", "Map"]
-    let userId: String? // nil means current user's profile
     
-    init(userId: String? = nil) {
-        self.userId = userId
-        self._viewModel = StateObject(wrappedValue: userId == nil ? ProfileViewModel.previewViewModel : ProfileViewModel())
+    init() {
+        self._viewModel = StateObject(wrappedValue: ProfileViewModel())
     }
     
     var body: some View {
@@ -23,30 +21,28 @@ struct ProfileView: View {
                 
                 Spacer()
                 
-                if userId == nil {
-                    Menu {
-                        Button(action: {
-                            // Navigate to Likes
-                        }) {
-                            Label("Your Likes", systemImage: "heart.fill")
-                        }
-                        
-                        Button(action: {
-                            // Navigate to Bookmarks
-                        }) {
-                            Label("Bookmarks", systemImage: "bookmark.fill")
-                        }
-                        
-                        Button(action: {
-                            // Navigate to Settings
-                        }) {
-                            Label("Settings", systemImage: "gearshape.fill")
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 20))
-                            .foregroundColor(Constants.Colors.primary)
+                Menu {
+                    Button(action: {
+                        // Navigate to Likes
+                    }) {
+                        Label("Your Likes", systemImage: "heart.fill")
                     }
+                    
+                    Button(action: {
+                        // Navigate to Bookmarks
+                    }) {
+                        Label("Bookmarks", systemImage: "bookmark.fill")
+                    }
+                    
+                    Button(action: {
+                        // Navigate to Settings
+                    }) {
+                        Label("Settings", systemImage: "gearshape.fill")
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 20))
+                        .foregroundColor(Constants.Colors.primary)
                 }
             }
             .padding(.horizontal, 16)
@@ -75,43 +71,40 @@ struct ProfileView: View {
                             .foregroundColor(.gray)
                     }
                     
-                    // Username and Spots Count
-                    VStack(spacing: 4) {
-                        Text(user.username)
-                            .font(FontManager.sectionHeader())
-                            .foregroundColor(.black)
-                        
-                        Text("\(viewModel.spots.count) spots shared")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(.gray)
-                    }
+                    // Username
+                    Text(user.username)
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(.black)
+                    
+                    // Spots Count
+                    Text("\(viewModel.spots.count) spots shared")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(.gray)
                 }
                 .padding(.top, 16)
                 
                 // Tab Navigation
-                VStack(spacing: 0) {
-                    HStack(spacing: 32) {
-                        ForEach(tabs, id: \.self) { tab in
-                            VStack(spacing: 4) {
-                                Text(tab)
-                                    .font(FontManager.primaryText())
-                                    .fontWeight(selectedTab == tab ? .semibold : .regular)
-                                    .foregroundColor(selectedTab == tab ? Constants.Colors.primary : .gray)
-                                
-                                Rectangle()
-                                    .fill(selectedTab == tab ? Constants.Colors.primary : Color.clear)
-                                    .frame(height: 2)
-                            }
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedTab = tab
-                                }
+                HStack(spacing: 32) {
+                    ForEach(tabs, id: \.self) { tab in
+                        VStack(spacing: 4) {
+                            Text(tab)
+                                .font(FontManager.primaryText())
+                                .fontWeight(selectedTab == tab ? .semibold : .regular)
+                                .foregroundColor(selectedTab == tab ? Constants.Colors.primary : .gray)
+                            
+                            Rectangle()
+                                .fill(selectedTab == tab ? Constants.Colors.primary : Color.clear)
+                                .frame(height: 2)
+                        }
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedTab = tab
                             }
                         }
-                        Spacer()
                     }
-                    .padding(.horizontal, 16)
+                    Spacer()
                 }
+                .padding(.horizontal, 16)
                 .padding(.top, 24)
                 
                 // Content
@@ -120,19 +113,20 @@ struct ProfileView: View {
                         .padding(.top, 1)
                 } else {
                     ProfileMapView(spots: viewModel.spots)
+                        .edgesIgnoringSafeArea(.horizontal)
                 }
-                
-                Spacer()
             } else if viewModel.isLoading {
-                LoadingView()
-            } else if viewModel.error != nil {
-                ErrorView(error: viewModel.error!)
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+            } else if let error = viewModel.error {
+                Text(error.localizedDescription)
+                    .foregroundColor(.red)
+                    .padding()
             }
         }
         .background(Color(hex: "F5F3EF"))
         .onAppear {
-            viewModel.loadUserProfile(userId: userId)
-            viewModel.loadUserSpots(userId: userId)
+            viewModel.loadUserProfile()
         }
     }
 }
@@ -229,56 +223,156 @@ struct ErrorView: View {
 
 struct SpotsGridView: View {
     let spots: [Spot]
-    let columns = [
-        GridItem(.flexible(), spacing: 1),
-        GridItem(.flexible(), spacing: 1)
-    ]
     
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 1) {
-                ForEach(spots) { spot in
-                    SpotGridItem(spot: spot)
+        GeometryReader { geometry in
+            let sidePadding: CGFloat = 3 // 3px on each side
+            let spacing: CGFloat = 5 // 5px between items
+            let availableWidth = geometry.size.width - (2 * sidePadding) - spacing // Total width minus padding and middle spacing
+            let itemWidth = availableWidth / 2 // Split remaining space into 2 equal columns
+            
+            ScrollView {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: spacing),
+                        GridItem(.flexible(), spacing: spacing)
+                    ],
+                    spacing: spacing
+                ) {
+                    ForEach(spots) { spot in
+                        SpotGridItem(spot: spot, width: itemWidth)
+                    }
                 }
+                .padding(.horizontal, sidePadding)
             }
         }
-        .background(Color(hex: "F5F3EF"))
     }
 }
 
 struct SpotGridItem: View {
     let spot: Spot
+    let width: CGFloat
+    
+    var formattedLocation: String {
+        guard let locationName = spot.locationName else { return "" }
+        let components = locationName.split(separator: ",").map(String.init)
+        if components.count >= 2 {
+            let city = components[0].trimmingCharacters(in: .whitespaces)
+            let state = components[1].trimmingCharacters(in: .whitespaces)
+            return "\(city), \(state)"
+        }
+        return locationName
+    }
+    
+    var imageHeight: CGFloat {
+        // Maintain the same aspect ratio as before (117/175 ≈ 0.67)
+        return width * 0.67
+    }
     
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             // Spot Image
-            AsyncImage(url: URL(string: spot.imageURL ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
+            if let imageURL = spot.imageURL, !imageURL.isEmpty {
+                AsyncImage(url: URL(string: imageURL)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: width, height: imageHeight)
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 12,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 0,
+                                    topTrailingRadius: 12
+                                )
+                            )
+                    case .failure(_):
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: width, height: imageHeight)
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 12,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 0,
+                                    topTrailingRadius: 12
+                                )
+                            )
+                            .overlay(
+                                Image(systemName: "photo")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.gray)
+                            )
+                    case .empty:
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: width, height: imageHeight)
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 12,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 0,
+                                    topTrailingRadius: 12
+                                )
+                            )
+                            .overlay(
+                                ProgressView()
+                            )
+                    @unknown default:
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: width, height: imageHeight)
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 12,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 0,
+                                    topTrailingRadius: 12
+                                )
+                            )
+                    }
+                }
+            } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
+                    .frame(width: width, height: imageHeight)
+                    .clipShape(
+                        .rect(
+                            topLeadingRadius: 12,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 12
+                        )
+                    )
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.system(size: 30))
+                            .foregroundColor(.gray)
+                    )
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .clipShape(
-                RoundedCorner(radius: 12, corners: [.topLeft, .topRight])
-            )
             
             // Location Name
-            Text(spot.locationName ?? "")
-                .font(FontManager.primaryText())
-                .foregroundColor(.white)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Constants.Colors.primary)
-                .clipShape(
-                    RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight])
-                )
+            if !formattedLocation.isEmpty {
+                Text(formattedLocation)
+                    .font(FontManager.primaryText())
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .frame(width: width, height: 15)
+                    .background(
+                        Constants.Colors.primary
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 0,
+                                    bottomLeadingRadius: 12,
+                                    bottomTrailingRadius: 12,
+                                    topTrailingRadius: 0
+                                )
+                            )
+                    )
+            }
         }
-        .padding(4)
     }
 }
 
@@ -297,59 +391,9 @@ struct RoundedCorner: Shape {
     }
 }
 
-struct ProfileMapView: View {
-    let spots: [Spot]
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 25.7617, longitude: -80.1918),
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-    )
-    
-    var body: some View {
-        if #available(iOS 17.0, *) {
-            Map(
-                coordinateRegion: $region,
-                annotationItems: spots.map { SpotAnnotation(spot: $0) }
-            ) { annotation in
-                MapAnnotation(coordinate: annotation.coordinate) {
-                    SpotMapMarker(spot: annotation.spot)
-                }
-            }
-            .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        } else {
-            Map(
-                coordinateRegion: $region,
-                annotationItems: spots.map { SpotAnnotation(spot: $0) }
-            ) { annotation in
-                MapAnnotation(coordinate: annotation.coordinate) {
-                    SpotMapMarker(spot: annotation.spot)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Previews
-//struct ProfileView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        Group {
-//            // Current User Profile
-//            ProfileView()
-//                .previewDisplayName("Current User")
-//            
-//            // Other User Profile (with data)
-//            ProfileView(userId: "other123")
-//                .environmentObject(ProfileViewModel.previewOtherUserViewModel)
-//                .previewDisplayName("Other User")
-//            
-//            // Private Profile
-//            ProfileView(userId: "private123")
-//                .environmentObject(ProfileViewModel.previewPrivateViewModel)
-//                .previewDisplayName("Private Profile")
-//            
-//            // Empty Profile
-//            ProfileView(userId: "empty123")
-//                .environmentObject(ProfileViewModel.previewEmptyViewModel)
-//                .previewDisplayName("Empty Profile")
-//        }
-//    }
-//} 
+struct ProfileView_Previews: PreviewProvider {
+    static var previews: some View {
+        ProfileView()
+    }
+} 

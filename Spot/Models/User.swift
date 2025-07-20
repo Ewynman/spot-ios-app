@@ -3,35 +3,25 @@ import FirebaseFirestore
 
 struct User: Identifiable, Codable {
     @DocumentID var id: String?
-    let username: String
-    let profileImageURL: String?
-    let isPrivate: Bool
-    var isCurrentUser: Bool?
+    var username: String
+    var profileImageURL: String?
+    var isPrivate: Bool
+    var isCurrentUser: Bool
+    var vibeStats: [String: Int]?
+    var createdAt: Date?
     
-    enum CodingKeys: String, CodingKey {
-        case id
-        case username
-        case profileImageURL
-        case isPrivate
-        case isCurrentUser
-    }
-}
-
-// MARK: - Preview Helper
-extension User {
+    // Preview data
     static let previewUser = User(
         id: "preview123",
         username: "Eddie Wynman",
         profileImageURL: nil,
         isPrivate: false,
-        isCurrentUser: true
-    )
-    
-    static let previewOtherUser = User(
-        id: "other123",
-        username: "John Doe",
-        profileImageURL: "https://example.com/profile.jpg",
-        isPrivate: true,
-        isCurrentUser: false
+        isCurrentUser: true,
+        vibeStats: [
+            "Chill Spot": 5,
+            "Hidden Gem": 3,
+            "Photo Op": 2
+        ],
+        createdAt: Date()
     )
 } 

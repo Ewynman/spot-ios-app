@@ -7,69 +7,30 @@ class FeedViewModel: ObservableObject {
     @Published var mapSpots: [Spot] = []
     @Published var isLoading = false
     @Published var hasMore = true
-    private var lastDocument: DocumentSnapshot?
-    private let pageSize = 10
     private var loadTask: Task<Void, Never>?
     
-    // Cache management
-    private var cachedSpots: [Spot] = []
-    private var lastCacheTime: Date?
-    private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
-    
-    private var isCacheValid: Bool {
-        guard let lastTime = lastCacheTime else { return false }
-        return Date().timeIntervalSince(lastTime) < cacheValidityDuration
+    deinit {
+        loadTask?.cancel()
     }
     
     func loadInitialSpots() {
-        // Cancel any existing load task
+        // Cancel any existing task
         loadTask?.cancel()
         
-        // If cache is valid, use it immediately
-        if !cachedSpots.isEmpty && isCacheValid {
-            spots = cachedSpots
-            mapSpots = cachedSpots
-            SpotLogger.info("Using cached spots: \(cachedSpots.count) spots")
-            // Still refresh in background for updates
-            refreshInBackground()
-            return
-        }
-        
-        SpotLogger.debug("FeedViewModel: Running initial feed query")
-        isLoading = true
-        
+        // Start new loading task
         loadTask = Task {
             do {
-                let query = Firestore.firestore().collection("spots")
-                    .order(by: "createdAt", descending: true)
-                    .limit(to: pageSize)
-                
-                let snapshot = try await query.getDocuments()
-                
-                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
-                    do {
-                        return try doc.data(as: Spot.self)
-                    } catch {
-                        SpotLogger.error("Failed to decode spot: \(error.localizedDescription)")
-                        return nil
-                    }
-                }
+                isLoading = true
+                let spots = try await FeedCache.shared.loadInitialSpots()
                 
                 await MainActor.run {
-                    self.spots = newSpots
-                    self.mapSpots = newSpots
-                    self.lastDocument = snapshot.documents.last
-                    self.hasMore = snapshot.documents.count == self.pageSize
+                    self.spots = spots
+                    self.mapSpots = spots
+                    self.hasMore = spots.count == 10 // pageSize
                     self.isLoading = false
-                    
-                    // Update cache
-                    self.cachedSpots = newSpots
-                    self.lastCacheTime = Date()
-                    
-                    SpotLogger.info("Loaded and cached \(newSpots.count) spots")
                 }
             } catch {
-                SpotLogger.error("Failed to load spots: \(error.localizedDescription)")
+                SpotLogger.error("Failed to load initial spots: \(error.localizedDescription)")
                 await MainActor.run {
                     self.isLoading = false
                     self.spots = []
@@ -80,59 +41,23 @@ class FeedViewModel: ObservableObject {
         }
     }
     
-    private func refreshInBackground() {
-        Task {
-            do {
-                let query = Firestore.firestore().collection("spots")
-                    .order(by: "createdAt", descending: true)
-                    .limit(to: pageSize)
-                
-                let snapshot = try await query.getDocuments()
-                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
-                    try? doc.data(as: Spot.self)
-                }
-                
-                // Only update if there are changes
-                if !newSpots.isEmpty && newSpots != spots {
-                    await MainActor.run {
-                        self.spots = newSpots
-                        self.mapSpots = newSpots
-                        self.cachedSpots = newSpots
-                        self.lastCacheTime = Date()
-                        self.lastDocument = snapshot.documents.last
-                        self.hasMore = snapshot.documents.count == self.pageSize
-                        SpotLogger.info("Updated feed with \(newSpots.count) spots")
-                    }
-                }
-            } catch {
-                SpotLogger.error("Background refresh failed: \(error.localizedDescription)")
-            }
-        }
-    }
-    
     func loadMoreSpots() {
-        guard !isLoading, hasMore, let lastDoc = lastDocument else { return }
+        guard !isLoading, hasMore else { return }
         
-        isLoading = true
+        // Cancel any existing task
+        loadTask?.cancel()
+        
+        // Start new loading task
         loadTask = Task {
             do {
-                let query = Firestore.firestore().collection("spots")
-                    .order(by: "createdAt", descending: true)
-                    .start(afterDocument: lastDoc)
-                    .limit(to: pageSize)
-                
-                let snapshot = try await query.getDocuments()
-                let newSpots = snapshot.documents.compactMap { doc -> Spot? in
-                    try? doc.data(as: Spot.self)
-                }
+                isLoading = true
+                let newSpots = try await FeedCache.shared.loadMoreSpots()
                 
                 await MainActor.run {
                     self.spots.append(contentsOf: newSpots)
                     self.mapSpots.append(contentsOf: newSpots)
-                    self.lastDocument = snapshot.documents.last
-                    self.hasMore = snapshot.documents.count == self.pageSize
+                    self.hasMore = newSpots.count == 10 // pageSize
                     self.isLoading = false
-                    SpotLogger.info("Loaded \(newSpots.count) more spots")
                 }
             } catch {
                 SpotLogger.error("Failed to load more spots: \(error.localizedDescription)")
@@ -145,13 +70,28 @@ class FeedViewModel: ObservableObject {
     }
     
     func refreshFeed() {
-        lastDocument = nil
-        hasMore = true
-        loadInitialSpots()
-    }
-    
-    deinit {
+        // Cancel any existing task
         loadTask?.cancel()
+        
+        // Start new refresh task
+        loadTask = Task {
+            do {
+                isLoading = true
+                let spots = try await FeedCache.shared.refreshFeed()
+                
+                await MainActor.run {
+                    self.spots = spots
+                    self.mapSpots = spots
+                    self.hasMore = spots.count == 10 // pageSize
+                    self.isLoading = false
+                }
+            } catch {
+                SpotLogger.error("Failed to refresh feed: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func loadMapSpots() {
@@ -174,13 +114,15 @@ struct HomepageView: View {
     @StateObject private var feedVM = FeedViewModel()
     @State private var selectedTab = "Home"
     @State private var showUploadView = false
+    @State private var feedViewType = "Feed" // "Feed" or "Map"
+    private let feedTabs = ["Feed", "Map"]
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Show different content based on selected tab
                 if selectedTab == "Profile" {
-                    ProfileView()
+                    ProfileView() // nil means current user's profile
                 } else {
                     // Top Navigation with SPOT branding
                     TopNavigationView(
@@ -190,12 +132,38 @@ struct HomepageView: View {
                     )
                     
                     if selectedTab == "Home" {
+                        // Feed/Map Toggle
+                        VStack(spacing: 0) {
+                            HStack(spacing: 32) {
+                                ForEach(feedTabs, id: \.self) { tab in
+                                    VStack(spacing: 4) {
+                                        Text(tab)
+                                            .font(FontManager.primaryText())
+                                            .fontWeight(feedViewType == tab ? .semibold : .regular)
+                                            .foregroundColor(feedViewType == tab ? Constants.Colors.primary : .gray)
+                                        
+                                        Rectangle()
+                                            .fill(feedViewType == tab ? Constants.Colors.primary : Color.clear)
+                                            .frame(height: 2)
+                                    }
+                                    .onTapGesture {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            feedViewType = tab
+                                        }
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.top, 24)
+                        
                         // Feed Content
                         FeedContentView(
                             isLoading: $feedVM.isLoading,
                             spots: feedVM.spots,
                             mapSpots: feedVM.mapSpots,
-                            selectedTab: selectedTab,
+                            selectedTab: feedViewType,
                             onScrolledToBottom: { feedVM.loadMoreSpots() },
                             onRefresh: { feedVM.refreshFeed() }
                         )
@@ -217,7 +185,6 @@ struct HomepageView: View {
         }
         .onAppear {
             feedVM.loadInitialSpots()
-            feedVM.loadMapSpots()
         }
     }
 }
@@ -286,7 +253,8 @@ struct FeedContentView: View {
     var body: some View {
         Group {
             if selectedTab == "Map" {
-                MapView(spots: mapSpots)
+                MapView(spots: validSpots)
+                    .edgesIgnoringSafeArea(.all)
             } else if isLoading && spots.isEmpty {
                 LoadingView()
             } else if !validSpots.isEmpty {
@@ -476,67 +444,6 @@ struct SpotAnnotation: Identifiable {
             latitude: spot.latitude ?? 0.0,
             longitude: spot.longitude ?? 0.0
         )
-    }
-}
-
-struct MapView: View {
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.060), // Default to NYC
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-    )
-    let spots: [Spot]
-    
-    var body: some View {
-        if #available(iOS 17.0, *) {
-            Map(
-                coordinateRegion: $region,
-                annotationItems: spots.map { SpotAnnotation(spot: $0) }
-            ) { annotation in
-                MapAnnotation(coordinate: annotation.coordinate) {
-                    SpotMapMarker(spot: annotation.spot)
-                }
-            }
-            .mapStyle(.standard(pointsOfInterest: .excludingAll))
-            .onAppear {
-                recenterMap()
-            }
-            .onChange(of: spots.count) { _ in
-                recenterMap()
-            }
-        } else {
-            Map(
-                coordinateRegion: $region,
-                annotationItems: spots.map { SpotAnnotation(spot: $0) }
-            ) { annotation in
-                MapAnnotation(coordinate: annotation.coordinate) {
-                    SpotMapMarker(spot: annotation.spot)
-                }
-            }
-            .onAppear {
-                recenterMap()
-            }
-            .onChange(of: spots.count) { _ in
-                recenterMap()
-            }
-        }
-    }
-    
-    private func recenterMap() {
-        guard !spots.isEmpty else { return }
-        if spots.count == 1, let lat = spots.first?.latitude, let lng = spots.first?.longitude {
-            region.center = CLLocationCoordinate2D(latitude: lat, longitude: lng)
-            region.span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-        } else {
-            let lats = spots.compactMap { $0.latitude }
-            let lngs = spots.compactMap { $0.longitude }
-            guard let minLat = lats.min(), let maxLat = lats.max(), let minLng = lngs.min(), let maxLng = lngs.max() else { return }
-            let centerLat = (minLat + maxLat) / 2
-            let centerLng = (minLng + maxLng) / 2
-            let spanLat = max(0.01, (maxLat - minLat) * 1.5)
-            let spanLng = max(0.01, (maxLng - minLng) * 1.5)
-            region.center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng)
-            region.span = MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLng)
-        }
     }
 }
 

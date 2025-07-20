@@ -15,39 +15,49 @@ struct SpotCard: View {
         VStack(alignment: .leading, spacing:12) {
             // User Info Header
             HStack {
-                if let profileImageURL = spot.userProfileImageURL, !profileImageURL.isEmpty {
-                    AsyncImage(url: URL(string: profileImageURL)) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
-                    } placeholder: {
-                        Circle()
-                            .fill(Constants.Colors.background)
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Constants.Colors.primary)
-                            )
-                    }
-                } else {
-                    Circle()
-                        .fill(Constants.Colors.background)
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 16))
+                if let userId = spot.userId {
+                    NavigationLink {
+                        UserProfileView(userId: userId)
+                            .navigationBarBackButtonHidden(true)
+                    } label: {
+                        HStack {
+                            // Profile Image
+                            if let profileImageURL = spot.userProfileImageURL, !profileImageURL.isEmpty {
+                                AsyncImage(url: URL(string: profileImageURL)) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 32, height: 32)
+                                        .clipShape(Circle())
+                                } placeholder: {
+                                    Circle()
+                                        .fill(Constants.Colors.background)
+                                        .frame(width: 32, height: 32)
+                                        .overlay(
+                                            Image(systemName: "person.fill")
+                                                .font(.system(size: 16))
+                                                .foregroundColor(Constants.Colors.primary)
+                                        )
+                                }
+                            } else {
+                                Circle()
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(Constants.Colors.primary)
+                                    )
+                            }
+                            
+                            // Username
+                            Text(spot.username ?? "")
+                                .font(FontManager.primaryText())
+                                .fontWeight(.semibold)
                                 .foregroundColor(Constants.Colors.primary)
-                        )
+                        }
+                    }
                 }
-                
-                // Username
-                Text(spot.username ?? "User")
-                    .font(FontManager.primaryText())
-                    .fontWeight(.semibold)
-                    .foregroundColor(Constants.Colors.primary)
                 
                 Spacer()
                 

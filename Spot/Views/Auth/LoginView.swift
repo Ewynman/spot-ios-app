@@ -12,8 +12,23 @@ struct LoginView: View {
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-
     @State private var isLoggedIn = false
+    
+    private func handleLoginError(_ error: Error) -> String {
+        let errorCode = (error as NSError).code
+        switch errorCode {
+        case 17008: // Invalid email
+            return "Please enter a valid email address"
+        case 17009: // Wrong password
+            return "Incorrect email or password"
+        case 17011: // User not found
+            return "Incorrect email or password"
+        case 17010: // Network error
+            return "Network error. Please check your connection"
+        default:
+            return "Incorrect email or password"
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,6 +44,9 @@ struct LoginView: View {
                     // Fields
                     VStack(spacing: 12) {
                         CustomTextField(placeholder: "Email", text: $email)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.emailAddress)
                         CustomSecureField(placeholder: "Password", text: $password)
                     }
                     .padding(.horizontal, 32)
@@ -36,22 +54,23 @@ struct LoginView: View {
                     // Login Button
                     Button(action: {
                         guard !email.isEmpty, !password.isEmpty else {
-                            errorMessage = "Please fill in all fields."
+                            errorMessage = "Please fill in all fields"
                             return
                         }
 
                         isLoading = true
                         errorMessage = nil
 
-                        AuthService.shared.signIn(email: email, password: password) { result in
+                        AuthService.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password) { result in
                             DispatchQueue.main.async {
                                 isLoading = false
                                 switch result {
                                 case .success:
-                                    print("✅ Logged in")
+                                    SpotLogger.info("User logged in successfully")
                                     isLoggedIn = true
                                 case .failure(let error):
-                                    errorMessage = error.localizedDescription
+                                    errorMessage = handleLoginError(error)
+                                    SpotLogger.error("Login failed: \(error.localizedDescription)")
                                 }
                             }
                         }
@@ -79,7 +98,7 @@ struct LoginView: View {
 
                     // Link to Sign Up
                     HStack(spacing: 4) {
-                        Text("Don’t have an account?")
+                        Text("Don't have an account?")
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
 
