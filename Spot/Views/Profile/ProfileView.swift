@@ -13,7 +13,7 @@ struct ProfileView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Top Navigation
+            // Top Navigation - Always show
             HStack {
                 Text("Spot")
                     .font(FontManager.logoTitle())
@@ -48,6 +48,7 @@ struct ProfileView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             
+            // Profile Content
             if let user = viewModel.user {
                 // Profile Header
                 VStack(spacing: 16) {
@@ -115,18 +116,67 @@ struct ProfileView: View {
                     ProfileMapView(spots: viewModel.spots)
                         .edgesIgnoringSafeArea(.horizontal)
                 }
-            } else if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
-            } else if let error = viewModel.error {
-                Text(error.localizedDescription)
-                    .foregroundColor(.red)
-                    .padding()
+            } else {
+                // Show loading state with proper structure
+                VStack(spacing: 16) {
+                    // Placeholder Profile Image
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .frame(width: 100, height: 100)
+                        .foregroundColor(.gray)
+                    
+                    // Placeholder Username
+                    Text("Loading...")
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(.gray)
+                    
+                    // Placeholder Spots Count
+                    Text("0 spots shared")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(.gray)
+                }
+                .padding(.top, 16)
+                
+                // Tab Navigation
+                HStack(spacing: 32) {
+                    ForEach(tabs, id: \.self) { tab in
+                        VStack(spacing: 4) {
+                            Text(tab)
+                                .font(FontManager.primaryText())
+                                .fontWeight(selectedTab == tab ? .semibold : .regular)
+                                .foregroundColor(selectedTab == tab ? Constants.Colors.primary : .gray)
+                            
+                            Rectangle()
+                                .fill(selectedTab == tab ? Constants.Colors.primary : Color.clear)
+                                .frame(height: 2)
+                        }
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedTab = tab
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+                
+                // Loading Content
+                if selectedTab == "Spots" {
+                    SpotsGridView(spots: [])
+                        .padding(.top, 1)
+                } else {
+                    ProfileMapView(spots: [])
+                        .edgesIgnoringSafeArea(.horizontal)
+                }
             }
         }
         .background(Color(hex: "F5F3EF"))
         .onAppear {
-            viewModel.loadUserProfile()
+            // Load data in background without blocking UI
+            Task {
+                await viewModel.loadUserProfile()
+            }
         }
     }
 }
@@ -223,27 +273,137 @@ struct ErrorView: View {
 
 struct SpotsGridView: View {
     let spots: [Spot]
+    @State private var selectedSpot: Spot?
     
     var body: some View {
         GeometryReader { geometry in
-            let sidePadding: CGFloat = 3 // 3px on each side
-            let spacing: CGFloat = 5 // 5px between items
-            let availableWidth = geometry.size.width - (2 * sidePadding) - spacing // Total width minus padding and middle spacing
-            let itemWidth = availableWidth / 2 // Split remaining space into 2 equal columns
+            let sidePadding: CGFloat = 3
+            let spacing: CGFloat = 5
+            let availableWidth = geometry.size.width - (2 * sidePadding) - spacing
+            let itemWidth = availableWidth / 2
             
             ScrollView {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: spacing),
-                        GridItem(.flexible(), spacing: spacing)
-                    ],
-                    spacing: spacing
-                ) {
-                    ForEach(spots) { spot in
-                        SpotGridItem(spot: spot, width: itemWidth)
+                if let spot = selectedSpot {
+                    // Selected Spot View - Same layout as grid but enlarged
+                    VStack(spacing: 0) {
+                        // Back Button
+                        HStack {
+                            Button(action: { 
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedSpot = nil
+                                }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    Text("Back to all spots")
+                                        .font(FontManager.primaryText())
+                                }
+                                .foregroundColor(Constants.Colors.primary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        
+                        // Spot Image - Full width
+                        if let imageURL = spot.imageURL {
+                            AsyncImage(url: URL(string: imageURL)) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: .infinity, maxHeight: 500) // Slightly larger for detail view
+                            } placeholder: {
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(maxWidth: .infinity, maxHeight: 500)
+                            }
+                        }
+                        
+                        // Location info - Match grid styling
+                        if let locationName = spot.locationName {
+                            HStack {
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundColor(Constants.Colors.primary)
+                                Text(locationName)
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                        }
+                        
+                        // Interaction Bar
+                        HStack {
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    // Toggle like - Add actual functionality
+                                    var updatedSpot = spot
+                                    updatedSpot.isLiked = !(spot.isLiked ?? false)
+                                    selectedSpot = updatedSpot
+                                }) {
+                                    Image(systemName: spot.isLiked ?? false ? "heart.fill" : "heart")
+                                        .foregroundColor(spot.isLiked ?? false ? .red : .gray)
+                                        .font(.system(size: 22))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: {
+                                    // Toggle save - Add actual functionality
+                                    var updatedSpot = spot
+                                    updatedSpot.isSaved = !(spot.isSaved ?? false)
+                                    selectedSpot = updatedSpot
+                                }) {
+                                    Image(systemName: spot.isSaved ?? false ? "bookmark.fill" : "bookmark")
+                                        .foregroundColor(spot.isSaved ?? false ? Constants.Colors.primary : .gray)
+                                        .font(.system(size: 22))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            
+                            Spacer()
+                            
+                            if let vibe = spot.vibeTag {
+                                Text(vibe)
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(Constants.Colors.primary)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 12)
+                                    .background(Constants.Colors.accent)
+                                    .cornerRadius(12)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .scale.combined(with: .opacity)
+                    ))
+                } else {
+                    // Grid View
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: spacing),
+                            GridItem(.flexible(), spacing: spacing)
+                        ],
+                        spacing: spacing
+                    ) {
+                        ForEach(spots) { spot in
+                            SpotGridItem(spot: spot, width: itemWidth)
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        selectedSpot = spot
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal, sidePadding)
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .scale.combined(with: .opacity)
+                    ))
                 }
-                .padding(.horizontal, sidePadding)
             }
         }
     }
@@ -265,8 +425,7 @@ struct SpotGridItem: View {
     }
     
     var imageHeight: CGFloat {
-        // Maintain the same aspect ratio as before (117/175 ≈ 0.67)
-        return width * 0.67
+        return width // Keep square for grid but use fit content mode
     }
     
     var body: some View {
@@ -278,8 +437,9 @@ struct SpotGridItem: View {
                     case .success(let image):
                         image
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .aspectRatio(contentMode: .fit)
                             .frame(width: width, height: imageHeight)
+                            .background(Color.gray.opacity(0.1))
                             .clipShape(
                                 .rect(
                                     topLeadingRadius: 12,

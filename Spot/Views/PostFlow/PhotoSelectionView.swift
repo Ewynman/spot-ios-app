@@ -39,6 +39,7 @@ struct PhotoSelectionView: View {
                     }
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
+                    .buttonStyle(PlainButtonStyle())
                 }
             } else {
                 // Photo Selection Options
@@ -101,6 +102,7 @@ struct PhotoSelectionView: View {
                                 .stroke(Constants.Colors.primary, lineWidth: 1)
                         )
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 32)
             }

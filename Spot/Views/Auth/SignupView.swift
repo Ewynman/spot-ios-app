@@ -252,6 +252,7 @@ struct CustomTextField: View {
                     .stroke(Constants.Colors.primary, lineWidth: 1)
             )
             .font(FontManager.primaryText())
+            .foregroundColor(Constants.Colors.primary)
             .autocapitalization(.none)
             .textInputAutocapitalization(.never)
     }
@@ -271,6 +272,7 @@ struct CustomSecureField: View {
                     .stroke(Constants.Colors.primary, lineWidth: 1)
             )
             .font(FontManager.primaryText())
+            .foregroundColor(Constants.Colors.primary)
     }
 }
 

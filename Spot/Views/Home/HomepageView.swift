@@ -13,14 +13,16 @@ class FeedViewModel: ObservableObject {
         loadTask?.cancel()
     }
     
-    func loadInitialSpots() {
+    func loadInitialSpots() async {
         // Cancel any existing task
         loadTask?.cancel()
         
         // Start new loading task
         loadTask = Task {
             do {
-                isLoading = true
+                await MainActor.run {
+                    isLoading = true
+                }
                 let spots = try await FeedCache.shared.loadInitialSpots()
                 
                 await MainActor.run {
@@ -121,57 +123,65 @@ struct HomepageView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Show different content based on selected tab
-                if selectedTab == "Profile" {
-                    ProfileView() // nil means current user's profile
-                } else {
-                    // Top Navigation with SPOT branding
-                    TopNavigationView(
-                        title: "SPOT",
-                        rightButton: .plus,
-                        showUploadView: $showUploadView
-                    )
-                    
-                    if selectedTab == "Home" {
-                        // Feed/Map Toggle
-                        VStack(spacing: 0) {
-                            HStack(spacing: 32) {
-                                ForEach(feedTabs, id: \.self) { tab in
-                                    VStack(spacing: 4) {
-                                        Text(tab)
-                                            .font(FontManager.primaryText())
-                                            .fontWeight(feedViewType == tab ? .semibold : .regular)
-                                            .foregroundColor(feedViewType == tab ? Constants.Colors.primary : .gray)
-                                        
-                                        Rectangle()
-                                            .fill(feedViewType == tab ? Constants.Colors.primary : Color.clear)
-                                            .frame(height: 2)
-                                    }
-                                    .onTapGesture {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            feedViewType = tab
-                                        }
-                                    }
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                        .padding(.top, 24)
-                        
-                        // Feed Content
-                        FeedContentView(
-                            isLoading: $feedVM.isLoading,
-                            spots: feedVM.spots,
-                            mapSpots: feedVM.mapSpots,
-                            selectedTab: feedViewType,
-                            onScrolledToBottom: { feedVM.loadMoreSpots() },
-                            onRefresh: { feedVM.refreshFeed() }
-                        )
+                Group {
+                    if selectedTab == "Profile" {
+                        ProfileView() // nil means current user's profile
+                            .transition(.opacity)
                     } else {
-                        // Search View (to be implemented)
-                        Text("Search")
+                        VStack(spacing: 0) {
+                            // Top Navigation with SPOT branding
+                            TopNavigationView(
+                                title: "SPOT",
+                                rightButton: .plus,
+                                showUploadView: $showUploadView
+                            )
+                            
+                            if selectedTab == "Home" {
+                                // Feed/Map Toggle
+                                VStack(spacing: 0) {
+                                    HStack(spacing: 32) {
+                                        ForEach(feedTabs, id: \.self) { tab in
+                                            VStack(spacing: 4) {
+                                                Text(tab)
+                                                    .font(FontManager.primaryText())
+                                                    .fontWeight(feedViewType == tab ? .semibold : .regular)
+                                                    .foregroundColor(feedViewType == tab ? Constants.Colors.primary : .gray)
+                                                
+                                                Rectangle()
+                                                    .fill(feedViewType == tab ? Constants.Colors.primary : Color.clear)
+                                                    .frame(height: 2)
+                                            }
+                                            .onTapGesture {
+                                                withAnimation(.easeInOut(duration: 0.2)) {
+                                                    feedViewType = tab
+                                                }
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
+                                .padding(.top, 24)
+                                
+                                // Feed Content
+                                FeedContentView(
+                                    isLoading: $feedVM.isLoading,
+                                    spots: feedVM.spots,
+                                    mapSpots: feedVM.mapSpots,
+                                    selectedTab: feedViewType,
+                                    onScrolledToBottom: { feedVM.loadMoreSpots() },
+                                    onRefresh: { feedVM.refreshFeed() }
+                                )
+                                .transition(.opacity)
+                            } else {
+                                // Search View (to be implemented)
+                                Text("Search")
+                                    .transition(.opacity)
+                            }
+                        }
                     }
                 }
+                .animation(.easeInOut(duration: 0.2), value: selectedTab)
                 
                 // Bottom Navigation
                 BottomNavigationView(selectedTab: $selectedTab)
@@ -184,7 +194,10 @@ struct HomepageView: View {
             }
         }
         .onAppear {
-            feedVM.loadInitialSpots()
+            // Load data in background without blocking UI
+            Task {
+                await feedVM.loadInitialSpots()
+            }
         }
     }
 }
@@ -267,6 +280,7 @@ struct FeedContentView: View {
                         ForEach(validSpots) { spot in
                             SpotCard(spot: spot)
                         }
+
                         if isLoading {
                             ProgressView().padding()
                         } else {
@@ -281,7 +295,6 @@ struct FeedContentView: View {
                             .frame(height: 1)
                         }
                     }
-                    .padding(.vertical, 8)
                 }
                 .coordinateSpace(name: "RefreshControl")
                 .background(Color(hex: "F5F3EF"))
@@ -388,14 +401,17 @@ struct BottomNavigationView: View {
             Button(action: { selectedTab = "Home" }) {
                 BottomNavItem(icon: "house.fill", title: "Home", isSelected: selectedTab == "Home")
             }
+            .buttonStyle(PlainButtonStyle())
             
             Button(action: { selectedTab = "Search" }) {
                 BottomNavItem(icon: "magnifyingglass", title: "Search", isSelected: selectedTab == "Search")
             }
+            .buttonStyle(PlainButtonStyle())
             
             Button(action: { selectedTab = "Profile" }) {
                 BottomNavItem(icon: "person", title: "Profile", isSelected: selectedTab == "Profile")
             }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

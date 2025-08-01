@@ -14,11 +14,13 @@ class ProfileViewModel: ObservableObject {
         loadTask?.cancel()
     }
     
-    func loadUserProfile() {
+    func loadUserProfile() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         
-        isLoading = true
-        error = nil
+        await MainActor.run {
+            isLoading = true
+            error = nil
+        }
         
         loadTask?.cancel()
         loadTask = Task {
@@ -55,7 +57,7 @@ class ProfileViewModel: ObservableObject {
                 }
                 
                 SpotLogger.info("Loaded profile for user: \(username)")
-                loadUserSpots()
+                await loadUserSpots()
             } catch {
                 SpotLogger.error("Failed to load user profile: \(error.localizedDescription)")
                 await MainActor.run {
@@ -66,7 +68,7 @@ class ProfileViewModel: ObservableObject {
         }
     }
     
-    func loadUserSpots() {
+    func loadUserSpots() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         
         loadTask?.cancel()

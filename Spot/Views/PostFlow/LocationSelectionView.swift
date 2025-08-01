@@ -40,6 +40,7 @@ struct LocationSelectionView: View {
                 
                 TextField("Search for a place...", text: $searchText)
                     .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
                     .onChange(of: searchText) { newValue in
                         searchPlaces(query: newValue)
                     }
@@ -394,11 +395,62 @@ struct LocationMapView: View {
     }
     
     private func updateDraggedLocation() {
-        draggedLocation = LocationData(
-            coordinate: region.center,
-            placeName: location.placeName,
-            address: location.address
-        )
+        let newCoordinate = region.center
+        
+        // Reverse geocode the new coordinate to get the actual location name
+        let location = CLLocation(latitude: newCoordinate.latitude, longitude: newCoordinate.longitude)
+        let geocoder = CLGeocoder()
+        
+        geocoder.reverseGeocodeLocation(location) { placemarks, error in
+            DispatchQueue.main.async {
+                if let placemark = placemarks?.first {
+                    // Create a more descriptive place name
+                    var placeName = ""
+                    
+                    if let name = placemark.name {
+                        placeName = name
+                    } else if let thoroughfare = placemark.thoroughfare {
+                        placeName = thoroughfare
+                        if let subThoroughfare = placemark.subThoroughfare {
+                            placeName = "\(subThoroughfare) \(placeName)"
+                        }
+                    } else if let locality = placemark.locality {
+                        placeName = locality
+                        if let administrativeArea = placemark.administrativeArea {
+                            placeName = "\(placeName), \(administrativeArea)"
+                        }
+                    } else if let administrativeArea = placemark.administrativeArea {
+                        placeName = administrativeArea
+                    }
+                    
+                    // Create address string
+                    var addressComponents: [String] = []
+                    if let thoroughfare = placemark.thoroughfare {
+                        addressComponents.append(thoroughfare)
+                    }
+                    if let locality = placemark.locality {
+                        addressComponents.append(locality)
+                    }
+                    if let administrativeArea = placemark.administrativeArea {
+                        addressComponents.append(administrativeArea)
+                    }
+                    let address = addressComponents.joined(separator: ", ")
+                    
+                    self.draggedLocation = LocationData(
+                        coordinate: newCoordinate,
+                        placeName: placeName.isEmpty ? "Selected Location" : placeName,
+                        address: address.isEmpty ? nil : address
+                    )
+                } else {
+                    // Fallback if geocoding fails
+                    self.draggedLocation = LocationData(
+                        coordinate: newCoordinate,
+                        placeName: "Selected Location",
+                        address: nil
+                    )
+                }
+            }
+        }
     }
 }
 
