@@ -86,7 +86,6 @@ final class SpotService {
                         username: data["username"] as? String ?? "Unknown",
                         userProfileImageURL: data["userProfileImageURL"] as? String,
                         imageURL: imageURL,
-                        caption: data["caption"] as? String,
                         vibeTag: data["vibeTag"] as? String ?? "",
                         latitude: latitude,
                         longitude: longitude,

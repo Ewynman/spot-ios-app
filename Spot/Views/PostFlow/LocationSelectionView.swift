@@ -337,6 +337,7 @@ struct LocationMapView: View {
     @State private var region: MKCoordinateRegion
     @State private var draggedLocation: LocationData
     @State private var centerCoordinate: CLLocationCoordinate2D
+    @State private var currentLocationName: String
     
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
@@ -347,6 +348,7 @@ struct LocationMapView: View {
         ))
         self._draggedLocation = State(initialValue: location)
         self._centerCoordinate = State(initialValue: location.coordinate)
+        self._currentLocationName = State(initialValue: location.placeName)
     }
     
     var body: some View {
@@ -359,6 +361,7 @@ struct LocationMapView: View {
                             .frame(width: 40, height: 40)
                     }
                 }
+                .preferredColorScheme(.light) 
                 .onChange(of: region.center.latitude) { _ in
                     updateDraggedLocation()
                 }
@@ -367,6 +370,23 @@ struct LocationMapView: View {
                 }
                 
                 VStack {
+                    // Current Location Display
+                    HStack {
+                        Image(systemName: "mappin.circle.fill")
+                            .foregroundColor(Constants.Colors.primary)
+                        Text(currentLocationName)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(8)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    
                     Spacer()
                     
                     Button("Confirm Location") {
@@ -436,18 +456,24 @@ struct LocationMapView: View {
                     }
                     let address = addressComponents.joined(separator: ", ")
                     
-                    self.draggedLocation = LocationData(
+                    let newLocation = LocationData(
                         coordinate: newCoordinate,
                         placeName: placeName.isEmpty ? "Selected Location" : placeName,
                         address: address.isEmpty ? nil : address
                     )
+                    
+                    self.draggedLocation = newLocation
+                    self.currentLocationName = newLocation.placeName
                 } else {
                     // Fallback if geocoding fails
-                    self.draggedLocation = LocationData(
+                    let newLocation = LocationData(
                         coordinate: newCoordinate,
                         placeName: "Selected Location",
                         address: nil
                     )
+                    
+                    self.draggedLocation = newLocation
+                    self.currentLocationName = "Selected Location"
                 }
             }
         }

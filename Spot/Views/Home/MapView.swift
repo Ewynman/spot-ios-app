@@ -35,7 +35,8 @@ struct MapView: View {
                             }
                     }
                 }
-                .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: false))
+                .preferredColorScheme(.light)
+                .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: false,))
                 .onAppear {
                     locationManager.startUpdatingLocation()
                     updateRegion()
@@ -66,6 +67,7 @@ struct MapView: View {
                             }
                     }
                 }
+                .preferredColorScheme(.light) 
                 .onAppear {
                     locationManager.startUpdatingLocation()
                     updateRegion()
@@ -76,11 +78,6 @@ struct MapView: View {
                 .onChange(of: locationManager.userLocation) { _ in
                     updateRegion()
                 }
-            }
-        }
-        .sheet(isPresented: $showSpotDetail) {
-            if let spot = selectedSpot {
-                SpotDetailModalView(spot: spot)
             }
         }
     }

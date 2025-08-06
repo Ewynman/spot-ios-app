@@ -16,7 +16,6 @@ struct Spot: Identifiable, Codable, Equatable {
     var username: String?
     var userProfileImageURL: String?
     var imageURL: String?
-    var caption: String?
     var vibeTag: String?
     var latitude: Double?
     var longitude: Double?

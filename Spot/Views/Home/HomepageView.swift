@@ -52,7 +52,9 @@ class FeedViewModel: ObservableObject {
         // Start new loading task
         loadTask = Task {
             do {
-                isLoading = true
+                await MainActor.run {
+                    isLoading = true
+                }
                 let newSpots = try await FeedCache.shared.loadMoreSpots()
                 
                 await MainActor.run {
@@ -78,7 +80,9 @@ class FeedViewModel: ObservableObject {
         // Start new refresh task
         loadTask = Task {
             do {
-                isLoading = true
+                await MainActor.run {
+                    isLoading = true
+                }
                 let spots = try await FeedCache.shared.refreshFeed()
                 
                 await MainActor.run {
@@ -480,7 +484,6 @@ struct SpotMapMarker: View {
         username: "TestUser",
         userProfileImageURL: nil,
         imageURL: "https://via.placeholder.com/300",
-        caption: "A cool spot!",
         vibeTag: "Chill Spot",
         latitude: 37.78,
         longitude: -122.4,

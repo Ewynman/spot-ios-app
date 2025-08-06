@@ -172,6 +172,7 @@ struct SpotDetailView: View {
                             .frame(width: 40, height: 40)
                     }
                 }
+                .preferredColorScheme(.light) 
                 .frame(height: 200)
             }
         }
