@@ -11,6 +11,7 @@ import FirebaseAuth
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isLoading: Bool = true
+    @Published var userId: String? = nil
 
     private var handle: AuthStateDidChangeListenerHandle?
 
@@ -28,6 +29,9 @@ class AuthViewModel: ObservableObject {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             if let user = user {
                 SpotLogger.debug("Auth state changed - user signed in: \(user.uid)")
+                DispatchQueue.main.async {
+                    self?.userId = user.uid
+                }
                 // Verify user exists in Firestore
                 AuthService.shared.verifyUserExists { exists in
                     DispatchQueue.main.async {
@@ -41,6 +45,7 @@ class AuthViewModel: ObservableObject {
             } else {
                 DispatchQueue.main.async {
                     SpotLogger.debug("Auth state changed - no user")
+                    self?.userId = nil
                     self?.isAuthenticated = false
                     self?.isLoading = false
                 }

@@ -117,6 +117,7 @@ class FeedViewModel: ObservableObject {
 }
 
 struct HomepageView: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var feedVM = FeedViewModel()
     @State private var selectedTab = "Home"
     @State private var showUploadView = false
@@ -129,7 +130,7 @@ struct HomepageView: View {
                 // Show different content based on selected tab
                 Group {
                     if selectedTab == "Profile" {
-                        ProfileView() // nil means current user's profile
+                        ProfileView(userId: authVM.userId)
                             .transition(.opacity)
                     } else {
                         VStack(spacing: 0) {
@@ -174,7 +175,8 @@ struct HomepageView: View {
                                     mapSpots: feedVM.mapSpots,
                                     selectedTab: feedViewType,
                                     onScrolledToBottom: { feedVM.loadMoreSpots() },
-                                    onRefresh: { feedVM.refreshFeed() }
+                                    onRefresh: { feedVM.refreshFeed() },
+                                    userId: authVM.userId
                                 )
                                 .transition(.opacity)
                             } else {
@@ -255,6 +257,7 @@ struct FeedContentView: View {
     let selectedTab: String
     let onScrolledToBottom: () -> Void
     let onRefresh: () -> Void
+    let userId: String?
     
     var validSpots: [Spot] {
         spots.filter { spot in
@@ -282,9 +285,8 @@ struct FeedContentView: View {
                     
                     LazyVStack(spacing: 0) {
                         ForEach(validSpots) { spot in
-                            SpotCard(spot: spot)
+                            SpotCard(spot: spot, showUserInfo: true, userId: userId)
                         }
-
                         if isLoading {
                             ProgressView().padding()
                         } else {

@@ -9,6 +9,7 @@ import MapKit
 
 struct ProfileView: View {
     var userId: String? = nil
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var username: String? = ""
     @State private var profileImageURL: String?
     @State private var spots: [Spot] = []
@@ -119,43 +120,40 @@ struct ProfileView: View {
 
                     // MARK: — Main Content
                     if selectedTab == "Spots" {
-                        Group {
-                            if let spot = selectedSpot {
-                                // -------------------------
-                                // Show just the tapped SpotCard
-                                // -------------------------
-                                ScrollView {
-                                    HStack {
-                                        Button {
-                                            withAnimation(.easeInOut) {
-                                                selectedSpot = nil
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "chevron.left")
-                                                Text("Back to Spots")
-                                            }
-                                            .font(FontManager.primaryText())
-                                            .foregroundColor(Constants.Colors.primary)
+                        if let spot = selectedSpot {
+                            // -------------------------
+                            // Show just the tapped SpotCard
+                            // -------------------------
+                            ScrollView {
+                                HStack {
+                                    Button {
+                                        withAnimation(.easeInOut) {
+                                            selectedSpot = nil
                                         }
-                                        .buttonStyle(PlainButtonStyle())
-                                        Spacer()
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "chevron.left")
+                                            Text("Back to Spots")
+                                        }
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 8)
-
-                                    SpotCard(spot: spot, showUserInfo: false)
-                                        .padding(.vertical, 12)
+                                    .buttonStyle(PlainButtonStyle())
+                                    Spacer()
                                 }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
 
-                            } else {
-                                // -------------------------
-                                // Show the grid of spots
-                                // -------------------------
-                                SpotsGridView(spots: spots) { tapped in
-                                    withAnimation(.easeInOut) {
-                                        selectedSpot = tapped
-                                    }
+                                SpotCard(spot: spot, showUserInfo: false, userId: authVM.userId)
+                                    .padding(.vertical, 12)
+                            }
+                        } else {
+                            // -------------------------
+                            // Show the grid of spots
+                            // -------------------------
+                            SpotsGridView(spots: spots) { tapped in
+                                withAnimation(.easeInOut) {
+                                    selectedSpot = tapped
                                 }
                             }
                         }
@@ -168,7 +166,7 @@ struct ProfileView: View {
                 }
 
                 // Optional bottom nav if viewing someone else's profile
-                if userId != nil {
+                if userId != authVM.userId {
                     BottomNavigationView(selectedTab: .constant("Home"))
                 }
             }

@@ -9,12 +9,18 @@ import SwiftUI
 struct SpotCard: View {
     let spot: Spot
     let showUserInfo: Bool    // show profile pic + username if true
+    let userId: String?
     @State private var isLiked: Bool
     @State private var isSaved: Bool
+    @State private var isLoadingLike = false
+    @State private var isLoadingSave = false
+    @State private var showError: Bool = false
+    @State private var errorMessage: String = ""
 
-    init(spot: Spot, showUserInfo: Bool = true) {
+    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil) {
         self.spot = spot
         self.showUserInfo = showUserInfo
+        self.userId = userId
         self._isLiked = State(initialValue: spot.isLiked ?? false)
         self._isSaved = State(initialValue: spot.isSaved ?? false)
     }
@@ -111,14 +117,62 @@ struct SpotCard: View {
             // MARK: — Interaction Bar
             HStack {
                 HStack(spacing: 16) {
-                    Button { isLiked.toggle() } label: {
+                    Button {
+                        guard !isLoadingLike, let spotId = spot.id, let userId = userId else { return }
+                        let prev = isLiked
+                        isLiked.toggle()
+                        isLoadingLike = true
+                        if isLiked {
+                            UserSpotService.shared.likeSpot(spotId: spotId) { result in
+                                isLoadingLike = false
+                                if case .failure(_) = result {
+                                    isLiked = prev
+                                    showError = true
+                                    errorMessage = "Failed to like. Please try again."
+                                }
+                            }
+                        } else {
+                            UserSpotService.shared.unlikeSpot(spotId: spotId) { result in
+                                isLoadingLike = false
+                                if case .failure(_) = result {
+                                    isLiked = prev
+                                    showError = true
+                                    errorMessage = "Failed to unlike. Please try again."
+                                }
+                            }
+                        }
+                    } label: {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
                             .font(.system(size: 22))
                             .foregroundColor(isLiked ? .red : .gray)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button { isSaved.toggle() } label: {
+                    Button {
+                        guard !isLoadingSave, let spotId = spot.id, let userId = userId else { return }
+                        let prev = isSaved
+                        isSaved.toggle()
+                        isLoadingSave = true
+                        if isSaved {
+                            UserSpotService.shared.bookmarkSpot(spotId: spotId) { result in
+                                isLoadingSave = false
+                                if case .failure(_) = result {
+                                    isSaved = prev
+                                    showError = true
+                                    errorMessage = "Failed to bookmark. Please try again."
+                                }
+                            }
+                        } else {
+                            UserSpotService.shared.unbookmarkSpot(spotId: spotId) { result in
+                                isLoadingSave = false
+                                if case .failure(_) = result {
+                                    isSaved = prev
+                                    showError = true
+                                    errorMessage = "Failed to unbookmark. Please try again."
+                                }
+                            }
+                        }
+                    } label: {
                         Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                             .font(.system(size: 22))
                             .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
@@ -140,6 +194,13 @@ struct SpotCard: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
+
+            if showError {
+                Text(errorMessage)
+                    .font(FontManager.primaryText())
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 16)
+            }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
