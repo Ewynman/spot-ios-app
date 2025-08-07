@@ -1,34 +1,43 @@
+// SpotCard.swift
+// Spot
+//
+// Created by Edward Wynman on 8/6/25.
+//
+
 import SwiftUI
 
 struct SpotCard: View {
     let spot: Spot
+    let showUserInfo: Bool    // show profile pic + username if true
     @State private var isLiked: Bool
     @State private var isSaved: Bool
 
-    init(spot: Spot) {
+    init(spot: Spot, showUserInfo: Bool = true) {
         self.spot = spot
+        self.showUserInfo = showUserInfo
         self._isLiked = State(initialValue: spot.isLiked ?? false)
         self._isSaved = State(initialValue: spot.isSaved ?? false)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // MARK: - Header: Profile + Location
+            // MARK: — Header: Username (optional) + Location
             HStack {
-                if let userId = spot.userId {
+                if showUserInfo, let userId = spot.userId {
                     NavigationLink {
-                        UserProfileView(userId: userId)
+                        ProfileView(userId: userId)
                             .navigationBarBackButtonHidden(true)
                     } label: {
-                        HStack {
+                        HStack(spacing: 8) {
                             // Profile Image
-                            if let profileImageURL = spot.userProfileImageURL, !profileImageURL.isEmpty {
-                                AsyncImage(url: URL(string: profileImageURL)) { image in
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(Circle())
+                            if let urlString = spot.userProfileImageURL,
+                               let url = URL(string: urlString)
+                            {
+                                AsyncImage(url: url) { img in
+                                    img.resizable()
+                                       .scaledToFill()
+                                       .frame(width: 32, height: 32)
+                                       .clipShape(Circle())
                                 } placeholder: {
                                     Circle()
                                         .fill(Constants.Colors.background)
@@ -49,8 +58,7 @@ struct SpotCard: View {
                                             .foregroundColor(Constants.Colors.primary)
                                     )
                             }
-                            
-                            // Username
+
                             Text(spot.username ?? "")
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
@@ -59,27 +67,27 @@ struct SpotCard: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
-                
+
                 Spacer()
-                
-                // Location
-                if let locationName = spot.locationName, !locationName.isEmpty {
-                    Text(locationName)
+
+                if let location = spot.locationName, !location.isEmpty {
+                    Text(location)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
                 }
             }
             .padding(.horizontal, 12)
 
-            // MARK: - Spot Image
-            if let imageURL = spot.imageURL, !imageURL.isEmpty {
-                AsyncImage(url: URL(string: imageURL)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: 400) // Max height like Instagram
-                        .clipped()
-                        .cornerRadius(12)
+            // MARK: — Spot Image
+            if let urlString = spot.imageURL,
+               let url = URL(string: urlString)
+            {
+                AsyncImage(url: url) { img in
+                    img.resizable()
+                       .aspectRatio(contentMode: .fit)
+                       .frame(maxWidth: .infinity, maxHeight: 400)
+                       .clipped()
+                       .cornerRadius(12)
                 } placeholder: {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
@@ -100,20 +108,20 @@ struct SpotCard: View {
                     )
             }
 
-            // MARK: - Interaction Bar BELOW the image
+            // MARK: — Interaction Bar
             HStack {
                 HStack(spacing: 16) {
-                    Button(action: { isLiked.toggle() }) {
+                    Button { isLiked.toggle() } label: {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .foregroundColor(isLiked ? .red : .gray)
                             .font(.system(size: 22))
+                            .foregroundColor(isLiked ? .red : .gray)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button(action: { isSaved.toggle() }) {
+                    Button { isSaved.toggle() } label: {
                         Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
                             .font(.system(size: 22))
+                            .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -136,5 +144,6 @@ struct SpotCard: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(Constants.Colors.background)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
