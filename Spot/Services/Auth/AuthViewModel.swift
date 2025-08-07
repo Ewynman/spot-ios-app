@@ -12,6 +12,8 @@ class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isLoading: Bool = true
     @Published var userId: String? = nil
+    @Published var likedSpots: [String] = []
+    @Published var bookmarkedSpots: [String] = []
 
     private var handle: AuthStateDidChangeListenerHandle?
 
@@ -37,6 +39,9 @@ class AuthViewModel: ObservableObject {
                     DispatchQueue.main.async {
                         self?.isAuthenticated = exists
                         self?.isLoading = false
+                        if exists {
+                            self?.refreshUserSpotLists()
+                        }
                         if !exists {
                             SpotLogger.warning("User authenticated but no Firestore document exists")
                         }
@@ -48,6 +53,8 @@ class AuthViewModel: ObservableObject {
                     self?.userId = nil
                     self?.isAuthenticated = false
                     self?.isLoading = false
+                    self?.likedSpots = []
+                    self?.bookmarkedSpots = []
                 }
             }
         }
@@ -75,6 +82,57 @@ class AuthViewModel: ObservableObject {
             isAuthenticated = false
         } catch {
             print("❌ Sign out failed: \(error.localizedDescription)")
+        }
+    }
+
+    func refreshUserSpotLists() {
+        guard let userId = userId else { return }
+        UserSpotService.shared.fetchUserSpotLists { [weak self] liked, bookmarked in
+            DispatchQueue.main.async {
+                self?.likedSpots = liked
+                self?.bookmarkedSpots = bookmarked
+            }
+        }
+    }
+
+    func likeSpot(_ spotId: String) {
+        UserSpotService.shared.likeSpot(spotId: spotId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success = result {
+                    if !(self?.likedSpots.contains(spotId) ?? false) {
+                        self?.likedSpots.append(spotId)
+                    }
+                }
+            }
+        }
+    }
+    func unlikeSpot(_ spotId: String) {
+        UserSpotService.shared.unlikeSpot(spotId: spotId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success = result {
+                    self?.likedSpots.removeAll { $0 == spotId }
+                }
+            }
+        }
+    }
+    func bookmarkSpot(_ spotId: String) {
+        UserSpotService.shared.bookmarkSpot(spotId: spotId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success = result {
+                    if !(self?.bookmarkedSpots.contains(spotId) ?? false) {
+                        self?.bookmarkedSpots.append(spotId)
+                    }
+                }
+            }
+        }
+    }
+    func unbookmarkSpot(_ spotId: String) {
+        UserSpotService.shared.unbookmarkSpot(spotId: spotId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success = result {
+                    self?.bookmarkedSpots.removeAll { $0 == spotId }
+                }
+            }
         }
     }
 }

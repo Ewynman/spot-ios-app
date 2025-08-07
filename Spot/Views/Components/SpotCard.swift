@@ -10,8 +10,9 @@ struct SpotCard: View {
     let spot: Spot
     let showUserInfo: Bool    // show profile pic + username if true
     let userId: String?
-    @State private var isLiked: Bool
-    @State private var isSaved: Bool
+    @EnvironmentObject var authVM: AuthViewModel
+    @State private var isLiked: Bool = false
+    @State private var isSaved: Bool = false
     @State private var isLoadingLike = false
     @State private var isLoadingSave = false
     @State private var showError: Bool = false
@@ -21,8 +22,6 @@ struct SpotCard: View {
         self.spot = spot
         self.showUserInfo = showUserInfo
         self.userId = userId
-        self._isLiked = State(initialValue: spot.isLiked ?? false)
-        self._isSaved = State(initialValue: spot.isSaved ?? false)
     }
 
     var body: some View {
@@ -123,23 +122,11 @@ struct SpotCard: View {
                         isLiked.toggle()
                         isLoadingLike = true
                         if isLiked {
-                            UserSpotService.shared.likeSpot(spotId: spotId) { result in
-                                isLoadingLike = false
-                                if case .failure(_) = result {
-                                    isLiked = prev
-                                    showError = true
-                                    errorMessage = "Failed to like. Please try again."
-                                }
-                            }
+                            authVM.likeSpot(spotId)
+                            isLoadingLike = false
                         } else {
-                            UserSpotService.shared.unlikeSpot(spotId: spotId) { result in
-                                isLoadingLike = false
-                                if case .failure(_) = result {
-                                    isLiked = prev
-                                    showError = true
-                                    errorMessage = "Failed to unlike. Please try again."
-                                }
-                            }
+                            authVM.unlikeSpot(spotId)
+                            isLoadingLike = false
                         }
                     } label: {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
@@ -154,23 +141,11 @@ struct SpotCard: View {
                         isSaved.toggle()
                         isLoadingSave = true
                         if isSaved {
-                            UserSpotService.shared.bookmarkSpot(spotId: spotId) { result in
-                                isLoadingSave = false
-                                if case .failure(_) = result {
-                                    isSaved = prev
-                                    showError = true
-                                    errorMessage = "Failed to bookmark. Please try again."
-                                }
-                            }
+                            authVM.bookmarkSpot(spotId)
+                            isLoadingSave = false
                         } else {
-                            UserSpotService.shared.unbookmarkSpot(spotId: spotId) { result in
-                                isLoadingSave = false
-                                if case .failure(_) = result {
-                                    isSaved = prev
-                                    showError = true
-                                    errorMessage = "Failed to unbookmark. Please try again."
-                                }
-                            }
+                            authVM.unbookmarkSpot(spotId)
+                            isLoadingSave = false
                         }
                     } label: {
                         Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -206,5 +181,9 @@ struct SpotCard: View {
         .padding(.horizontal, 12)
         .background(Constants.Colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            isLiked = authVM.likedSpots.contains(spot.id ?? "")
+            isSaved = authVM.bookmarkedSpots.contains(spot.id ?? "")
+        }
     }
 }
