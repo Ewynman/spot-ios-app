@@ -141,6 +141,7 @@ struct LocationSelectionView: View {
                         Button("Change") {
                             selectedLocation = nil
                         }
+                        .buttonStyle(PlainButtonStyle())
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
                     }
@@ -246,10 +247,14 @@ struct LocationResultRow: View {
     
     var body: some View {
         Button(action: {
+            let city = item.placemark.locality
+            let state = item.placemark.administrativeArea
+            let country = item.placemark.country
+            let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
             let locationData = LocationData(
                 coordinate: item.placemark.coordinate,
-                placeName: item.name ?? "Unknown Location",
-                address: item.placemark.thoroughfare
+                placeName: item.name ?? (city ?? state ?? country ?? "Unknown Location"),
+                address: parts.isEmpty ? nil : parts
             )
             SpotLogger.info("User selected location: \(locationData.placeName)")
             onSelect(locationData)
@@ -263,9 +268,12 @@ struct LocationResultRow: View {
                     Text(item.name ?? "Unknown Location")
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
-                    
-                    if let address = item.placemark.thoroughfare {
-                        Text(address)
+                    let city = item.placemark.locality
+                    let state = item.placemark.administrativeArea
+                    let country = item.placemark.country
+                    let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
+                    if !parts.isEmpty {
+                        Text(parts)
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
@@ -291,10 +299,14 @@ struct NearbyPlaceRow: View {
     
     var body: some View {
         Button(action: {
+            let city = item.placemark.locality
+            let state = item.placemark.administrativeArea
+            let country = item.placemark.country
+            let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
             let locationData = LocationData(
                 coordinate: item.placemark.coordinate,
-                placeName: item.name ?? "Unknown Location",
-                address: item.placemark.thoroughfare
+                placeName: item.name ?? (city ?? state ?? country ?? "Unknown Location"),
+                address: parts.isEmpty ? nil : parts
             )
             SpotLogger.info("User selected location: \(locationData.placeName)")
             onSelect(locationData)
@@ -308,9 +320,12 @@ struct NearbyPlaceRow: View {
                     Text(item.name ?? "Unknown Location")
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
-                    
-                    if let address = item.placemark.thoroughfare {
-                        Text(address)
+                    let city = item.placemark.locality
+                    let state = item.placemark.administrativeArea
+                    let country = item.placemark.country
+                    let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
+                    if !parts.isEmpty {
+                        Text(parts)
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
@@ -338,6 +353,10 @@ struct LocationMapView: View {
     @State private var draggedLocation: LocationData
     @State private var centerCoordinate: CLLocationCoordinate2D
     @State private var currentLocationName: String
+    @State private var geocodeWorkItem: DispatchWorkItem?
+    private let geocoder = CLGeocoder()
+    @State private var isGeocoding: Bool = false
+    @State private var allowConfirmDespiteGeocoding: Bool = false
     
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
@@ -392,6 +411,8 @@ struct LocationMapView: View {
                     Button("Confirm Location") {
                         onConfirm(draggedLocation)
                     }
+                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(PlainButtonStyle())
                     .font(FontManager.buttonText())
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -400,6 +421,17 @@ struct LocationMapView: View {
                     .cornerRadius(20)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 32)
+                    .disabled(isGeocoding && !allowConfirmDespiteGeocoding)
+                    .overlay(
+                        Group {
+                            if isGeocoding && !allowConfirmDespiteGeocoding {
+                                Text("Resolving location…")
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(.white)
+                                    .padding(.top, 8)
+                            }
+                        }, alignment: .top
+                    )
                 }
             }
             .navigationTitle("Confirm Location")
@@ -409,6 +441,7 @@ struct LocationMapView: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -416,67 +449,59 @@ struct LocationMapView: View {
     
     private func updateDraggedLocation() {
         let newCoordinate = region.center
-        
-        // Reverse geocode the new coordinate to get the actual location name
-        let location = CLLocation(latitude: newCoordinate.latitude, longitude: newCoordinate.longitude)
-        let geocoder = CLGeocoder()
-        
-        geocoder.reverseGeocodeLocation(location) { placemarks, error in
-            DispatchQueue.main.async {
-                if let placemark = placemarks?.first {
-                    // Create a more descriptive place name
-                    var placeName = ""
-                    
-                    if let name = placemark.name {
-                        placeName = name
-                    } else if let thoroughfare = placemark.thoroughfare {
-                        placeName = thoroughfare
-                        if let subThoroughfare = placemark.subThoroughfare {
-                            placeName = "\(subThoroughfare) \(placeName)"
-                        }
-                    } else if let locality = placemark.locality {
-                        placeName = locality
-                        if let administrativeArea = placemark.administrativeArea {
-                            placeName = "\(placeName), \(administrativeArea)"
-                        }
-                    } else if let administrativeArea = placemark.administrativeArea {
-                        placeName = administrativeArea
+        // Always update coordinate immediately so we save moved coords
+        self.draggedLocation = LocationData(
+            coordinate: newCoordinate,
+            placeName: self.draggedLocation.placeName,
+            address: self.draggedLocation.address
+        )
+
+        // Debounce reverse geocoding to avoid rate limits and cancellations
+        geocodeWorkItem?.cancel()
+        isGeocoding = true
+        allowConfirmDespiteGeocoding = false
+        // Allow confirm after 5 seconds if still geocoding
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            if self.isGeocoding {
+                self.allowConfirmDespiteGeocoding = true
+                SpotLogger.warning("Reverse geocode timeout reached; allowing confirm.")
+            }
+        }
+        let work = DispatchWorkItem { [newCoordinate] in
+            let loc = CLLocation(latitude: newCoordinate.latitude, longitude: newCoordinate.longitude)
+            self.geocoder.cancelGeocode()
+            self.geocoder.reverseGeocodeLocation(loc) { placemarks, error in
+                DispatchQueue.main.async {
+                    if let error = error as NSError? {
+                        // MKErrorDomain Code=4 is often Cancellation; don't downgrade UI on errors
+                        SpotLogger.warning("Reverse geocode failed: \(error.localizedDescription)")
+                        self.isGeocoding = false
+                        return
                     }
-                    
-                    // Create address string
-                    var addressComponents: [String] = []
-                    if let thoroughfare = placemark.thoroughfare {
-                        addressComponents.append(thoroughfare)
+                    guard let placemark = placemarks?.first else {
+                        self.isGeocoding = false
+                        return
                     }
-                    if let locality = placemark.locality {
-                        addressComponents.append(locality)
-                    }
-                    if let administrativeArea = placemark.administrativeArea {
-                        addressComponents.append(administrativeArea)
-                    }
-                    let address = addressComponents.joined(separator: ", ")
-                    
-                    let newLocation = LocationData(
+                    let city = placemark.locality
+                    let state = placemark.administrativeArea
+                    let country = placemark.country
+                    let display = [city, state].compactMap { $0 }.joined(separator: ", ")
+                    let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
+
+                    let prettyName = display.isEmpty ? (placemark.name ?? self.draggedLocation.placeName) : display
+                    self.draggedLocation = LocationData(
                         coordinate: newCoordinate,
-                        placeName: placeName.isEmpty ? "Selected Location" : placeName,
+                        placeName: prettyName,
                         address: address.isEmpty ? nil : address
                     )
-                    
-                    self.draggedLocation = newLocation
-                    self.currentLocationName = newLocation.placeName
-                } else {
-                    // Fallback if geocoding fails
-                    let newLocation = LocationData(
-                        coordinate: newCoordinate,
-                        placeName: "Selected Location",
-                        address: nil
-                    )
-                    
-                    self.draggedLocation = newLocation
-                    self.currentLocationName = "Selected Location"
+                    self.currentLocationName = prettyName
+                    self.isGeocoding = false
+                    self.allowConfirmDespiteGeocoding = false
                 }
             }
         }
+        geocodeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 }
 

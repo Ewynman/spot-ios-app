@@ -7,6 +7,7 @@
 
 import Foundation
 import FirebaseAuth
+import FirebaseFirestore
 
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
@@ -60,8 +61,8 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func signUp(email: String, password: String, username: String, profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: profileImageURL) { result in
+    func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: profileImageURL, isPrivate: isPrivate) { result in
             DispatchQueue.main.async {
                 completion(result)
             }
@@ -134,5 +135,91 @@ class AuthViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Settings Updates
+    func updateUsername(_ username: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
+        // Check uniqueness before updating
+        Task {
+            do {
+                let snapshot = try await Firestore.firestore()
+                    .collection("users")
+                    .whereField("username", isEqualTo: username)
+                    .limit(to: 1)
+                    .getDocuments()
+                if let doc = snapshot.documents.first, doc.documentID != userId {
+                    completion(.failure(NSError(domain: "AuthVM", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username is already taken"])) )
+                    return
+                }
+                Firestore.firestore().collection("users").document(userId).updateData(["username": username]) { error in
+                    if let error = error { completion(.failure(error)) } else {
+                        // Also update FirebaseAuth display name for consistency
+                        if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
+                            changeReq.displayName = username
+                            changeReq.commitChanges(completion: nil)
+                        }
+                        completion(.success(()))
+                    }
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func updateName(_ name: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
+        let data = ["name": name]
+        Firestore.firestore().collection("users").document(userId).updateData(data) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
+
+    func updateEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.updateEmail(email, completion: completion)
+        // Also persist a copy in Firestore for convenience
+        if let userId = userId {
+            Firestore.firestore().collection("users").document(userId).updateData(["email": email])
+        }
+    }
+
+    func updatePassword(_ password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.updatePassword(password, completion: completion)
+    }
+
+    func setPrivateAccount(_ isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
+        Firestore.firestore().collection("users").document(userId).updateData(["isPrivate": isPrivate]) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
+
+    // MARK: - Reauthentication
+    func reauthenticate(currentPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.reauthenticate(withPassword: currentPassword, completion: completion)
+    }
+
+    // MARK: - Username Availability
+    func isUsernameAvailable(_ username: String) async -> Bool {
+        do {
+            let snapshot = try await Firestore.firestore()
+                .collection("users")
+                .whereField("username", isEqualTo: username)
+                .limit(to: 1)
+                .getDocuments()
+            // If a doc exists and it's not the current user, not available
+            if let doc = snapshot.documents.first, doc.documentID != self.userId {
+                return false
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Account Deletion
+    func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        AuthService.shared.deleteAccount(password: password, completion: completion)
     }
 }

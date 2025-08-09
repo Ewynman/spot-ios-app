@@ -69,6 +69,7 @@ struct LocationPermissionView: View {
                                 .background(Constants.Colors.primary)
                                 .cornerRadius(20)
                         }
+                        .buttonStyle(PlainButtonStyle())
 
                         Button(action: {
                             navigateToNotifications = true
@@ -77,6 +78,7 @@ struct LocationPermissionView: View {
                                 .font(FontManager.buttonText())
                                 .foregroundColor(Constants.Colors.primary)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.horizontal, 32)
 

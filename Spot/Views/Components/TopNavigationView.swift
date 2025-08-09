@@ -65,6 +65,7 @@ struct TopNavigationView: View {
                             .background(Constants.Colors.primary)
                             .clipShape(Circle())
                     }
+                    .buttonStyle(PlainButtonStyle())
                 case .none:
                     EmptyView()
                 }

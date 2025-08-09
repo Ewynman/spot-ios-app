@@ -12,6 +12,10 @@ import FirebaseAuth
 struct ProfileData {
     let username: String
     let profileImageURL: String?
+    let isPrivate: Bool
+    let isFollowing: Bool
+    let hasRequested: Bool
+    let canView: Bool
     let spots: [Spot]
 }
 
@@ -41,29 +45,59 @@ enum ProfileService {
 
         let username = data["username"] as? String ?? "User"
         let profileImageURL = data["profileImageURL"] as? String
+        let targetIsPrivate = data["isPrivate"] as? Bool ?? false
 
-        let spotsSnapshot = try await Firestore.firestore()
-            .collection("spots")
-            .whereField("userId", isEqualTo: id)
-            .order(by: "createdAt", descending: true)
-            .getDocuments()
-
-        let spots = try await withThrowingTaskGroup(of: Spot?.self) { group in
-            for document in spotsSnapshot.documents {
-                group.addTask {
-                    return try await Spot.fromDocument(document)
-                }
-            }
-
-            var validSpots: [Spot] = []
-            for try await spot in group {
-                if let spot = spot {
-                    validSpots.append(spot)
-                }
-            }
-            return validSpots
+        let currentUserId = Auth.auth().currentUser?.uid
+        var isFollowing = false
+        var hasRequested = false
+        var canView = true
+        if let currentUserId, currentUserId != id {
+            let viewerDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
+            let following = viewerDoc.data()? ["following"] as? [String] ?? []
+            let requested = viewerDoc.data()? ["requestedFollows"] as? [String] ?? []
+            isFollowing = following.contains(id)
+            hasRequested = requested.contains(id)
+            canView = !targetIsPrivate || isFollowing
         }
 
-        return ProfileData(username: username, profileImageURL: profileImageURL, spots: spots)
+        let spotsSnapshot: QuerySnapshot?
+        if canView {
+            spotsSnapshot = try await Firestore.firestore()
+                .collection("spots")
+                .whereField("userId", isEqualTo: id)
+                .order(by: "createdAt", descending: true)
+                .getDocuments()
+        } else {
+            spotsSnapshot = nil
+        }
+
+        let spots: [Spot] = try await {
+            guard let spotsSnapshot else { return [] }
+            return try await withThrowingTaskGroup(of: Spot?.self) { group in
+                for document in spotsSnapshot.documents {
+                    group.addTask {
+                        return try await Spot.fromDocument(document)
+                    }
+                }
+
+                var validSpots: [Spot] = []
+                for try await spot in group {
+                    if let spot = spot {
+                        validSpots.append(spot)
+                    }
+                }
+                return validSpots
+            }
+        }()
+
+        return ProfileData(
+            username: username,
+            profileImageURL: profileImageURL,
+            isPrivate: targetIsPrivate,
+            isFollowing: isFollowing,
+            hasRequested: hasRequested,
+            canView: currentUserId == id ? true : canView,
+            spots: spots
+        )
     }
 }

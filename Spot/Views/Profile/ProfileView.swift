@@ -16,16 +16,23 @@ struct ProfileView: View {
     @State private var selectedTab = "Spots"
     @State private var isLoading = true
     @State private var selectedSpot: Spot?
+    @State private var isPrivateProfile: Bool = false
+    @State private var isFollowingUser: Bool = false
+    @State private var hasRequestedFollow: Bool = false
+    @State private var canViewContent: Bool = true
+    @State private var showMenu: Bool = false
+    @State private var showSettingsNav: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     private let tabs = ["Spots", "Map"]
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                VStack(spacing: 0) {
                 // MARK: — Top Bar
                 HStack {
-                    if userId != nil {
+                    if let viewedUserId = userId, viewedUserId != authVM.userId {
                         Button {
                             dismiss()
                         } label: {
@@ -41,15 +48,26 @@ struct ProfileView: View {
                         .foregroundColor(Constants.Colors.primary)
                         .frame(maxWidth: .infinity)
 
-                    if userId == nil {
-                        Menu {
-                            Button { } label: { Label("Your Likes", systemImage: "heart.fill") }
-                            Button { } label: { Label("Bookmarks", systemImage: "bookmark.fill") }
-                            Button { } label: { Label("Settings", systemImage: "gearshape.fill") }
+                    if userId == nil || userId == authVM.userId {
+                        Button {
+                            withAnimation { showMenu.toggle() }
                         } label: {
-                            Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 20))
-                                .foregroundColor(Constants.Colors.primary)
+                            HStack(spacing: 8) {
+                                Text("Menu")
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(Constants.Colors.primary)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -94,6 +112,95 @@ struct ProfileView: View {
                         }
                         .padding(.top, 12)
 
+                        // Follow / Request actions centered under header when viewing someone else
+                        if let viewedUserId = userId, viewedUserId != authVM.userId {
+                            VStack {
+                                if isFollowingUser {
+                                    Button {
+                                        UserSpotService.shared.unfollow(userId: viewedUserId) { result in
+                                            DispatchQueue.main.async {
+                                                if case .success = result {
+                                                    self.isFollowingUser = false
+                                                    self.loadUser()
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Text("Unfollow")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.buttonText)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Constants.Colors.primary)
+                                            .cornerRadius(20)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                } else if isPrivateProfile {
+                                    VStack(spacing: 8) {
+                                        Button {
+                                            if hasRequestedFollow { return }
+                                            UserSpotService.shared.requestFollow(userId: viewedUserId) { result in
+                                                DispatchQueue.main.async {
+                                                    if case .success = result {
+                                                        self.hasRequestedFollow = true
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            Text(hasRequestedFollow ? "Requested" : "Request to Follow")
+                                                .font(FontManager.primaryText())
+                                                .foregroundColor(Constants.Colors.buttonText)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 8)
+                                                .background(Constants.Colors.primary)
+                                                .cornerRadius(20)
+                                        }
+                                        .disabled(hasRequestedFollow)
+                                        .buttonStyle(PlainButtonStyle())
+
+                                        if hasRequestedFollow {
+                                            Button {
+                                                UserSpotService.shared.cancelFollowRequest(userId: viewedUserId) { result in
+                                                    DispatchQueue.main.async {
+                                                        if case .success = result {
+                                                            self.hasRequestedFollow = false
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                Text("Cancel Request")
+                                                    .font(FontManager.primaryText())
+                                                    .foregroundColor(Constants.Colors.primary)
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+                                } else {
+                                    Button {
+                                        UserSpotService.shared.follow(userId: viewedUserId) { result in
+                                            DispatchQueue.main.async {
+                                                if case .success = result {
+                                                    self.isFollowingUser = true
+                                                    self.canViewContent = true
+                                                    self.loadUser()
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Text("Follow")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.buttonText)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Constants.Colors.primary)
+                                            .cornerRadius(20)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+
                         HStack(spacing: 32) {
                             ForEach(tabs, id: \.self) { tab in
                                 VStack(spacing: 4) {
@@ -119,7 +226,17 @@ struct ProfileView: View {
                     .padding(.bottom, 8)
 
                     // MARK: — Main Content
-                    if selectedTab == "Spots" {
+                    if !canViewContent {
+                        VStack(spacing: 12) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.gray)
+                            Text("This user is private")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if selectedTab == "Spots" {
                         if let spot = selectedSpot {
                             // -------------------------
                             // Show just the tapped SpotCard
@@ -169,9 +286,73 @@ struct ProfileView: View {
                 if userId != authVM.userId {
                     BottomNavigationView(selectedTab: .constant("Home"))
                 }
+                }
+
+                // Custom dropdown overlay
+                if showMenu {
+                    // Tappable background to dismiss
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .onTapGesture { withAnimation { showMenu = false } }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button { /* Likes */ withAnimation { showMenu = false } } label: {
+                            HStack {
+                                Image(systemName: "heart.fill")
+                                Text("Your Likes")
+                                    .font(FontManager.primaryText())
+                            }
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+
+                        Button { /* Bookmarks */ withAnimation { showMenu = false } } label: {
+                            HStack {
+                                Image(systemName: "bookmark.fill")
+                                Text("Bookmarks")
+                                    .font(FontManager.primaryText())
+                            }
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+
+                        Button {
+                            withAnimation { showMenu = false }
+                            showSettingsNav = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "gearshape.fill")
+                                Text("Settings")
+                                    .font(FontManager.primaryText())
+                            }
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .background(Color.white)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Constants.Colors.primary, lineWidth: 1)
+                    )
+                    .frame(width: UIScreen.main.bounds.width * 0.5)
+                    .padding(.trailing, 16)
+                    .padding(.top, 44)
+                }
             }
             .background(Color(hex: "F5F3EF"))
+            .navigationBarBackButtonHidden(true)
             .onAppear { loadUser() }
+            .navigationDestination(isPresented: $showSettingsNav) {
+                SettingsView()
+            }
         }
     }
 
@@ -184,6 +365,10 @@ struct ProfileView: View {
                     username = data.username
                     profileImageURL = data.profileImageURL
                     spots = data.spots
+                    isPrivateProfile = data.isPrivate
+                    isFollowingUser = data.isFollowing
+                    hasRequestedFollow = data.hasRequested
+                    canViewContent = data.canView
                     isLoading = false
                 }
             } catch {

@@ -8,6 +8,7 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseStorage
 
 final class AuthService {
     static let shared = AuthService()
@@ -37,7 +38,7 @@ final class AuthService {
         }
     }
 
-    func signUp(email: String, password: String, username: String, profileImageURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
         Auth.auth().createUser(withEmail: email, password: password) { result, error in
             if let error = error {
                 print("🔥 Firebase signup error: \(error.localizedDescription)")
@@ -55,7 +56,14 @@ final class AuthService {
                 "email": email,
                 "username": username,
                 "profileImageURL": profileImageURL,
-                "createdAt": FieldValue.serverTimestamp()
+                "createdAt": FieldValue.serverTimestamp(),
+                "isPrivate": isPrivate,
+                // Initialize social arrays
+                "following": [],
+                "requestedFollows": [],
+                // Initialize interaction arrays to avoid nil checks elsewhere
+                "likedSpots": [],
+                "bookmarkedSpots": []
             ]
 
             Firestore.firestore().collection("users").document(uid).setData(userData) { error in
@@ -80,5 +88,120 @@ final class AuthService {
 
     func signOut() throws {
         try Auth.auth().signOut()
+    }
+
+    // MARK: - Updates
+    func updateEmail(_ newEmail: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let user = Auth.auth().currentUser else {
+            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])));
+            return
+        }
+        user.sendEmailVerification() // optional: ensure user has verification capability
+        user.updateEmail(to: newEmail) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+
+    func updatePassword(_ newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let user = Auth.auth().currentUser else {
+            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])));
+            return
+        }
+        user.updatePassword(to: newPassword) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+
+    // Re-authenticate using current user's email and provided password
+    func reauthenticate(withPassword password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let user = Auth.auth().currentUser, let email = user.email else {
+            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])));
+            return
+        }
+        let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+        user.reauthenticate(with: credential) { _, error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+
+    // Delete account: reauth with password, delete Firestore user doc, then delete auth user
+    func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let user = Auth.auth().currentUser else {
+            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])));
+            return
+        }
+        let uid = user.uid
+        reauthenticate(withPassword: password) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success:
+                let db = Firestore.firestore()
+                let storage = Storage.storage()
+
+                // Fetch user doc for potential profile image URL
+                db.collection("users").document(uid).getDocument { userSnap, _ in
+                    let profileURL = userSnap?.data()? ["profileImageURL"] as? String
+
+                    // Fetch and delete all spots for this user (docs + images)
+                    db.collection("spots").whereField("userId", isEqualTo: uid).getDocuments { snapshot, _ in
+                        let group = DispatchGroup()
+
+                        if let docs = snapshot?.documents {
+                            for doc in docs {
+                                let data = doc.data()
+                                if let imageURL = data["imageURL"] as? String, !imageURL.isEmpty {
+                                    group.enter()
+                                    let ref = storage.reference(forURL: imageURL)
+                                    ref.delete { _ in
+                                        group.leave()
+                                    }
+                                }
+
+                                group.enter()
+                                doc.reference.delete { _ in
+                                    group.leave()
+                                }
+                            }
+                        }
+
+                        // Also delete profile image if present
+                        if let profileURL, !profileURL.isEmpty {
+                            group.enter()
+                            let ref = storage.reference(forURL: profileURL)
+                            ref.delete { _ in
+                                group.leave()
+                            }
+                        }
+
+                        group.notify(queue: .main) {
+                            // Delete user document last
+                            db.collection("users").document(uid).delete { _ in
+                                // Finally, delete auth user
+                                user.delete { error in
+                                    if let error = error {
+                                        completion(.failure(error))
+                                    } else {
+                                        completion(.success(()))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

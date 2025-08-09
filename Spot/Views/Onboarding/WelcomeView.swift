@@ -38,13 +38,14 @@ struct WelcomeView: View {
                     }) {
                         Text("Get Started")
                             .font(FontManager.buttonText())
-                            .frame(maxWidth: .infinity)
+                            .frame(width: UIScreen.main.bounds.width * 0.65)
                             .padding()
                             .background(Constants.Colors.primary)
                             .foregroundColor(Constants.Colors.buttonText)
                             .cornerRadius(40)
-                            .padding(.horizontal, 32)
+                            .padding(.horizontal, 0)
                     }
+                    .buttonStyle(PlainButtonStyle())
 
                     HStack {
                         Text("Already have an account?")

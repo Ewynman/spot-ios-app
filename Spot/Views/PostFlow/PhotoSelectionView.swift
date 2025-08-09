@@ -37,9 +37,10 @@ struct PhotoSelectionView: View {
                     Button("Change Photo") {
                         selectedImage = nil
                     }
+                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(PlainButtonStyle())
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
-                    .buttonStyle(PlainButtonStyle())
                 }
             } else {
                 // Photo Selection Options
@@ -64,6 +65,7 @@ struct PhotoSelectionView: View {
                                 .stroke(Constants.Colors.primary, lineWidth: 1)
                         )
                     }
+                    .buttonStyle(PlainButtonStyle())
                     
                     // Divider
                     HStack {
@@ -102,6 +104,7 @@ struct PhotoSelectionView: View {
                                 .stroke(Constants.Colors.primary, lineWidth: 1)
                         )
                     }
+                    .buttonStyle(PlainButtonStyle())
                     .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 32)

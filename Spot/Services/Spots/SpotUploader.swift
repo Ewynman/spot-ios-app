@@ -7,6 +7,7 @@
 
 import Foundation
 import FirebaseFirestore
+import CoreLocation
 import FirebaseStorage
 import FirebaseAuth
 import UIKit
@@ -154,30 +155,39 @@ final class SpotUploader {
                     return
                 }
 
-                SpotLogger.info("Image uploaded, creating spot document in Firestore...")
-                let data: [String: Any] = [
-                    "postId": postId,
-                    "userId": userId,
-                    "username": username,
-                    "userProfileImageURL": userProfileImageURL ?? "",
-                    "imageURL": imageUrl,
-                    "caption": "",
-                    "vibeTag": vibeTag,
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "locationName": placeName,
-                    "likes": 0,
-                    "saves": 0,
-                    "createdAt": FieldValue.serverTimestamp()
-                ]
+                SpotLogger.info("Image uploaded, reverse geocoding for display name and creating document...")
+                let geocoder = CLGeocoder()
+                let loc = CLLocation(latitude: latitude, longitude: longitude)
+                geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
+                    let city = placemarks?.first?.locality
+                    let state = placemarks?.first?.administrativeArea
+                    let display = [city, state].compactMap { $0 }.joined(separator: ", ")
+                    let finalLocationName = display.isEmpty ? placeName : display
 
-                Firestore.firestore().collection("spots").document(postId).setData(data) { error in
-                    if let error = error {
-                        SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
-                        completion(.failure(error))
-                    } else {
-                        SpotLogger.info("Spot created successfully!")
-                        completion(.success(()))
+                    let data: [String: Any] = [
+                        "postId": postId,
+                        "userId": userId,
+                        "username": username,
+                        "userProfileImageURL": userProfileImageURL ?? "",
+                        "imageURL": imageUrl,
+                        "caption": "",
+                        "vibeTag": vibeTag,
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "locationName": finalLocationName,
+                        "likes": 0,
+                        "saves": 0,
+                        "createdAt": FieldValue.serverTimestamp()
+                    ]
+
+                    Firestore.firestore().collection("spots").document(postId).setData(data) { error in
+                        if let error = error {
+                            SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
+                            completion(.failure(error))
+                        } else {
+                            SpotLogger.info("Spot created successfully!")
+                            completion(.success(()))
+                        }
                     }
                 }
             }

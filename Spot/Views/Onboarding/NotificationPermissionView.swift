@@ -72,6 +72,7 @@ struct NotificationPermissionView: View {
                                 .background(Constants.Colors.primary)
                                 .cornerRadius(20)
                         }
+                        .buttonStyle(PlainButtonStyle())
 
                         Button(action: {
                             navigateToSignup = true
@@ -80,6 +81,7 @@ struct NotificationPermissionView: View {
                                 .font(FontManager.buttonText())
                                 .foregroundColor(Constants.Colors.primary)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.horizontal, 32)
 

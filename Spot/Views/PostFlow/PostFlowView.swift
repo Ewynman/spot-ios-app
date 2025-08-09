@@ -19,7 +19,7 @@ struct PostFlowView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     // Progress Indicator
                     ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
@@ -54,19 +54,18 @@ struct PostFlowView: View {
                 }
                 .background(Color(hex: "F5F3EF"))
                 
-                // Progress Bar
-                if isUploading {
-                    ProgressBarView()
-                        .transition(.move(edge: .bottom))
-                        .padding(.bottom, 60) // Just above bottom app bar
+                // Top status overlays
+                VStack(spacing: 8) {
+                    if isUploading {
+                        ProgressBarView()
+                            .transition(.move(edge: .top))
+                    }
+                    if showToast {
+                        ToastView(message: toastMessage, isError: toastIsError)
+                            .transition(.move(edge: .top))
+                    }
                 }
-                
-                // Toast
-                if showToast {
-                    ToastView(message: toastMessage, isError: toastIsError)
-                        .padding(.bottom, 100)
-                        .transition(.move(edge: .bottom))
-                }
+                .padding(.top, 8)
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -224,6 +223,7 @@ struct NavigationButtonsView: View {
                     .cornerRadius(20)
             }
             .disabled(!canProceed)
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)

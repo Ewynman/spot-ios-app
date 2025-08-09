@@ -74,4 +74,56 @@ class UserSpotService {
             completion(liked, bookmarked)
         }
     }
+
+    // MARK: - Follow / Request Follow
+    func follow(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
+        let currentUserRef = db.collection("users").document(currentUserId)
+        currentUserRef.updateData([
+            "following": FieldValue.arrayUnion([targetUserId]),
+            "requestedFollows": FieldValue.arrayRemove([targetUserId])
+        ]) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
+
+    func requestFollow(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
+        let currentUserRef = db.collection("users").document(currentUserId)
+        currentUserRef.updateData([
+            "requestedFollows": FieldValue.arrayUnion([targetUserId])
+        ]) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
+
+    func getSocialLists(for userId: String? = nil, completion: @escaping (_ following: [String], _ requestedFollows: [String]) -> Void) {
+        let uid = userId ?? self.userId
+        guard let uid else { completion([], []); return }
+        db.collection("users").document(uid).getDocument { snapshot, _ in
+            let following = snapshot?.data()? ["following"] as? [String] ?? []
+            let requested = snapshot?.data()? ["requestedFollows"] as? [String] ?? []
+            completion(following, requested)
+        }
+    }
+
+    func unfollow(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
+        let currentUserRef = db.collection("users").document(currentUserId)
+        currentUserRef.updateData([
+            "following": FieldValue.arrayRemove([targetUserId])
+        ]) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
+
+    func cancelFollowRequest(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
+        let currentUserRef = db.collection("users").document(currentUserId)
+        currentUserRef.updateData([
+            "requestedFollows": FieldValue.arrayRemove([targetUserId])
+        ]) { error in
+            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        }
+    }
 }

@@ -13,6 +13,7 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isLoggedIn = false
+    @Environment(\.dismiss) var dismiss
     
     private func handleLoginError(_ error: Error) -> String {
         let errorCode = (error as NSError).code
@@ -36,18 +37,38 @@ struct LoginView: View {
                 Constants.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: 24) {
+                    // Custom Back Button
+                    HStack {
+                        CustomBackButton {
+                            dismiss()
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
                     Text("Log In")
                         .font(FontManager.sectionHeader())
                         .foregroundColor(Constants.Colors.primary)
                         .padding(.top, 40)
 
-                    // Fields
+                    // Fields with labels (match Settings style)
                     VStack(spacing: 12) {
-                        CustomTextField(placeholder: "Email", text: $email)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.emailAddress)
-                        CustomSecureField(placeholder: "Password", text: $password)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Email")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomTextField(placeholder: "Email", text: $email)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.emailAddress)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Password")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomSecureField(placeholder: "Password", text: $password)
+                        }
                     }
                     .padding(.horizontal, 32)
 
@@ -83,6 +104,7 @@ struct LoginView: View {
                             .background(Constants.Colors.primary)
                             .cornerRadius(20)
                     }
+                    .buttonStyle(PlainButtonStyle())
                     .disabled(isLoading)
                     .padding(.horizontal, 32)
 
@@ -106,6 +128,7 @@ struct LoginView: View {
                             Text("Sign Up")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
+                                .buttonStyle(PlainButtonStyle())
                         }
                     }
 
@@ -116,6 +139,7 @@ struct LoginView: View {
                 HomepageView()
             }
         }
+        .navigationBarBackButtonHidden(true)
     }
 }
 

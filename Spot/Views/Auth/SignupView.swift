@@ -16,6 +16,7 @@ struct SignupView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var agreedToTerms = false
+    @State private var isPrivate = false
     @State private var selectedProfileImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
 
@@ -82,13 +83,46 @@ struct SignupView: View {
                             }
                         }
                     }
+                    .buttonStyle(PlainButtonStyle())
                     .padding(.horizontal, 32)
 
                     VStack(spacing: 12) {
-                        CustomTextField(placeholder: "Email", text: $email)
-                        CustomTextField(placeholder: "Username", text: $username)
-                        CustomSecureField(placeholder: "Password", text: $password)
-                        CustomSecureField(placeholder: "Confirm password", text: $confirmPassword)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Email")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomTextField(placeholder: "Email", text: $email)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Username")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomTextField(placeholder: "Username", text: $username)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Password")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomSecureField(placeholder: "Password", text: $password)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Confirm Password")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            CustomSecureField(placeholder: "Confirm password", text: $confirmPassword)
+                        }
+                        HStack {
+                            Button(action: { isPrivate.toggle() }) {
+                                Image(systemName: isPrivate ? "checkmark.square.fill" : "square")
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            Text("Private account")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .buttonStyle(PlainButtonStyle())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 32)
 
@@ -99,6 +133,7 @@ struct SignupView: View {
                             Image(systemName: agreedToTerms ? "checkmark.square.fill" : "square")
                                 .foregroundColor(Constants.Colors.primary)
                         }
+                        .buttonStyle(PlainButtonStyle())
 
                         Text("I agree to the ")
                             .font(FontManager.primaryText())
@@ -135,8 +170,8 @@ struct SignupView: View {
                         isLoading = true
                         errorMessage = nil
 
-                        // Upload profile picture first, then create user
-                        uploadProfilePictureAndSignUp()
+                        // Validate username uniqueness, then upload & sign up
+                        validateAndSignUp()
                     }) {
                         Text(isLoading ? "Signing Up..." : "Sign Up")
                             .font(FontManager.buttonText())
@@ -146,6 +181,7 @@ struct SignupView: View {
                             .background(Constants.Colors.primary)
                             .cornerRadius(20)
                     }
+                    .buttonStyle(PlainButtonStyle())
                     .disabled(isLoading)
                     .padding(.horizontal, 32)
                     .padding(.top, 8)
@@ -171,6 +207,7 @@ struct SignupView: View {
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
 
                     Spacer()
@@ -184,6 +221,32 @@ struct SignupView: View {
         .navigationBarBackButtonHidden(true)
     }
     
+    private func validateAndSignUp() {
+        Task {
+            do {
+                let snapshot = try await Firestore.firestore()
+                    .collection("users")
+                    .whereField("username", isEqualTo: username)
+                    .limit(to: 1)
+                    .getDocuments()
+                if !snapshot.documents.isEmpty {
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.errorMessage = "Username is already taken"
+                    }
+                    return
+                }
+                // Proceed with signup flow
+                await MainActor.run { self.uploadProfilePictureAndSignUp() }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.errorMessage = "Failed to validate username. Please try again."
+                }
+            }
+        }
+    }
+
     private func uploadProfilePictureAndSignUp() {
         guard let profileImage = selectedProfileImage else { return }
         
@@ -191,9 +254,14 @@ struct SignupView: View {
         errorMessage = nil
         
         // First create user with empty profile picture URL
-        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "") { result in
+        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "", isPrivate: isPrivate) { result in
             switch result {
             case .success:
+                // Update Firebase Auth display name to keep in sync
+                if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
+                    changeReq.displayName = self.username
+                    changeReq.commitChanges(completion: nil)
+                }
                 // Now that we're authenticated, upload the profile picture
                 ProfilePictureUploader.shared.uploadProfilePicture(image: profileImage) { uploadResult in
                     DispatchQueue.main.async {
