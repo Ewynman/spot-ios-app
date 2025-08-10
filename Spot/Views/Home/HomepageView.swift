@@ -123,10 +123,15 @@ struct HomepageView: View {
     @State private var showUploadView = false
     @State private var feedViewType = "Feed" // "Feed" or "Map"
     private let feedTabs = ["Feed", "Map"]
+    // Tour
+    @StateObject private var tourManager = HomeTourManager()
+    var isFirstSessionAfterSignup: Bool { authVM.isAuthenticated && (authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty) && !tourManager.hasSeenHomeTour }
+    @State private var coachFrames: [CoachTarget: CGRect] = [:]
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
+            HomeTourHost(manager: tourManager, coachFrames: $coachFrames, isFirstSessionAfterSignup: isFirstSessionAfterSignup) {
+                VStack(spacing: 0) {
                 // Show different content based on selected tab
                 Group {
                     if selectedTab == "Profile" {
@@ -192,6 +197,7 @@ struct HomepageView: View {
                 // Bottom Navigation
                 BottomNavigationView(selectedTab: $selectedTab)
             }
+            }
             .background(Color(hex: "F5F3EF"))
             .navigationDestination(isPresented: $showUploadView) {
                 PostFlowView(onPostSuccess: {
@@ -204,6 +210,8 @@ struct HomepageView: View {
             Task {
                 await feedVM.loadInitialSpots()
             }
+            // Configure per-user tour persistence key
+            tourManager.configure(userId: authVM.userId)
         }
     }
 }

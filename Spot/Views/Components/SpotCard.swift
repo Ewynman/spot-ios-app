@@ -68,6 +68,7 @@ struct SpotCard: View {
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
                                 .foregroundColor(Constants.Colors.primary)
+                                .measure(target: .username)
                         }
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -79,6 +80,7 @@ struct SpotCard: View {
                     Text(location)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
+                        .measure(target: .location)
                 }
             }
             .padding(.horizontal, 12)
@@ -165,10 +167,17 @@ struct SpotCard: View {
                         .padding(.horizontal, 12)
                         .background(Constants.Colors.accent)
                         .cornerRadius(12)
+                        .measure(target: .vibeTag)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
+            .overlay(
+                GeometryReader { geo in
+                    let likeArea = CGRect(x: 16, y: 0, width: 80, height: geo.size.height)
+                    Color.clear.preference(key: CoachFramesPrefKey.self, value: [.likeSave: geo.frame(in: .global).intersection(CGRect(origin: geo.frame(in: .global).origin, size: likeArea.size))])
+                }
+            )
 
             if showError {
                 Text(errorMessage)

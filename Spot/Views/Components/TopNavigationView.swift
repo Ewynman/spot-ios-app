@@ -66,6 +66,12 @@ struct TopNavigationView: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: CoachFramesPrefKey.self, value: [.plusButton: geo.frame(in: .global)])
+                        }
+                    )
+                    .buttonStyle(PlainButtonStyle())
                 case .none:
                     EmptyView()
                 }
