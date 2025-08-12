@@ -30,7 +30,7 @@ struct SpotCard: View {
             HStack {
                 if showUserInfo, let userId = spot.userId {
                     NavigationLink {
-                        ProfileView(userId: userId)
+                        ProfileView(userId: userId, fromNavigationPush: true)
                             .navigationBarBackButtonHidden(true)
                     } label: {
                         HStack(spacing: 8) {
@@ -86,10 +86,41 @@ struct SpotCard: View {
             .padding(.horizontal, 12)
 
             // MARK: — Spot Image
-            if let urlString = spot.imageURL,
-               let url = URL(string: urlString)
-            {
-                AsyncImage(url: url) { img in
+            if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
+                AsyncImage(url: turl, transaction: .init(animation: .easeInOut(duration: 0.15))) { th in
+                    th.resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 400)
+                        .clipped()
+                        .cornerRadius(12)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Constants.Colors.background)
+                        .frame(maxWidth: .infinity, maxHeight: 400)
+                }
+                .overlay(
+                    Group {
+                        if let full = spot.imageURL, let furl = URL(string: full) {
+                            AsyncImage(url: furl, transaction: .init(animation: .easeInOut(duration: 0.2))) { img in
+                                img.resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: .infinity, maxHeight: 400)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    .onAppear {
+                                        if let tFirst = PerfMetrics.shared.measure("t_first_item") {
+                                            PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
+                                        }
+                                    }
+                            } placeholder: {
+                                // Keep showing the thumbnail
+                                Color.clear
+                            }
+                        }
+                    }
+                )
+            } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
+                AsyncImage(url: url, transaction: .init(animation: .easeInOut(duration: 0.2))) { img in
                     img.resizable()
                        .aspectRatio(contentMode: .fit)
                        .frame(maxWidth: .infinity, maxHeight: 400)
@@ -99,10 +130,6 @@ struct SpotCard: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
                         .frame(maxWidth: .infinity, maxHeight: 400)
-                        .overlay(
-                            ProgressView()
-                                .foregroundColor(Constants.Colors.primary)
-                        )
                 }
             } else {
                 RoundedRectangle(cornerRadius: 12)

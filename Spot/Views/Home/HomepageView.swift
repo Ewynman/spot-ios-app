@@ -8,37 +8,21 @@ class FeedViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var hasMore = true
     private var loadTask: Task<Void, Never>?
+    private let repo = FeedRepository.shared
     
     deinit {
         loadTask?.cancel()
     }
     
     func loadInitialSpots() async {
-        // Cancel any existing task
         loadTask?.cancel()
-        
-        // Start new loading task
         loadTask = Task {
-            do {
-                await MainActor.run {
-                    isLoading = true
-                }
-                let spots = try await FeedCache.shared.loadInitialSpots()
-                
-                await MainActor.run {
-                    self.spots = spots
-                    self.mapSpots = spots
-                    self.hasMore = spots.count == 10 // pageSize
-                    self.isLoading = false
-                }
-            } catch {
-                SpotLogger.error("Failed to load initial spots: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.isLoading = false
-                    self.spots = []
-                    self.mapSpots = []
-                    self.hasMore = false
-                }
+            await MainActor.run { self.isLoading = true }
+            await repo.loadInitial()
+            await MainActor.run {
+                self.spots = repo.spots
+                self.hasMore = true
+                self.isLoading = false
             }
         }
     }
@@ -51,24 +35,13 @@ class FeedViewModel: ObservableObject {
         
         // Start new loading task
         loadTask = Task {
-            do {
-                await MainActor.run {
-                    isLoading = true
-                }
-                let newSpots = try await FeedCache.shared.loadMoreSpots()
-                
-                await MainActor.run {
-                    self.spots.append(contentsOf: newSpots)
-                    self.mapSpots.append(contentsOf: newSpots)
-                    self.hasMore = newSpots.count == 10 // pageSize
-                    self.isLoading = false
-                }
-            } catch {
-                SpotLogger.error("Failed to load more spots: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.isLoading = false
-                    self.hasMore = false
-                }
+            await MainActor.run { self.isLoading = true }
+            await repo.loadMore()
+            await MainActor.run {
+                let new = repo.spots
+                self.spots = new
+                self.hasMore = true
+                self.isLoading = false
             }
         }
     }
@@ -185,8 +158,8 @@ struct HomepageView: View {
                                 )
                                 .transition(.opacity)
                             } else {
-                                // Search View (to be implemented)
-                                Text("Search")
+                                // Search View
+                                SearchView()
                                     .transition(.opacity)
                             }
                         }
@@ -196,9 +169,12 @@ struct HomepageView: View {
                 
                 // Bottom Navigation
                 BottomNavigationView(selectedTab: $selectedTab)
+                    .padding(.bottom, 0)
+                    .background(Color(hex: "F5F3EF"))
             }
             }
             .background(Color(hex: "F5F3EF"))
+//            .overlay(alignment: .topLeading) { DebugPerfOverlay() }
             .navigationDestination(isPresented: $showUploadView) {
                 PostFlowView(onPostSuccess: {
                     feedVM.refreshFeed()
@@ -266,25 +242,41 @@ struct FeedContentView: View {
     let onScrolledToBottom: () -> Void
     let onRefresh: () -> Void
     let userId: String?
+    @State private var firstItemRecorded = false
     
     var validSpots: [Spot] {
         spots.filter { spot in
+            // Relax createdAt to allow immediate visibility after posting (serverTimestamp may be pending)
             !(spot.imageURL ?? "").isEmpty &&
             !(spot.username ?? "").isEmpty &&
-            !(spot.vibeTag ?? "").isEmpty &&
             spot.latitude != nil &&
-            spot.longitude != nil &&
-            spot.createdAt != nil
+            spot.longitude != nil
+        }
+    }
+    
+    var validMapSpots: [Spot] {
+        mapSpots.filter { spot in
+            !(spot.imageURL ?? "").isEmpty &&
+            spot.latitude != nil &&
+            spot.longitude != nil
         }
     }
     
     var body: some View {
         Group {
             if selectedTab == "Map" {
-                MapView(spots: validSpots)
+                MapView(spots: validMapSpots)
                     .edgesIgnoringSafeArea(.all)
             } else if isLoading && spots.isEmpty {
-                LoadingView()
+                // Skeletons while initial load
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            SkeletonSpotCard()
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
             } else if !validSpots.isEmpty {
                 ScrollView {
                     RefreshControl(coordinateSpace: .named("RefreshControl")) {
@@ -292,8 +284,17 @@ struct FeedContentView: View {
                     }
                     
                     LazyVStack(spacing: 0) {
-                        ForEach(validSpots) { spot in
+                        ForEach(Array(validSpots.enumerated()), id: \.offset) { idx, spot in
                             SpotCard(spot: spot, showUserInfo: true, userId: userId)
+                                .onAppear {
+                                    if !firstItemRecorded {
+                                        let t = PerfMetrics.shared.measure("t_first_item") ?? 0
+                                        PerfMetrics.shared.recordOnce("t_first_item", value: t)
+                                        firstItemRecorded = true
+                                    }
+                                    let progress = Double(idx + 1) / Double(max(validSpots.count, 1))
+                                    if progress >= 0.7 { onScrolledToBottom() }
+                                }
                         }
                         if isLoading {
                             ProgressView().padding()

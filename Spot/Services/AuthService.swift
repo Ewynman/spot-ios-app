@@ -55,6 +55,7 @@ final class AuthService {
             let userData: [String: Any] = [
                 "email": email,
                 "username": username,
+                "username_lower": username.lowercased(),
                 "profileImageURL": profileImageURL,
                 "createdAt": FieldValue.serverTimestamp(),
                 "isPrivate": isPrivate,

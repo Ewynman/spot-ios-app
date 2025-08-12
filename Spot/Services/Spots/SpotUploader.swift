@@ -155,7 +155,9 @@ final class SpotUploader {
                     return
                 }
 
-                SpotLogger.info("Image uploaded, reverse geocoding for display name and creating document...")
+                SpotLogger.info("Image uploaded, generating thumbnail and reverse geocoding...")
+                // Generate a simple client-side thumbnail URL alias (server/CDN can replace later)
+                let thumbURL = imageUrl // Placeholder: same URL for now
                 let geocoder = CLGeocoder()
                 let loc = CLLocation(latitude: latitude, longitude: longitude)
                 geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
@@ -170,11 +172,14 @@ final class SpotUploader {
                         "username": username,
                         "userProfileImageURL": userProfileImageURL ?? "",
                         "imageURL": imageUrl,
+                        "thumbnailURL": thumbURL,
                         "caption": "",
                         "vibeTag": vibeTag,
+                        "vibeTag_lower": vibeTag.lowercased(),
                         "latitude": latitude,
                         "longitude": longitude,
                         "locationName": finalLocationName,
+                        "locationName_lower": finalLocationName.lowercased(),
                         "likes": 0,
                         "saves": 0,
                         "createdAt": FieldValue.serverTimestamp()

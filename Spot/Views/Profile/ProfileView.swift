@@ -9,6 +9,9 @@ import MapKit
 
 struct ProfileView: View {
     var userId: String? = nil
+    // If true, this screen was pushed from another screen (e.g., Feed/Search).
+    // In that case, show a custom back button and hide bottom nav.
+    var fromNavigationPush: Bool = false
     @EnvironmentObject var authVM: AuthViewModel
     @State private var username: String? = ""
     @State private var profileImageURL: String?
@@ -32,7 +35,8 @@ struct ProfileView: View {
                 VStack(spacing: 0) {
                 // MARK: — Top Bar
                 HStack {
-                    if let viewedUserId = userId, viewedUserId != authVM.userId {
+                    let isViewingOther = (userId != nil) && (userId != authVM.userId)
+                    if fromNavigationPush || isViewingOther {
                         Button {
                             dismiss()
                         } label: {
@@ -282,8 +286,8 @@ struct ProfileView: View {
                     }
                 }
 
-                // Optional bottom nav if viewing someone else's profile
-                if userId != authVM.userId {
+                // Show bottom nav only when this is not a pushed screen (root in tab)
+                if !fromNavigationPush {
                     BottomNavigationView(selectedTab: .constant("Home"))
                 }
                 }
