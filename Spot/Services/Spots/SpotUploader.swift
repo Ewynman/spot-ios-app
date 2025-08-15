@@ -166,7 +166,7 @@ final class SpotUploader {
                     let display = [city, state].compactMap { $0 }.joined(separator: ", ")
                     let finalLocationName = display.isEmpty ? placeName : display
 
-                    let data: [String: Any] = [
+                    var data: [String: Any] = [
                         "postId": postId,
                         "userId": userId,
                         "username": username,
@@ -185,13 +185,24 @@ final class SpotUploader {
                         "createdAt": FieldValue.serverTimestamp()
                     ]
 
-                    Firestore.firestore().collection("spots").document(postId).setData(data) { error in
-                        if let error = error {
-                            SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
-                            completion(.failure(error))
-                        } else {
-                            SpotLogger.info("Spot created successfully!")
-                            completion(.success(()))
+                    // Denormalize author's current privacy snapshot
+                    Task {
+                        do {
+                            let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                            if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool {
+                                data["authorIsPrivate"] = isPrivate
+                            }
+                        } catch {
+                            SpotLogger.warning("Failed to denormalize authorIsPrivate: \(error.localizedDescription)")
+                        }
+                        Firestore.firestore().collection("spots").document(postId).setData(data) { error in
+                            if let error = error {
+                                SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
+                                completion(.failure(error))
+                            } else {
+                                SpotLogger.info("Spot created successfully!")
+                                completion(.success(()))
+                            }
                         }
                     }
                 }

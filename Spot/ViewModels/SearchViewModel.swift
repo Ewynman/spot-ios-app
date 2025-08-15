@@ -99,24 +99,33 @@ final class SearchViewModel: ObservableObject {
     func loadMoreGrid(isVibe: Bool = false) async {
         guard !isLoadingGrid, hasMoreGrid, let title = gridTitle else { return }
         isLoadingGrid = true
+        defer { isLoadingGrid = false }
         do {
             let lower = isVibe ? title.replacingOccurrences(of: "#", with: "").lowercased() : title.lowercased()
-            let page = try await (isVibe ? service.fetchSpotsByVibe(lower, last: lastGridDoc) : service.fetchSpotsByLocation(lower, last: lastGridDoc))
+            var accumulated: [Spot] = []
+            var attempts = 0
+            var nextCursor = lastGridDoc
             var set = Set(gridSpots.compactMap { $0.id })
-            let newUnique = page.items.filter { spot in
-                let id = spot.id ?? UUID().uuidString
-                if set.contains(id) { return false }
-                set.insert(id)
-                return true
+            while accumulated.count < 24 && attempts < 5 {
+                attempts += 1
+                let page = try await (isVibe ? service.fetchSpotsByVibe(lower, last: nextCursor) : service.fetchSpotsByLocation(lower, last: nextCursor))
+                nextCursor = page.lastDocument
+                let newUnique = page.items.filter { spot in
+                    let id = spot.id ?? UUID().uuidString
+                    if set.contains(id) { return false }
+                    set.insert(id)
+                    return true
+                }
+                accumulated.append(contentsOf: newUnique)
+                if page.items.isEmpty || nextCursor == nil { break }
             }
-            gridSpots.append(contentsOf: newUnique)
-            lastGridDoc = page.lastDocument
-            hasMoreGrid = page.items.count == 24
-            SpotLogger.info("Grid loaded page — count: \(newUnique.count), total: \(gridSpots.count), hasMore: \(hasMoreGrid)")
+            gridSpots.append(contentsOf: accumulated)
+            lastGridDoc = nextCursor
+            hasMoreGrid = !(accumulated.isEmpty && nextCursor == nil)
+            SpotLogger.info("Grid loaded page — count: \(accumulated.count), total: \(gridSpots.count), hasMore: \(hasMoreGrid)")
         } catch {
             hasMoreGrid = false
             SpotLogger.error("Grid load failed: \(error.localizedDescription)")
         }
-        isLoadingGrid = false
     }
 }

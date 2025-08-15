@@ -24,6 +24,8 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var isLiked: Bool?
     var isSaved: Bool?
     var createdAt: Date?
+    // Optional denormalized snapshot to enable quick pre-filtering.
+    var authorIsPrivate: Bool?
     
     static func fromDocument(_ document: QueryDocumentSnapshot) async throws -> Spot? {
         do {

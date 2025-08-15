@@ -45,15 +45,11 @@ final class FeedCache {
         let snapshot = try await query.getDocuments()
         let fetchedSpots = snapshot.documents.compactMap { doc in
             var spot = try? doc.data(as: Spot.self)
-            // Ensure spot.id is populated from Firestore document ID
-            if spot?.id == nil {
-                spot?.id = doc.documentID
-                FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCache.loadInitialSpots", spot: spot!)
-            }
+            if spot?.id == nil { spot?.id = doc.documentID }
             return spot
         }
 
-        let spots = try await filterSpotsForPrivacy(fetchedSpots)
+        let spots = await AuthorPrivacyCache.shared.filter(spots: fetchedSpots)
         
         // Update cache
         cachedSpots = spots
@@ -78,14 +74,10 @@ final class FeedCache {
         let snapshot = try await query.getDocuments()
         let fetched = snapshot.documents.compactMap { doc in
             var spot = try? doc.data(as: Spot.self)
-            // Ensure spot.id is populated from Firestore document ID
-            if spot?.id == nil {
-                spot?.id = doc.documentID
-                FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCache.loadMoreSpots", spot: spot!)
-            }
+            if spot?.id == nil { spot?.id = doc.documentID }
             return spot
         }
-        let newSpots = try await filterSpotsForPrivacy(fetched)
+        let newSpots = await AuthorPrivacyCache.shared.filter(spots: fetched)
         
         // Update cache with new spots
         cachedSpots.append(contentsOf: newSpots)
@@ -101,57 +93,5 @@ final class FeedCache {
         return try await loadInitialSpots()
     }
 
-    // MARK: - Privacy Filtering
-    private func filterSpotsForPrivacy(_ spots: [Spot]) async throws -> [Spot] {
-        // If no current user, only show public users' spots
-        let currentUserId = Auth.auth().currentUser?.uid
-
-        // Short-circuit: nothing to filter
-        guard !spots.isEmpty else { return spots }
-
-        // Gather unique author IDs
-        let authorIds = Set(spots.compactMap { $0.userId })
-
-        // Fetch viewer following list
-        var following: Set<String> = []
-        if let currentUserId {
-            let viewerDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
-            let arr = viewerDoc.data()? ["following"] as? [String] ?? []
-            following = Set(arr)
-        }
-
-        // Fetch isPrivate for all authors concurrently
-        let authorPrivacy: [String: Bool] = try await withThrowingTaskGroup(of: (String, Bool).self) { group in
-            for authorId in authorIds {
-                group.addTask {
-                    let snapshot = try await Firestore.firestore().collection("users").document(authorId).getDocument()
-                    let isPrivate = snapshot.data()? ["isPrivate"] as? Bool ?? false
-                    return (authorId, isPrivate)
-                }
-            }
-            var result: [String: Bool] = [:]
-            for try await (authorId, isPrivate) in group {
-                result[authorId] = isPrivate
-            }
-            return result
-        }
-
-        // Build allowlist: public users, followed users, and self
-        var allowedUserIds: Set<String> = []
-        for (authorId, isPrivate) in authorPrivacy {
-            if !isPrivate {
-                allowedUserIds.insert(authorId)
-            }
-        }
-        allowedUserIds.formUnion(following)
-        if let currentUserId { allowedUserIds.insert(currentUserId) }
-
-        // Filter
-        let filtered = spots.filter { spot in
-            guard let uid = spot.userId else { return false }
-            return allowedUserIds.contains(uid)
-        }
-
-        return filtered
-    }
+    // Privacy filtering handled by AuthorPrivacyCache
 } 

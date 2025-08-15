@@ -94,14 +94,15 @@ final class SpotService {
                         likes: data["likes"] as? Int ?? 0,
                         isLiked: data["isLiked"] as? Bool ?? false,
                         isSaved: data["isSaved"] as? Bool ?? false,
-                        createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
+                        createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
+                        authorIsPrivate: data["authorIsPrivate"] as? Bool
                     )
                 }
                 
                 // Apply privacy filter on the map
                 Task {
                     do {
-                        let filtered = try await self?.filterForPrivacy(spots: spots) ?? []
+                        let filtered = await AuthorPrivacyCache.shared.filter(spots: spots)
                         self?.cachedSpots = filtered
                         self?.lastFetchTime = Date()
                         SpotLogger.info("fetchSpotsForMap: Parsed and cached \(filtered.count) spots (after privacy filter)")
@@ -117,44 +118,7 @@ final class SpotService {
             }
     }
 
-    // MARK: - Privacy Filter
-    private func filterForPrivacy(spots: [Spot]) async throws -> [Spot] {
-        let currentUserId = Auth.auth().currentUser?.uid
-        guard !spots.isEmpty else { return spots }
-        let authorIds = Set(spots.compactMap { $0.userId })
-
-        // Viewer follows
-        var following: Set<String> = []
-        if let currentUserId {
-            let viewerDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
-            let arr = viewerDoc.data()? ["following"] as? [String] ?? []
-            following = Set(arr)
-        }
-
-        // Author privacy set
-        let authorPrivacy: [String: Bool] = try await withThrowingTaskGroup(of: (String, Bool).self) { group in
-            for id in authorIds {
-                group.addTask {
-                    let snap = try await Firestore.firestore().collection("users").document(id).getDocument()
-                    let isPrivate = snap.data()? ["isPrivate"] as? Bool ?? false
-                    return (id, isPrivate)
-                }
-            }
-            var dict: [String: Bool] = [:]
-            for try await (id, isPrivate) in group { dict[id] = isPrivate }
-            return dict
-        }
-
-        var allowed: Set<String> = []
-        for (id, isPrivate) in authorPrivacy where !isPrivate { allowed.insert(id) }
-        allowed.formUnion(following)
-        if let currentUserId { allowed.insert(currentUserId) }
-
-        return spots.filter { spot in
-            guard let uid = spot.userId else { return false }
-            return allowed.contains(uid)
-        }
-    }
+    // No private filter here; use AuthorPrivacyCache.shared.filter
 
     // MARK: - Fetch Single Spot
     
@@ -201,7 +165,8 @@ final class SpotService {
             likes: data["likes"] as? Int ?? 0,
             isLiked: data["isLiked"] as? Bool ?? false,
             isSaved: data["isSaved"] as? Bool ?? false,
-            createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
+            authorIsPrivate: data["authorIsPrivate"] as? Bool
         )
         
         SpotLogger.info("SpotService: Successfully fetched spot: \(spotId)")

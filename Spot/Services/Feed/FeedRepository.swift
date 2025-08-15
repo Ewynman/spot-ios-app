@@ -13,6 +13,7 @@ final class FeedRepository: ObservableObject {
     private let candidate = FeedCandidateService.shared
     private let ranker = FeedRanker.shared
     private let pageSize = FeedFlags.pageSize
+    private let privacy = AuthorPrivacyCache.shared
 
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
@@ -20,29 +21,48 @@ final class FeedRepository: ObservableObject {
         // Log cold start diagnostics
         FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
         
-        async let recent = candidate.fetchRecent()
-        async let trending = candidate.fetchTrending()
         do {
-            let (r, t) = try await (recent, trending)
-            recentCursor = r.last
-            trendingCursor = t.last
-            
-            let nilIdRecent = r.items.filter { $0.id == nil }.count
-            let nilIdTrending = t.items.filter { $0.id == nil }.count
-            
-            let blended = ranker.blend(recent: ranker.rankRecent(r.items), trending: ranker.rankTrending(t.items), pageSize: pageSize)
-            
-            // Log comprehensive feed stats
+            var accRecent: [Spot] = []
+            var accTrending: [Spot] = []
+            var rc: DocumentSnapshot? = nil
+            var tc: DocumentSnapshot? = nil
+            var attempts = 0
+
+            while accRecent.count + accTrending.count < pageSize && attempts < 5 {
+                attempts += 1
+                async let recent = candidate.fetchRecent(last: rc)
+                async let trending = candidate.fetchTrending(last: tc)
+                let (r, t) = try await (recent, trending)
+                rc = r.last; tc = t.last
+
+                // Warm and filter this batch
+                await privacy.warm(authorIds: Set((r.items + t.items).compactMap { $0.userId }))
+                let gatedRecent = await privacy.filter(spots: r.items)
+                let gatedTrending = await privacy.filter(spots: t.items)
+                accRecent.append(contentsOf: gatedRecent)
+                accTrending.append(contentsOf: gatedTrending)
+
+                // Stop if both sources exhausted
+                if (r.items.isEmpty && t.items.isEmpty) || (rc == nil && tc == nil) { break }
+            }
+
+            recentCursor = rc
+            trendingCursor = tc
+
+            let nilIdRecent = accRecent.filter { $0.id == nil }.count
+            let nilIdTrending = accTrending.filter { $0.id == nil }.count
+
+            let blended = ranker.blend(recent: ranker.rankRecent(accRecent), trending: ranker.rankTrending(accTrending), pageSize: pageSize)
+
             FeedDiagnostics.logFeedStats(
-                recentCount: r.items.count,
-                trendingCount: t.items.count,
+                recentCount: accRecent.count,
+                trendingCount: accTrending.count,
                 nilIdCount: nilIdRecent + nilIdTrending,
-                excludedByPersistentSeen: 0, // No persistent seen tracking found
-                excludedByBlendSeen: 0, // Will be calculated in ranker
-                excludedByExistingIds: 0 // Not applicable for initial load
+                excludedByPersistentSeen: 0,
+                excludedByBlendSeen: 0,
+                excludedByExistingIds: 0
             )
-            
-            SpotLogger.info("Feed loadInitial: recent=\(r.items.count) (nil id=\(nilIdRecent)), trending=\(t.items.count) (nil id=\(nilIdTrending)), blended=\(blended.count)")
+            SpotLogger.info("Feed loadInitial: recent=\(accRecent.count) (nil id=\(nilIdRecent)), trending=\(accTrending.count) (nil id=\(nilIdTrending)), blended=\(blended.count)")
             await MainActor.run { self.spots = blended }
             isColdStart = false
         } catch {
@@ -52,12 +72,28 @@ final class FeedRepository: ObservableObject {
 
     func loadMore() async {
         do {
-            async let r = candidate.fetchRecent(last: recentCursor)
-            async let t = candidate.fetchTrending(last: trendingCursor)
-            let (nr, nt) = try await (r, t)
-            recentCursor = nr.last
-            trendingCursor = nt.last
-            let blended = ranker.blend(recent: ranker.rankRecent(nr.items), trending: ranker.rankTrending(nt.items), pageSize: pageSize)
+            var pageRecent: [Spot] = []
+            var pageTrending: [Spot] = []
+            var rc = recentCursor
+            var tc = trendingCursor
+            var attempts = 0
+
+            while pageRecent.count + pageTrending.count < pageSize && attempts < 5 {
+                attempts += 1
+                async let r = candidate.fetchRecent(last: rc)
+                async let t = candidate.fetchTrending(last: tc)
+                let (nr, nt) = try await (r, t)
+                rc = nr.last
+                tc = nt.last
+                await privacy.warm(authorIds: Set((nr.items + nt.items).compactMap { $0.userId }))
+                pageRecent.append(contentsOf: await privacy.filter(spots: nr.items))
+                pageTrending.append(contentsOf: await privacy.filter(spots: nt.items))
+                if (nr.items.isEmpty && nt.items.isEmpty) || (rc == nil && tc == nil) { break }
+            }
+
+            recentCursor = rc
+            trendingCursor = tc
+            let blended = ranker.blend(recent: ranker.rankRecent(pageRecent), trending: ranker.rankTrending(pageTrending), pageSize: pageSize)
             
             // Prevent duplicates already in feed when appending
             let existingIds = Set(self.spots.compactMap { $0.id })
@@ -78,7 +114,7 @@ final class FeedRepository: ObservableObject {
                 }
             }
             
-            SpotLogger.info("Feed loadMore: newRecent=\(nr.items.count), newTrending=\(nt.items.count), blended=\(blended.count), excludedByExistingIds=\(excludedByExistingIds), appending=\(newUnique.count)")
+            SpotLogger.info("Feed loadMore: newRecent=\(pageRecent.count), newTrending=\(pageTrending.count), blended=\(blended.count), excludedByExistingIds=\(excludedByExistingIds), appending=\(newUnique.count)")
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch {
             SpotLogger.error("Feed loadMore failed: \(error.localizedDescription)")

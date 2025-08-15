@@ -104,6 +104,8 @@ class AuthViewModel: ObservableObject {
             isAuthenticated = false
             // Clear deep link state when user logs out
             DeepLinkState.shared.clearUserSession()
+            // Clear privacy session cache
+            AuthorPrivacyCache.shared.clear()
         } catch {
             SpotLogger.error("Failed to signout:\(error.localizedDescription)")
         }

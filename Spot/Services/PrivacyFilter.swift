@@ -20,44 +20,8 @@ class PrivacyFilter {
     
     /// Filter spots to exclude private users' content from non-followers
     func filterSpotsForPrivacy(_ spots: [Spot]) async -> [Spot] {
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
-            return spots
-        }
-        
-        // Get unique author IDs
-        let authorIds = Set(spots.compactMap { $0.userId })
-        
-        // Fetch following list and private status concurrently
-        async let following = fetchFollowingList(for: currentUserId)
-        async let privateStatus = fetchPrivateStatus(for: authorIds)
-        
-        let (followingList, privateUsers) = await (following, privateStatus)
-        
-        // Filter spots
-        let filteredSpots = spots.filter { spot in
-            guard let authorId = spot.userId else { return false }
-            
-            // Always show own content
-            if authorId == currentUserId { return true }
-            
-            // Check if author is private
-            let isPrivate = privateUsers[authorId] ?? false
-            
-            if isPrivate {
-                // Only show if current user is following
-                let isFollowing = followingList.contains(authorId)
-                
-                if !isFollowing {
-                    SpotLogger.info("\(Constants.Analytics.feedDropPrivate) spotId=\(spot.id ?? "nil") authorId=\(authorId) reason=notFollower")
-                }
-                
-                return isFollowing
-            }
-            
-            return true
-        }
-        
-        return filteredSpots
+        // Deprecated: use AuthorPrivacyCache instead to ensure single-batch fetch and shared TTL
+        return await AuthorPrivacyCache.shared.filter(spots: spots)
     }
     
     /// Check if a specific user's content should be visible to current user
@@ -95,7 +59,7 @@ class PrivacyFilter {
                 .document(userId)
                 .getDocument()
             
-            let following = doc.data()?["following"] as? [String] ?? []
+            let following = doc.data()? ["following"] as? [String] ?? []
             followingCache = Set(following)
             cacheTimestamp = Date()
             

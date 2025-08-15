@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if {viewer} follows {owner}
+    function isFollower(viewer, owner) {
+      // The app maintains an array field users/{viewer}.following: [ownerId]
+      // This helper returns true when viewer is following owner.
+      // If your graph stores followers as subcollection instead, mirror accordingly.
+      return exists(/databases/$(database)/documents/users/$(viewer)) &&
+             get(/databases/$(database)/documents/users/$(viewer)).data.following.hasAny([owner]);
+    }
+
+    match /spots/{spotId} {
+      allow read: if isSpotReadable();
+      allow list: if false; // rely on per-doc checks via queries
+
+      function isSpotReadable() {
+        let data = resource.data;
+        let owner = data.authorId != null ? data.authorId : data.userId; // backward compatibility
+        let isPrivate = data.authorIsPrivate == true;
+        // Always allow owner
+        if (request.auth != null && request.auth.uid == owner) {
+          return true;
+        }
+        // Public author
+        if (!isPrivate) {
+          return true;
+        }
+        // Private author: allowed only if viewer follows owner
+        return request.auth != null && isFollower(request.auth.uid, owner);
+      }
+    }
+
+    // Default: keep existing rules for other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+

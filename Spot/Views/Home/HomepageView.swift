@@ -22,7 +22,7 @@ class FeedViewModel: ObservableObject {
             await repo.loadInitial()
             await MainActor.run {
                 self.spots = repo.spots
-                self.hasMore = true
+                self.hasMore = repo.spots.count >= FeedFlags.pageSize
                 self.isLoading = false
             }
         }
