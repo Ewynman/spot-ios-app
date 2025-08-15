@@ -19,6 +19,9 @@ struct ProfileView: View {
     @State private var selectedTab = "Spots"
     @State private var isLoading = true
     @State private var selectedSpot: Spot?
+    @State private var pendingDeleteSpot: Spot?
+    @State private var showDeleteConfirm: Bool = false
+    @State private var deletingSpotIds: Set<String> = []
     @State private var isPrivateProfile: Bool = false
     @State private var isFollowingUser: Bool = false
     @State private var hasRequestedFollow: Bool = false
@@ -265,8 +268,14 @@ struct ProfileView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.top, 8)
 
-                                SpotCard(spot: spot, showUserInfo: false, userId: authVM.userId)
+                                SpotCard(spot: spot, showUserInfo: false, userId: authVM.userId, onDelete: {
+                                    pendingDeleteSpot = spot
+                                    showDeleteConfirm = true
+                                }, source: "ProfileDetail")
                                     .padding(.vertical, 12)
+                                    .onAppear {
+                                        SpotLogger.debug("ProfileDetail SpotCard mounted with onDelete non-nil=\(true)")
+                                    }
                             }
                         } else {
                             // -------------------------
@@ -287,7 +296,7 @@ struct ProfileView: View {
                 }
 
                 // Show bottom nav only when this is not a pushed screen (root in tab)
-                if !fromNavigationPush {
+                if fromNavigationPush {
                     BottomNavigationView(selectedTab: .constant("Home"))
                 }
                 }
@@ -357,6 +366,12 @@ struct ProfileView: View {
             .navigationDestination(isPresented: $showSettingsNav) {
                 SettingsView()
             }
+            .alert("Delete this spot? This can’t be undone.", isPresented: $showDeleteConfirm) {
+                Button("Delete", role: .destructive) {
+                    if let spot = pendingDeleteSpot { Task { await deleteSpotFromProfile(spot) } }
+                }
+                Button("Cancel", role: .cancel) { pendingDeleteSpot = nil }
+            }
         }
     }
 
@@ -378,6 +393,40 @@ struct ProfileView: View {
             } catch {
                 await MainActor.run { isLoading = false }
             }
+        }
+    }
+}
+
+// MARK: - Deletion helpers
+extension ProfileView {
+    @MainActor
+    private func deleteSpotFromProfile(_ spot: Spot) async {
+        guard let id = spot.id else {
+            SpotLogger.error("Profile delete requested for spot without id")
+            pendingDeleteSpot = nil
+            return
+        }
+        if deletingSpotIds.contains(id) { return }
+        deletingSpotIds.insert(id)
+
+        // Optimistic removal
+        let previousSpots = spots
+        let previousSelected = selectedSpot
+        spots.removeAll { $0.id == id }
+        if selectedSpot?.id == id { selectedSpot = nil }
+
+        do {
+            SpotLogger.info("Profile: deleting spot id=\(id)")
+            try await SpotService.shared.deleteSpot(spot)
+            deletingSpotIds.remove(id)
+            pendingDeleteSpot = nil
+        } catch {
+            SpotLogger.error("Profile: delete failed id=\(id): \(error.localizedDescription)")
+            // Rollback
+            spots = previousSpots
+            selectedSpot = previousSelected
+            deletingSpotIds.remove(id)
+            pendingDeleteSpot = nil
         }
     }
 }

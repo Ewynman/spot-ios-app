@@ -8,6 +8,7 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseStorage
 
 final class SpotService {
     static let shared = SpotService()
@@ -152,6 +153,44 @@ final class SpotService {
         return spots.filter { spot in
             guard let uid = spot.userId else { return false }
             return allowed.contains(uid)
+        }
+    }
+
+    // MARK: - Delete Spot
+    func deleteSpot(_ spot: Spot) async throws {
+        guard let id = spot.id else {
+            throw NSError(domain: "SpotService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing spot id; cannot delete"]) }
+        let docRef = Firestore.firestore().collection("spots").document(id)
+
+        // Delete Firestore document first
+        try await docRef.delete()
+
+        // Best-effort delete of main image
+        if let urlString = spot.imageURL {
+            deleteStorageIfPossible(fromDownloadURL: urlString)
+        }
+        // Best-effort delete of thumbnail if distinct
+        if let thumbString = spot.thumbnailURL, thumbString != spot.imageURL {
+            deleteStorageIfPossible(fromDownloadURL: thumbString)
+        }
+    }
+
+    private func deleteStorageIfPossible(fromDownloadURL urlString: String) {
+        // Parse the Firebase Storage object path from the download URL
+        // URL form: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<ENCODED_PATH>?alt=media&token=...
+        guard let url = URL(string: urlString) else { return }
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        guard let pathIndex = comps.path.range(of: "/o/") else { return }
+        let encodedPath = String(comps.path[pathIndex.upperBound...])
+        let rawPath = encodedPath.removingPercentEncoding ?? encodedPath
+        guard !rawPath.isEmpty else { return }
+        let ref = Storage.storage().reference(withPath: rawPath)
+        ref.delete { error in
+            if let error = error {
+                SpotLogger.warning("Storage delete failed for \(rawPath): \(error.localizedDescription)")
+            } else {
+                SpotLogger.info("Storage deleted: \(rawPath)")
+            }
         }
     }
 }

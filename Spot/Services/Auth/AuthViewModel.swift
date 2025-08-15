@@ -15,6 +15,7 @@ class AuthViewModel: ObservableObject {
     @Published var userId: String? = nil
     @Published var likedSpots: [String] = []
     @Published var bookmarkedSpots: [String] = []
+    @Published var blockedUsers: [String] = []
 
     private var handle: AuthStateDidChangeListenerHandle?
 
@@ -56,6 +57,7 @@ class AuthViewModel: ObservableObject {
                     self?.isLoading = false
                     self?.likedSpots = []
                     self?.bookmarkedSpots = []
+                    self?.blockedUsers = []
                 }
             }
         }
@@ -92,6 +94,23 @@ class AuthViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self?.likedSpots = liked
                 self?.bookmarkedSpots = bookmarked
+            }
+        }
+        // Also fetch blocked users
+        refreshBlockedUsers()
+    }
+    
+    func refreshBlockedUsers() {
+        guard let userId = userId else { return }
+        Task {
+            do {
+                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                let blocked = userDoc.data()?["blockedUsers"] as? [String] ?? []
+                await MainActor.run {
+                    self.blockedUsers = blocked
+                }
+            } catch {
+                SpotLogger.error("Failed to refresh blocked users: \(error.localizedDescription)")
             }
         }
     }
@@ -221,5 +240,37 @@ class AuthViewModel: ObservableObject {
     // MARK: - Account Deletion
     func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
         AuthService.shared.deleteAccount(password: password, completion: completion)
+    }
+    
+    // MARK: - Blocking
+    func blockUser(userId targetUserId: String) async throws {
+        guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
+        guard currentUserId != targetUserId else { throw NSError(domain: "Cannot block yourself", code: 0) }
+        
+        try await Firestore.firestore().collection("users").document(currentUserId).updateData([
+            "blockedUsers": FieldValue.arrayUnion([targetUserId])
+        ])
+        
+        await MainActor.run {
+            if !blockedUsers.contains(targetUserId) {
+                blockedUsers.append(targetUserId)
+            }
+        }
+        
+        SpotLogger.info("User blocked: \(targetUserId)")
+    }
+    
+    func unblockUser(userId targetUserId: String) async throws {
+        guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
+        
+        try await Firestore.firestore().collection("users").document(currentUserId).updateData([
+            "blockedUsers": FieldValue.arrayRemove([targetUserId])
+        ])
+        
+        await MainActor.run {
+            blockedUsers.removeAll { $0 == targetUserId }
+        }
+        
+        SpotLogger.info("User unblocked: \(targetUserId)")
     }
 }

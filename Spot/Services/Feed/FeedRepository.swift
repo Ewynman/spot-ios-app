@@ -23,6 +23,9 @@ final class FeedRepository: ObservableObject {
             recentCursor = r.last
             trendingCursor = t.last
             let blended = ranker.blend(recent: ranker.rankRecent(r.items), trending: ranker.rankTrending(t.items), pageSize: pageSize)
+            let nilIdRecent = r.items.filter { $0.id == nil }.count
+            let nilIdTrending = t.items.filter { $0.id == nil }.count
+            SpotLogger.info("Feed loadInitial: recent=\(r.items.count) (nil id=\(nilIdRecent)), trending=\(t.items.count) (nil id=\(nilIdTrending)), blended=\(blended.count)")
             await MainActor.run { self.spots = blended }
             isColdStart = false
         } catch { }
@@ -42,6 +45,7 @@ final class FeedRepository: ObservableObject {
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
+            SpotLogger.info("Feed loadMore: newRecent=\(nr.items.count), newTrending=\(nt.items.count), blended=\(blended.count), appending=\(newUnique.count)")
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch { }
     }

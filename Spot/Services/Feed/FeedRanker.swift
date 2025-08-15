@@ -32,10 +32,16 @@ final class FeedRanker {
         var seen = Set<String>()
 
         func push(_ s: Spot) {
-            guard let id = s.id else { return }
-            guard !seen.contains(id) else { return }
+            // Build a robust key so we don't drop items if id is temporarily nil
+            let key: String = {
+                if let id = s.id { return "id:\\(id)" }
+                let uid = s.userId ?? "_"
+                let ts = s.createdAt?.timeIntervalSince1970 ?? 0
+                return "u:\\(uid)#t:\\(ts)"
+            }()
+            guard !seen.contains(key) else { return }
             picked.append(s)
-            seen.insert(id)
+            seen.insert(key)
         }
 
         for s in recent.prefix(rCount) { push(s) }

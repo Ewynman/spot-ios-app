@@ -7,7 +7,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestore
 import CoreLocation
 
 struct Spot: Identifiable, Codable, Equatable {

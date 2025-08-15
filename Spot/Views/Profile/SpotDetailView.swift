@@ -14,9 +14,12 @@ struct SpotDetailView: View {
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var region: MKCoordinateRegion
     @State private var isLiked: Bool
     @State private var isSaved: Bool
+    @State private var showDeleteConfirm: Bool = false
+    @State private var isDeleting: Bool = false
     
     init(spot: Spot, isMapView: Bool, onDismiss: (() -> Void)? = nil) {
         self.spot = spot
@@ -122,6 +125,23 @@ struct SpotDetailView: View {
                                     .font(.system(size: 22))
                             }
                             .buttonStyle(PlainButtonStyle())
+
+                            // Owner-only overflow menu next to bookmark
+                            let current = authVM.userId ?? ""
+                            let owner = spot.userId ?? ""
+                            if !current.isEmpty && current == owner {
+                                Button {
+                                    SpotLogger.debug("Overflow tapped (detail) id=\(spot.id ?? "nil")")
+                                    showDeleteConfirm = true
+                                } label: {
+                                    Text("⋮")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(Constants.Colors.primary)
+                                        .frame(width: 24, height: 24)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(isDeleting)
+                            }
                         }
 
                         Spacer()
@@ -172,5 +192,30 @@ struct SpotDetailView: View {
         }
         .background(Color(hex: "F5F3EF"))
         .navigationBarBackButtonHidden(true)
+        .alert("Delete this spot? This can’t be undone.", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) { Task { await deleteSpot() } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+// MARK: - Delete
+extension SpotDetailView {
+    @MainActor
+    private func deleteSpot() async {
+        guard !isDeleting else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        guard let _ = spot.id else {
+            SpotLogger.error("SpotDetailView: delete requested but spot.id is nil")
+            return
+        }
+        do {
+            try await SpotService.shared.deleteSpot(spot)
+            // Dismiss and let parent refresh/remove
+            onDismiss?()
+        } catch {
+            SpotLogger.error("SpotDetailView: delete failed: \(error.localizedDescription)")
+        }
     }
 }

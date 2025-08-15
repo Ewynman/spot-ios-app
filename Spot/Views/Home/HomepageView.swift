@@ -7,6 +7,7 @@ class FeedViewModel: ObservableObject {
     @Published var mapSpots: [Spot] = []
     @Published var isLoading = false
     @Published var hasMore = true
+    @Published var deletingSpotIds: Set<String> = []
     private var loadTask: Task<Void, Never>?
     private let repo = FeedRepository.shared
     
@@ -36,11 +37,14 @@ class FeedViewModel: ObservableObject {
         // Start new loading task
         loadTask = Task {
             await MainActor.run { self.isLoading = true }
+            let beforeCount = repo.spots.count
             await repo.loadMore()
             await MainActor.run {
                 let new = repo.spots
+                let appended = max(0, new.count - beforeCount)
                 self.spots = new
-                self.hasMore = true
+                // hasMore: optimistic true if we appended at least ~page size/2; will disable when cursors exhaust
+                self.hasMore = appended > 0
                 self.isLoading = false
             }
         }
@@ -61,7 +65,7 @@ class FeedViewModel: ObservableObject {
                 await MainActor.run {
                     self.spots = spots
                     self.mapSpots = spots
-                    self.hasMore = spots.count == 10 // pageSize
+                    self.hasMore = spots.count >= 24
                     self.isLoading = false
                 }
             } catch {
@@ -73,9 +77,9 @@ class FeedViewModel: ObservableObject {
         }
     }
     
-    func loadMapSpots() {
+    func loadMapSpots(forceRefresh: Bool = false) {
         SpotLogger.debug("Loading spots for map")
-        SpotService.shared.fetchSpotsForMap { result in
+        SpotService.shared.fetchSpotsForMap(forceRefresh: forceRefresh) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let spots):
@@ -85,6 +89,38 @@ class FeedViewModel: ObservableObject {
                     SpotLogger.error("Failed to load map spots: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    // MARK: - Delete
+    @MainActor
+    func delete(spot: Spot) async {
+        guard let id = spot.id else {
+            SpotLogger.error("Delete requested for spot without id")
+            return
+        }
+        if deletingSpotIds.contains(id) { return }
+        deletingSpotIds.insert(id)
+
+        // Optimistic removal
+        let prevSpots = spots
+        let prevMap = mapSpots
+        spots.removeAll { $0.id == id }
+        mapSpots.removeAll { $0.id == id }
+
+        do {
+            SpotLogger.info("Deleting spot id=\(id)")
+            // Run deletion off main
+            try await SpotService.shared.deleteSpot(spot)
+            deletingSpotIds.remove(id)
+            // Force refresh map spots after successful deletion
+            loadMapSpots(forceRefresh: true)
+        } catch {
+            SpotLogger.error("Delete failed for id=\(id): \(error.localizedDescription)")
+            // Rollback
+            spots = prevSpots
+            mapSpots = prevMap
+            deletingSpotIds.remove(id)
         }
     }
 }
@@ -154,9 +190,17 @@ struct HomepageView: View {
                                     selectedTab: feedViewType,
                                     onScrolledToBottom: { feedVM.loadMoreSpots() },
                                     onRefresh: { feedVM.refreshFeed() },
-                                    userId: authVM.userId
+                                 userId: authVM.userId,
+                                 onDeleteSpot: { spot in
+                                     Task { await feedVM.delete(spot: spot) }
+                                 }
                                 )
                                 .transition(.opacity)
+                             .onChange(of: feedViewType) { newValue in
+                                 if newValue == "Map" {
+                                     feedVM.loadMapSpots(forceRefresh: true)
+                                 }
+                             }
                             } else {
                                 // Search View
                                 SearchView()
@@ -188,6 +232,8 @@ struct HomepageView: View {
             }
             // Configure per-user tour persistence key
             tourManager.configure(userId: authVM.userId)
+            // Warm map data for first visit
+            feedVM.loadMapSpots()
         }
     }
 }
@@ -242,6 +288,7 @@ struct FeedContentView: View {
     let onScrolledToBottom: () -> Void
     let onRefresh: () -> Void
     let userId: String?
+    let onDeleteSpot: (Spot) -> Void
     @State private var firstItemRecorded = false
     
     var validSpots: [Spot] {
@@ -256,7 +303,6 @@ struct FeedContentView: View {
     
     var validMapSpots: [Spot] {
         mapSpots.filter { spot in
-            !(spot.imageURL ?? "").isEmpty &&
             spot.latitude != nil &&
             spot.longitude != nil
         }
@@ -285,7 +331,7 @@ struct FeedContentView: View {
                     
                     LazyVStack(spacing: 0) {
                         ForEach(Array(validSpots.enumerated()), id: \.offset) { idx, spot in
-                            SpotCard(spot: spot, showUserInfo: true, userId: userId)
+                            SpotCard(spot: spot, showUserInfo: true, userId: userId, onDelete: { onDeleteSpot(spot) }, source: "Feed")
                                 .onAppear {
                                     if !firstItemRecorded {
                                         let t = PerfMetrics.shared.measure("t_first_item") ?? 0
@@ -437,7 +483,7 @@ struct SpotMapMarker: View {
 
 // SpotCard Preview
 #Preview {
-    SpotCard(spot: Spot(
+                                SpotCard(spot: Spot(
         id: "test123",
         userId: "user123",
         username: "TestUser",

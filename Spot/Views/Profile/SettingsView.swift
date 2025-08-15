@@ -89,8 +89,25 @@ struct SettingsView: View {
                     .buttonStyle(PlainButtonStyle())
                     .disabled(isSaving)
 
-                    // Logout & Delete Section
-                    sectionHeader("Danger Zone")
+                    // Privacy & Account Section
+                    sectionHeader("Privacy & Account")
+                    
+                    NavigationLink {
+                        BlockedUsersView()
+                    } label: {
+                        Text("Blocked Users")
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
 
                     Button {
                         authVM.signOut()
