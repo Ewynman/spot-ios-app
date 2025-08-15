@@ -156,6 +156,71 @@ final class SpotService {
         }
     }
 
+    // MARK: - Fetch Single Spot
+    
+    func fetchSpotById(_ spotId: String) async throws -> Spot? {
+        SpotLogger.debug("SpotService: Fetching spot by ID: \(spotId)")
+        
+        let docRef = Firestore.firestore().collection("spots").document(spotId)
+        let document = try await docRef.getDocument()
+        
+        guard document.exists else {
+            SpotLogger.warning("SpotService: Spot not found with ID: \(spotId)")
+            return nil
+        }
+        
+        let data = document.data() ?? [:]
+        
+        // Check if user is blocked
+        if let userId = data["userId"] as? String {
+            let isBlocked = await checkIfUserIsBlocked(userId)
+            if isBlocked {
+                SpotLogger.info("SpotService: Spot owner is blocked, returning nil for spot: \(spotId)")
+                return nil
+            }
+        }
+        
+        guard let userId = data["userId"] as? String,
+              let imageURL = data["imageURL"] as? String,
+              let latitude = data["latitude"] as? Double,
+              let longitude = data["longitude"] as? Double else {
+            SpotLogger.error("SpotService: Invalid spot data for ID: \(spotId)")
+            return nil
+        }
+        
+        let spot = Spot(
+            id: document.documentID,
+            userId: userId,
+            username: data["username"] as? String ?? "Unknown",
+            userProfileImageURL: data["userProfileImageURL"] as? String,
+            imageURL: imageURL,
+            vibeTag: data["vibeTag"] as? String ?? "",
+            latitude: latitude,
+            longitude: longitude,
+            locationName: data["locationName"] as? String,
+            likes: data["likes"] as? Int ?? 0,
+            isLiked: data["isLiked"] as? Bool ?? false,
+            isSaved: data["isSaved"] as? Bool ?? false,
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
+        )
+        
+        SpotLogger.info("SpotService: Successfully fetched spot: \(spotId)")
+        return spot
+    }
+    
+    private func checkIfUserIsBlocked(_ userId: String) async -> Bool {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        
+        do {
+            let userDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
+            let blockedUsers = userDoc.data()?["blockedUsers"] as? [String] ?? []
+            return blockedUsers.contains(userId)
+        } catch {
+            SpotLogger.error("SpotService: Failed to check blocked users: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     // MARK: - Delete Spot
     func deleteSpot(_ spot: Spot) async throws {
         guard let id = spot.id else {

@@ -10,6 +10,17 @@
 	<string>Spot uses your location to show nearby spots and add your spot to the map</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Spot sends you alerts about new spots nearby</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.spotapp.spot</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>spotapp</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>SFProRounded-Black.otf</string>
