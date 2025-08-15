@@ -21,7 +21,7 @@ struct SpotUnavailableView: View {
             
             // Title
             Text("Spot Unavailable")
-                .font(FontManager.titleText())
+                .font(FontManager.primaryText())
                 .fontWeight(.bold)
                 .multilineTextAlignment(.center)
             

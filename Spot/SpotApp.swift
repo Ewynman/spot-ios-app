@@ -13,6 +13,8 @@ struct SpotApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var deepLinkState = DeepLinkState.shared
     @State private var showLaunchScreen = true
+    
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
         FirebaseApp.configure()
@@ -42,21 +44,6 @@ struct SpotApp: App {
                 }
             }
         }
-        .onOpenURL { url in
-            // Handle custom scheme URLs
-            SpotLogger.info("SpotApp: Received custom scheme URL: \(url.absoluteString)")
-            deepLinkState.handleDeepLink(url, origin: .customScheme, isColdStart: false)
-        }
-        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
-            // Handle Universal Links
-            guard let url = userActivity.webpageURL else {
-                SpotLogger.warning("SpotApp: Universal link without webpage URL")
-                return
-            }
-            
-            let isColdStart = showLaunchScreen
-            SpotLogger.info("SpotApp: Received Universal Link: \(url.absoluteString), coldStart: \(isColdStart)")
-            deepLinkState.handleDeepLink(url, origin: .universalLink, isColdStart: isColdStart)
-        }
+
     }
 }

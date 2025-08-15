@@ -99,54 +99,7 @@ struct SettingsView: View {
                             .font(FontManager.buttonText())
                             .foregroundColor(Constants.Colors.primary)
                             
-                    // Development & Testing Section
-                    sectionHeader("Development & Testing")
-                    
-                    Button(action: {
-                        DeepLinkState.shared.testDeepLink()
-                    }) {
-                        HStack {
-                            Text("Test Deep Link (Mock)")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(Constants.Colors.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
-                                .foregroundColor(.gray)
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Button(action: {
-                        DeepLinkState.shared.testWithRealSpot()
-                    }) {
-                        HStack {
-                            Text("Test Deep Link (Real)")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(Constants.Colors.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14))
-                                .foregroundColor(.gray)
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(PlainButtonStyle())
+
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.white)

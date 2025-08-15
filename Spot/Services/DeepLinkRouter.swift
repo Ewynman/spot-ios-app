@@ -35,9 +35,10 @@ final class DeepLinkRouter {
     
     func parseURL(_ url: URL) -> DeepLinkRoute {
         SpotLogger.debug("DeepLinkRouter: Parsing URL: \(url.absoluteString)")
+        SpotLogger.debug("DeepLinkRouter: Host: \(url.host ?? "nil"), Path: \(url.path), PathComponents: \(url.pathComponents)")
         
-        // Handle Universal Links (https://spotapp.online/s/:spotId)
-        if url.scheme == "https" && (url.host == "spotapp.online" || url.host == "www.spotapp.online") {
+        // Handle Universal Links (https://spotapp.online/s/:spotId or https://ngrok-free.app/s/:spotId for DEBUG)
+        if url.scheme == "https" && (url.host == "spotapp.online" || url.host == "www.spotapp.online" || url.host == "454ab5d34eb4.ngrok-free.app") {
             return parseUniversalLink(url)
         }
         
@@ -70,19 +71,45 @@ final class DeepLinkRouter {
     
     private func parseCustomScheme(_ url: URL) -> DeepLinkRoute {
         let pathComponents = url.pathComponents.filter { $0 != "/" }
+        let host = url.host?.lowercased()
         
-        // Pattern: spot/:spotId
-        if pathComponents.count == 2 && pathComponents[0] == "spot" {
-            let spotId = pathComponents[1]
+        SpotLogger.debug("DeepLinkRouter: Custom scheme parsing - Host: \(host ?? "nil"), PathComponents: \(pathComponents)")
+        
+        // Pattern 1: spotapp://spot/:spotId (host = "spot", path = "/:spotId")
+        if host == "spot" && pathComponents.count == 1 {
+            let spotId = pathComponents[0]
             if isValidSpotId(spotId) {
-                SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme for spot: \(spotId)")
+                SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (host variant) for spot: \(spotId)")
                 return .spotDetail(spotId: spotId)
             } else {
-                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme: \(spotId)")
+                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (host variant): \(spotId)")
             }
         }
         
-        SpotLogger.warning("DeepLinkRouter: Invalid Custom Scheme path: \(url.path)")
+        // Pattern 2: spotapp:///spot/:spotId (host = nil, path = "/spot/:spotId")
+        if host == nil && pathComponents.count == 2 && pathComponents[0].lowercased() == "spot" {
+            let spotId = pathComponents[1]
+            if isValidSpotId(spotId) {
+                SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (path variant) for spot: \(spotId)")
+                return .spotDetail(spotId: spotId)
+            } else {
+                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (path variant): \(spotId)")
+            }
+        }
+        
+        // Pattern 3: spotapp://open?spotId=:spotId (query variant)
+        if host == "open" || (host == nil && pathComponents.count == 1 && pathComponents[0].lowercased() == "open") {
+            if let spotId = url.queryParameters?["spotId"] {
+                if isValidSpotId(spotId) {
+                    SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (query variant) for spot: \(spotId)")
+                    return .spotDetail(spotId: spotId)
+                } else {
+                    SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (query variant): \(spotId)")
+                }
+            }
+        }
+        
+        SpotLogger.warning("DeepLinkRouter: Invalid Custom Scheme - Host: \(host ?? "nil"), Path: \(url.path)")
         return .unknown
     }
     
@@ -90,9 +117,26 @@ final class DeepLinkRouter {
         // Basic validation: non-empty and reasonable length
         return !spotId.isEmpty && spotId.count <= 50 && spotId.range(of: "^[a-zA-Z0-9_-]+$", options: .regularExpression) != nil
     }
-    
-    // MARK: - Analytics
-    
+}
+
+// MARK: - URL Extensions
+
+extension URL {
+    var queryParameters: [String: String]? {
+        guard let components = URLComponents(url: self, resolvingAgainstBaseURL: true),
+              let queryItems = components.queryItems else { return nil }
+        
+        var items: [String: String] = [:]
+        for queryItem in queryItems {
+            items[queryItem.name] = queryItem.value
+        }
+        return items
+    }
+}
+
+// MARK: - Analytics
+
+extension DeepLinkRouter {
     func logDeepLinkEvent(origin: DeepLinkOrigin, spotId: String?, isColdStart: Bool, success: Bool, errorReason: String? = nil) {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         

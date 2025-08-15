@@ -23,6 +23,11 @@ final class DeepLinkState: ObservableObject {
     private let router = DeepLinkRouter.shared
     private let spotService = SpotService.shared
     
+    // Idempotency and debouncing
+    private var lastProcessedSpotId: String?
+    private var lastProcessedTimestamp: Date = Date.distantPast
+    private let debounceInterval: TimeInterval = 1.0 // 1 second debounce
+    
     // MARK: - Deep Link Handling
     
     func handleDeepLink(_ url: URL, origin: DeepLinkOrigin, isColdStart: Bool = false) {
@@ -44,7 +49,31 @@ final class DeepLinkState: ObservableObject {
         }
     }
     
+    func handleInitialUserActivity(_ userActivity: NSUserActivity) {
+        // Handle Universal Links that launched the app (cold start)
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else {
+            return
+        }
+        
+        SpotLogger.info("DeepLinkState: Handling initial user activity - \(url.absoluteString)")
+        handleDeepLink(url, origin: .universalLink, isColdStart: true)
+    }
+    
     private func handleSpotDetailDeepLink(spotId: String, origin: DeepLinkOrigin, isColdStart: Bool) {
+        // Check for idempotency - if we're already showing this spot, do nothing
+        if let currentSpotId = lastProcessedSpotId, currentSpotId == spotId {
+            let timeSinceLastProcess = Date().timeIntervalSince(lastProcessedTimestamp)
+            if timeSinceLastProcess < debounceInterval {
+                SpotLogger.info("DeepLinkState: Ignoring duplicate deep link for spot: \(spotId) (debounced)")
+                return
+            }
+        }
+        
+        // Update tracking
+        lastProcessedSpotId = spotId
+        lastProcessedTimestamp = Date()
+        
         // If app is still starting up, store the pending deep link
         if isColdStart {
             pendingDeepLink = .spotDetail(spotId: spotId)
@@ -92,6 +121,9 @@ final class DeepLinkState: ObservableObject {
         do {
             guard let spot = try await spotService.fetchSpotById(spotId) else {
                 // Spot not found or blocked
+                let result = "not_found"
+                SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
+                
                 router.logDeepLinkEvent(
                     origin: origin,
                     spotId: spotId,
@@ -108,6 +140,9 @@ final class DeepLinkState: ObservableObject {
             }
             
             // Success - navigate to spot
+            let result = "navigated"
+            SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
+            
             router.logDeepLinkEvent(
                 origin: origin,
                 spotId: spotId,
@@ -123,6 +158,9 @@ final class DeepLinkState: ObservableObject {
             
         } catch {
             SpotLogger.error("DeepLinkState: Failed to fetch spot: \(error.localizedDescription)")
+            
+            let result = "error:\(error.localizedDescription)"
+            SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
             
             router.logDeepLinkEvent(
                 origin: origin,
@@ -156,11 +194,26 @@ final class DeepLinkState: ObservableObject {
         showSpotUnavailable = false
     }
     
+    // MARK: - User Session Management
+    
+    func clearUserSession() {
+        // Clear all state when user logs out
+        pendingDeepLink = nil
+        isNavigatingToSpot = false
+        spotDetailSpot = nil
+        showSpotUnavailable = false
+        isLoadingSpot = false
+        lastProcessedSpotId = nil
+        lastProcessedTimestamp = Date.distantPast
+        
+        SpotLogger.info("DeepLinkState: Cleared user session state")
+    }
+    
     // MARK: - Testing
     
     func testDeepLink() {
         // Test with a sample spot ID - replace with a real one from your database
-        let testSpotId = "test_spot_id"
+        let testSpotId = "EB28B022-D9EA-4ABE-BB65-A67CD171993A"
         SpotLogger.info("DeepLinkState: Testing deep link with spot ID: \(testSpotId)")
         openSpot(testSpotId)
     }
@@ -187,5 +240,12 @@ final class DeepLinkState: ObservableObject {
                 SpotLogger.error("Failed to test with real spot: \(error.localizedDescription)")
             }
         }
+    }
+    
+    func testCustomSchemeParsing() {
+        // Test the exact URL from your logs: spotapp://spot/EB28B022-D9EA-4ABE-BB65-A67CD171993A
+        let testUrl = URL(string: "spotapp://spot/EB28B022-D9EA-4ABE-BB65-A67CD171993A")!
+        SpotLogger.info("DeepLinkState: Testing custom scheme parsing with URL: \(testUrl.absoluteString)")
+        handleDeepLink(testUrl, origin: .customScheme, isColdStart: false)
     }
 }

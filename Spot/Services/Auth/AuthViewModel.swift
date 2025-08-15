@@ -83,6 +83,8 @@ class AuthViewModel: ObservableObject {
         do {
             try AuthService.shared.signOut()
             isAuthenticated = false
+            // Clear deep link state when user logs out
+            DeepLinkState.shared.clearUserSession()
         } catch {
             print("❌ Sign out failed: \(error.localizedDescription)")
         }

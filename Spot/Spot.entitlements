@@ -6,6 +6,7 @@
 	<array>
 		<string>applinks:spotapp.online</string>
 		<string>applinks:www.spotapp.online</string>
+		<string>applinks:454ab5d34eb4.ngrok-free.app</string>
 	</array>
 </dict>
 </plist>
