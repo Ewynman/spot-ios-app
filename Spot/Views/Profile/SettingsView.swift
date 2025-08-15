@@ -98,6 +98,8 @@ struct SettingsView: View {
                         Text("Blocked Users")
                             .font(FontManager.buttonText())
                             .foregroundColor(Constants.Colors.primary)
+                            
+
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.white)
