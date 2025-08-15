@@ -7,7 +7,7 @@ final class FeedCandidateService {
     private init() {}
 
     private let db = Firestore.firestore()
-    private let pageSize = 24
+    private let pageSize = FeedFlags.pageSize
 
     struct Page<T> { let items: [T]; let last: DocumentSnapshot? }
 
@@ -15,7 +15,15 @@ final class FeedCandidateService {
         var q: Query = db.collection("spots").order(by: "createdAt", descending: true).limit(to: pageSize)
         if let last { q = q.start(afterDocument: last) }
         let snap = try await q.getDocuments()
-        let items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
+        let items = snap.documents.compactMap { doc in
+            var spot = try? doc.data(as: Spot.self)
+            // Ensure spot.id is populated from Firestore document ID
+            if spot?.id == nil {
+                spot?.id = doc.documentID
+                FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCandidateService.fetchRecent", spot: spot!)
+            }
+            return spot
+        }
         return Page(items: items, last: snap.documents.last)
     }
 
@@ -25,7 +33,15 @@ final class FeedCandidateService {
             var q: Query = db.collection("spots").order(by: "likes", descending: true).order(by: "createdAt", descending: true).limit(to: pageSize)
             if let last { q = q.start(afterDocument: last) }
             let snap = try await q.getDocuments()
-            let items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
+            let items = snap.documents.compactMap { doc in
+                var spot = try? doc.data(as: Spot.self)
+                // Ensure spot.id is populated from Firestore document ID
+                if spot?.id == nil {
+                    spot?.id = doc.documentID
+                    FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCandidateService.fetchTrending", spot: spot!)
+                }
+                return spot
+            }
             return Page(items: items, last: snap.documents.last)
         } catch {
             // Missing composite index or other failure: gracefully fall back to createdAt desc
@@ -33,7 +49,15 @@ final class FeedCandidateService {
             var q: Query = db.collection("spots").order(by: "createdAt", descending: true).limit(to: pageSize)
             if let last { q = q.start(afterDocument: last) }
             let snap = try await q.getDocuments()
-            let items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
+            let items = snap.documents.compactMap { doc in
+                var spot = try? doc.data(as: Spot.self)
+                // Ensure spot.id is populated from Firestore document ID
+                if spot?.id == nil {
+                    spot?.id = doc.documentID
+                    FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCandidateService.fetchTrending_fallback", spot: spot!)
+                }
+                return spot
+            }
             return Page(items: items, last: snap.documents.last)
         }
     }

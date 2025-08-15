@@ -10,20 +10,20 @@ struct SpotsGridView: View {
     let spots: [Spot]
     let onSpotTapped: (Spot) -> Void
     var onLoadMore: (() -> Void)? = nil
+    var columns: Int = 2 // Default to 2 columns for backward compatibility
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible())
-    ]
+    private var gridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 12), count: columns)
+    }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
+            LazyVGrid(columns: gridColumns, spacing: 12) {
                 ForEach(spots) { spot in
                     Button {
                         onSpotTapped(spot)
                     } label: {
-                        SpotGridItem(spot: spot)
+                        SpotGridItem(spot: spot, columns: columns)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -46,6 +46,14 @@ struct SpotsGridView: View {
 
 struct SpotGridItem: View {
     let spot: Spot
+    let columns: Int
+    
+    private var itemWidth: CGFloat {
+        let screenWidth = UIScreen.main.bounds.width
+        let padding: CGFloat = 12 * 2 // horizontal padding
+        let spacing: CGFloat = 12 * CGFloat(columns - 1) // spacing between items
+        return (screenWidth - padding - spacing) / CGFloat(columns)
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -53,16 +61,17 @@ struct SpotGridItem: View {
                 AsyncImage(url: url) { img in
                     img.resizable()
                        .scaledToFill()
-                       .frame(
-                         width: UIScreen.main.bounds.width / 2 - 18,
-                         height: 160
-                       )
+                       .frame(width: itemWidth, height: itemWidth)
                        .clipped()
                 } placeholder: {
                     Rectangle()
                         .fill(Color.gray.opacity(0.2))
-                        .frame(height: 160)
+                        .frame(width: itemWidth, height: itemWidth)
                 }
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: itemWidth, height: itemWidth)
             }
 
             if let location = spot.locationName {

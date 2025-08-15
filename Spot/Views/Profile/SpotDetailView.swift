@@ -11,6 +11,7 @@ import MapKit
 struct SpotDetailView: View {
     let spot: Spot
     let isMapView: Bool // true if opened from map, false if opened from grid
+    var sourceContext: SpotGridContext? = nil // Context for back button text
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -21,9 +22,25 @@ struct SpotDetailView: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var isDeleting: Bool = false
     
-    init(spot: Spot, isMapView: Bool, onDismiss: (() -> Void)? = nil) {
+    private var backButtonText: String {
+        if let sourceContext = sourceContext {
+            switch sourceContext {
+            case .likes:
+                return "Back to All Likes"
+            case .bookmarks:
+                return "Back to All Bookmarks"
+            }
+        } else if isMapView {
+            return "Back to Map"
+        } else {
+            return "Back to All Spots"
+        }
+    }
+    
+    init(spot: Spot, isMapView: Bool, sourceContext: SpotGridContext? = nil, onDismiss: (() -> Void)? = nil) {
         self.spot = spot
         self.isMapView = isMapView
+        self.sourceContext = sourceContext
         self.onDismiss = onDismiss
 
         if let lat = spot.latitude, let long = spot.longitude {
@@ -47,12 +64,23 @@ struct SpotDetailView: View {
             // Top Bar
             HStack {
                 Button(action: {
+                    // Log back button tap
+                    if let sourceContext = sourceContext {
+                        switch sourceContext {
+                        case .likes:
+                            SpotLogger.info("Analytics: back_from_spot_detail_context=likes")
+                        case .bookmarks:
+                            SpotLogger.info("Analytics: back_from_spot_detail_context=bookmarks")
+                        }
+                    }
+                    
                     onDismiss?()
+                    dismiss()
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 16, weight: .semibold))
-                        Text(isMapView ? "Back to Map" : "Back to All Spots")
+                        Text(backButtonText)
                             .font(FontManager.primaryText())
                     }
                     .foregroundColor(Constants.Colors.primary)

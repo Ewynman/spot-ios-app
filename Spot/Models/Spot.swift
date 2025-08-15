@@ -9,7 +9,7 @@ import Foundation
 import FirebaseFirestore
 import CoreLocation
 
-struct Spot: Identifiable, Codable, Equatable {
+struct Spot: Identifiable, Codable, Equatable, Hashable {
     @DocumentID var id: String?
     var userId: String?
     var username: String?
@@ -56,5 +56,9 @@ struct Spot: Identifiable, Codable, Equatable {
     
     static func == (lhs: Spot, rhs: Spot) -> Bool {
         lhs.id == rhs.id
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }

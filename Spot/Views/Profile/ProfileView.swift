@@ -28,6 +28,8 @@ struct ProfileView: View {
     @State private var canViewContent: Bool = true
     @State private var showMenu: Bool = false
     @State private var showSettingsNav: Bool = false
+    @State private var showLikesNav: Bool = false
+    @State private var showBookmarksNav: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     private let tabs = ["Spots", "Map"]
@@ -128,7 +130,7 @@ struct ProfileView: View {
                                             DispatchQueue.main.async {
                                                 if case .success = result {
                                                     self.isFollowingUser = false
-                                                    self.loadUser()
+                                                    self.loadUser(forceReload: true)
                                                 }
                                             }
                                         }
@@ -189,7 +191,7 @@ struct ProfileView: View {
                                                 if case .success = result {
                                                     self.isFollowingUser = true
                                                     self.canViewContent = true
-                                                    self.loadUser()
+                                                    self.loadUser(forceReload: true)
                                                 }
                                             }
                                         }
@@ -309,7 +311,10 @@ struct ProfileView: View {
                         .onTapGesture { withAnimation { showMenu = false } }
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Button { /* Likes */ withAnimation { showMenu = false } } label: {
+                        Button { 
+                            withAnimation { showMenu = false }
+                            showLikesNav = true
+                        } label: {
                             HStack {
                                 Image(systemName: "heart.fill")
                                 Text("Your Likes")
@@ -322,10 +327,13 @@ struct ProfileView: View {
 
                         Divider()
 
-                        Button { /* Bookmarks */ withAnimation { showMenu = false } } label: {
+                        Button { 
+                            withAnimation { showMenu = false }
+                            showBookmarksNav = true
+                        } label: {
                             HStack {
                                 Image(systemName: "bookmark.fill")
-                                Text("Bookmarks")
+                                Text("Your Bookmarks")
                                     .font(FontManager.primaryText())
                             }
                             .foregroundColor(Constants.Colors.primary)
@@ -362,9 +370,20 @@ struct ProfileView: View {
             }
             .background(Color(hex: "F5F3EF"))
             .navigationBarBackButtonHidden(true)
-            .onAppear { loadUser() }
+            .onAppear { 
+                // Only load if we haven't loaded this user yet
+                if lastLoadedUserId != userId {
+                    loadUser()
+                }
+            }
             .navigationDestination(isPresented: $showSettingsNav) {
                 SettingsView()
+            }
+            .navigationDestination(isPresented: $showLikesNav) {
+                SpotGridScreen(context: .likes, userId: userId)
+            }
+            .navigationDestination(isPresented: $showBookmarksNav) {
+                SpotGridScreen(context: .bookmarks, userId: userId)
             }
             .alert("Delete this spot? This can’t be undone.", isPresented: $showDeleteConfirm) {
                 Button("Delete", role: .destructive) {
@@ -375,8 +394,21 @@ struct ProfileView: View {
         }
     }
 
-    private func loadUser() {
+    @State private var isLoadingUser = false
+    @State private var lastLoadedUserId: String?
+    
+    private func loadUser(forceReload: Bool = false) {
+        // Prevent multiple concurrent calls
+        guard !isLoadingUser else { return }
+        
+        // Prevent reloading the same user unless forced
+        if !forceReload, let lastLoaded = lastLoadedUserId, lastLoaded == userId {
+            return
+        }
+        
+        isLoadingUser = true
         isLoading = true
+        
         Task {
             do {
                 let data = try await ProfileService.fetchProfile(for: userId)
@@ -388,10 +420,16 @@ struct ProfileView: View {
                     isFollowingUser = data.isFollowing
                     hasRequestedFollow = data.hasRequested
                     canViewContent = data.canView
+                    lastLoadedUserId = userId
                     isLoading = false
+                    isLoadingUser = false
                 }
             } catch {
-                await MainActor.run { isLoading = false }
+                await MainActor.run { 
+                    isLoading = false
+                    isLoadingUser = false
+                }
+                SpotLogger.error("Profile loadUser failed: \(error.localizedDescription)")
             }
         }
     }

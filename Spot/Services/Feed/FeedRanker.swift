@@ -30,16 +30,21 @@ final class FeedRanker {
         let tCount = pageSize - rCount
         var picked: [Spot] = []
         var seen = Set<String>()
+        var excludedByBlendSeen = 0
 
         func push(_ s: Spot) {
             // Build a robust key so we don't drop items if id is temporarily nil
             let key: String = {
-                if let id = s.id { return "id:\\(id)" }
+                if let id = s.id { return "id:\(id)" }
                 let uid = s.userId ?? "_"
                 let ts = s.createdAt?.timeIntervalSince1970 ?? 0
-                return "u:\\(uid)#t:\\(ts)"
+                return "u:\(uid)#t:\(ts)"
             }()
-            guard !seen.contains(key) else { return }
+            guard !seen.contains(key) else { 
+                excludedByBlendSeen += 1
+                FeedDiagnostics.logExclusion(reason: "blend_seen", source: "FeedRanker.blend", spot: s)
+                return 
+            }
             picked.append(s)
             seen.insert(key)
         }
@@ -52,6 +57,8 @@ final class FeedRanker {
             for s in recent where picked.count < pageSize { push(s) }
             for s in trending where picked.count < pageSize { push(s) }
         }
+        
+        SpotLogger.debug("FeedRanker blend: recent=\(recent.count), trending=\(trending.count), picked=\(picked.count), excludedByBlendSeen=\(excludedByBlendSeen)")
         return picked
     }
 }

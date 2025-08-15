@@ -10,7 +10,7 @@ final class FeedCache {
     private var lastDocument: DocumentSnapshot?
     private var lastCacheTime: Date?
     private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
-    private let pageSize = 10
+    private let pageSize = FeedFlags.pageSize
     
     private var isCacheValid: Bool {
         guard let lastTime = lastCacheTime else { return false }
@@ -44,7 +44,13 @@ final class FeedCache {
         
         let snapshot = try await query.getDocuments()
         let fetchedSpots = snapshot.documents.compactMap { doc in
-            try? doc.data(as: Spot.self)
+            var spot = try? doc.data(as: Spot.self)
+            // Ensure spot.id is populated from Firestore document ID
+            if spot?.id == nil {
+                spot?.id = doc.documentID
+                FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCache.loadInitialSpots", spot: spot!)
+            }
+            return spot
         }
 
         let spots = try await filterSpotsForPrivacy(fetchedSpots)
@@ -71,7 +77,13 @@ final class FeedCache {
         
         let snapshot = try await query.getDocuments()
         let fetched = snapshot.documents.compactMap { doc in
-            try? doc.data(as: Spot.self)
+            var spot = try? doc.data(as: Spot.self)
+            // Ensure spot.id is populated from Firestore document ID
+            if spot?.id == nil {
+                spot?.id = doc.documentID
+                FeedDiagnostics.logExclusion(reason: "nil_id_fixed", source: "FeedCache.loadMoreSpots", spot: spot!)
+            }
+            return spot
         }
         let newSpots = try await filterSpotsForPrivacy(fetched)
         

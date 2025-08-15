@@ -211,6 +211,7 @@ struct NavigationButtonsView: View {
                                 .stroke(Constants.Colors.primary, lineWidth: 1)
                         )
                 }
+                .buttonStyle(PlainButtonStyle())
             }
             
             Button(action: currentStep == totalSteps ? onFinish : onNext) {

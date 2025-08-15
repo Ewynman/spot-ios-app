@@ -17,34 +17,52 @@ struct BlockedUsersView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if isLoading {
-                    Spacer()
-                    ProgressView("Loading blocked users...")
-                    Spacer()
-                } else if blockedUserDetails.isEmpty {
-                    emptyStateView
-                } else {
-                    blockedUsersList
+        VStack(spacing: 0) {
+            // Custom Header
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(Constants.Colors.primary)
+                        .buttonStyle(PlainButtonStyle())
                 }
+                
+                Spacer()
+                
+                Text("Blocked Users")
+                    .font(FontManager.sectionHeader())
+                    .fontWeight(.bold)
+                    .foregroundColor(Constants.Colors.primary)
+                
+                Spacer()
+                
+                // Invisible spacer for balance
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.clear)
+                    .buttonStyle(PlainButtonStyle())
             }
-            .navigationTitle("Blocked Users")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(Constants.Colors.primary)
-                    }
-                }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .buttonStyle(PlainButtonStyle())
+            
+            // Content
+            if isLoading {
+                Spacer()
+                ProgressView("Loading blocked users...")
+                Spacer()
+            } else if blockedUserDetails.isEmpty {
+                emptyStateView
+            } else {
+                blockedUsersList
             }
-            .background(Color(hex: "F5F3EF"))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: "F5F3EF"))
+        .navigationBarBackButtonHidden(true)
         .onAppear {
             loadBlockedUsers()
         }
@@ -83,6 +101,7 @@ struct BlockedUsersView: View {
             
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "F5F3EF"))
     }
     
@@ -96,6 +115,7 @@ struct BlockedUsersView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "F5F3EF"))
     }
     

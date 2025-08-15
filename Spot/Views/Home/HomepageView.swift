@@ -293,11 +293,13 @@ struct FeedContentView: View {
     
     var validSpots: [Spot] {
         spots.filter { spot in
-            // Relax createdAt to allow immediate visibility after posting (serverTimestamp may be pending)
-            !(spot.imageURL ?? "").isEmpty &&
-            !(spot.username ?? "").isEmpty &&
-            spot.latitude != nil &&
-            spot.longitude != nil
+            // For feed, only require imageURL to be present
+            // Username and coordinates are optional for feed display
+            let isValid = !(spot.imageURL ?? "").isEmpty
+            if !isValid {
+                FeedDiagnostics.logExclusion(reason: "missing_imageURL", source: "FeedContentView.validSpots", spot: spot)
+            }
+            return isValid
         }
     }
     

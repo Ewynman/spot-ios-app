@@ -6,6 +6,15 @@
 
 import SwiftUI
 
+// MARK: - Preference Keys
+
+struct MenuButtonFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct SpotCard: View {
     let spot: Spot
     let showUserInfo: Bool    // show profile pic + username if true
@@ -16,6 +25,7 @@ struct SpotCard: View {
     @State private var showShareSheet: Bool = false
     @State private var showReportSheet: Bool = false
     @State private var showCustomMenu: Bool = false
+    @State private var menuButtonFrame: CGRect = .zero
     @EnvironmentObject var authVM: AuthViewModel
     @State private var isLiked: Bool = false
     @State private var isSaved: Bool = false
@@ -206,6 +216,11 @@ struct SpotCard: View {
                             .frame(width: 24, height: 24, alignment: .center)
                             .contentShape(Rectangle())
                             .accessibilityLabel("More actions")
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(key: MenuButtonFrameKey.self, value: geo.frame(in: .global))
+                                }
+                            )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -267,6 +282,9 @@ struct SpotCard: View {
                 }
             }
         )
+        .onPreferenceChange(MenuButtonFrameKey.self) { frame in
+            menuButtonFrame = frame
+        }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(spot: spot)
         }
@@ -277,20 +295,24 @@ struct SpotCard: View {
     
     // MARK: - Custom Menu
     private var customMenuOverlay: some View {
-        ZStack {
-            // Tappable background to dismiss
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .onTapGesture { showCustomMenu = false }
-            
-            VStack {
-                Spacer()
-                HStack {
+        GeometryReader { geometry in
+            ZStack {
+                // Tappable background to dismiss
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { showCustomMenu = false }
+                
+                // Position menu near the three dots button
+                VStack {
                     Spacer()
-                    customMenuContent
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 8)
+                    HStack {
+                        Spacer()
+                        customMenuContent
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 8)
+                    }
                 }
+                .offset(x: -menuButtonFrame.width - 8, y: -menuButtonFrame.height - 8)
             }
         }
     }
