@@ -32,6 +32,20 @@ service cloud.firestore {
       }
     }
 
+    // Follow Requests security
+    // - Only the target user may read/manage their followRequests
+    // - Requesters may create a request doc under the target's followRequests but cannot read the collection
+    match /users/{targetUid}/followRequests/{requesterUid} {
+      allow create: if request.auth != null && request.auth.uid == requesterUid;
+      allow read, update, delete: if request.auth != null && request.auth.uid == targetUid;
+    }
+
+    // Optional followers subcollection guard: only the target may write their own followers
+    match /users/{targetUid}/followers/{followerUid} {
+      allow read: if false; // followers list is not publicly readable in this app
+      allow write: if request.auth != null && request.auth.uid == targetUid;
+    }
+
     // Default: keep existing rules for other collections
     match /{document=**} {
       allow read, write: if false;

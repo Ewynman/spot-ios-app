@@ -256,7 +256,7 @@ struct SettingsView: View {
             group.leave()
         }
 
-        if !email.isEmpty {
+        if !email.isEmpty && email != Auth.auth().currentUser?.email {
             group.enter()
             // For security, require reauth before email/password modifications
             authVM.reauthenticate(currentPassword: currentPassword) { _ in

@@ -6,6 +6,7 @@
 
 import SwiftUI
 import MapKit
+import FirebaseFirestore
 
 struct ProfileView: View {
     var userId: String? = nil
@@ -30,6 +31,10 @@ struct ProfileView: View {
     @State private var showSettingsNav: Bool = false
     @State private var showLikesNav: Bool = false
     @State private var showBookmarksNav: Bool = false
+    @State private var showFollowRequestsNav: Bool = false
+    @State private var followRequestsCount: Int = 0
+    @State private var followReqListener: ListenerRegistration? = nil
+
     @Environment(\.dismiss) private var dismiss
 
     private let tabs = ["Spots", "Map"]
@@ -189,9 +194,7 @@ struct ProfileView: View {
                                         UserSpotService.shared.follow(userId: viewedUserId) { result in
                                             DispatchQueue.main.async {
                                                 if case .success = result {
-                                                    self.isFollowingUser = true
-                                                    self.canViewContent = true
-                                                    self.loadUser(forceReload: true)
+                                                    
                                                 }
                                             }
                                         }
@@ -207,99 +210,36 @@ struct ProfileView: View {
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             }
-                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 8)
                         }
 
+                        // Tabs (match Homepage style)
                         HStack(spacing: 32) {
                             ForEach(tabs, id: \.self) { tab in
-                                VStack(spacing: 4) {
-                                    Text(tab)
-                                        .font(FontManager.primaryText())
-                                        .fontWeight(selectedTab == tab ? .semibold : .regular)
-                                        .foregroundColor(selectedTab == tab ? Constants.Colors.primary : .gray)
-                                    Rectangle()
-                                        .fill(selectedTab == tab ? Constants.Colors.primary : Color.clear)
-                                        .frame(height: 2)
-                                }
-                                .onTapGesture {
+                                TabItemView(tab: tab, isSelected: selectedTab == tab) {
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         selectedTab = tab
-                                        selectedSpot = nil
                                     }
                                 }
                             }
-                            Spacer()
                         }
-                        .padding(.horizontal, 16)
-                    }
-                    .padding(.bottom, 8)
 
-                    // MARK: — Main Content
-                    if !canViewContent {
-                        VStack(spacing: 12) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(.gray)
-                            Text("This user is private")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(.gray)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if selectedTab == "Spots" {
-                        if let spot = selectedSpot {
-                            // -------------------------
-                            // Show just the tapped SpotCard
-                            // -------------------------
-                            ScrollView {
-                                HStack {
-                                    Button {
-                                        withAnimation(.easeInOut) {
-                                            selectedSpot = nil
-                                        }
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "chevron.left")
-                                            Text("Back to Spots")
-                                        }
-                                        .font(FontManager.primaryText())
-                                        .foregroundColor(Constants.Colors.primary)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-
-                                SpotCard(spot: spot, showUserInfo: false, userId: authVM.userId, onDelete: {
-                                    pendingDeleteSpot = spot
-                                    showDeleteConfirm = true
-                                }, source: "ProfileDetail")
-                                    .padding(.vertical, 12)
-                                    .onAppear {
-                                        SpotLogger.debug("ProfileDetail SpotCard mounted with onDelete non-nil=\(true)")
-                                    }
+                        if selectedTab == "Spots" {
+                            SpotsGridView(spots: spots) { tapped in
+                                selectedSpot = tapped
                             }
                         } else {
-                            // -------------------------
-                            // Show the grid of spots
-                            // -------------------------
-                            SpotsGridView(spots: spots) { tapped in
-                                withAnimation(.easeInOut) {
-                                    selectedSpot = tapped
-                                }
+                            // Map tab unchanged
+                            ProfileMapView(spots: spots) { tapped in
+                                selectedSpot = tapped
                             }
                         }
-                    } else {
-                        // Map tab unchanged
-                        ProfileMapView(spots: spots) { tapped in
-                            selectedSpot = tapped
-                        }
                     }
-                }
 
-                // Show bottom nav only when this is not a pushed screen (root in tab)
-                if fromNavigationPush {
-                    BottomNavigationView(selectedTab: .constant("Home"))
+                    // Show bottom nav only when this is not a pushed screen (root in tab)
+                    if fromNavigationPush {
+                        BottomNavigationView(selectedTab: .constant("Home"))
+                    }
                 }
                 }
 
@@ -343,6 +283,33 @@ struct ProfileView: View {
 
                         Divider()
 
+                        if isPrivateProfile {
+                            Button {
+                                withAnimation { showMenu = false }
+                                showFollowRequestsNav = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "person.badge.plus")
+                                    Text("Follow Requests")
+                                        .font(FontManager.primaryText())
+                                    if followRequestsCount > 0 {
+                                        Text("\(followRequestsCount)")
+                                            .font(.caption)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Constants.Colors.primary)
+                                            .foregroundColor(Constants.Colors.buttonText)
+                                            .cornerRadius(8)
+                                    }
+                                }
+                                .foregroundColor(Constants.Colors.primary)
+                                .padding(12)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Divider()
+                        }
+
                         Button {
                             withAnimation { showMenu = false }
                             showSettingsNav = true
@@ -375,7 +342,16 @@ struct ProfileView: View {
                 if lastLoadedUserId != userId {
                     loadUser()
                 }
+                // Start/stop pending count listener for own private profile
+                let isSelf = (userId == nil) || (userId == authVM.userId)
+                if isSelf && isPrivateProfile, let uid = authVM.userId {
+                    followReqListener?.remove()
+                    followReqListener = FollowRequestsService.shared.listenPendingCount(for: uid) { n in
+                        followRequestsCount = n
+                    }
+                }
             }
+            .onDisappear { followReqListener?.remove(); followReqListener = nil }
             .navigationDestination(isPresented: $showSettingsNav) {
                 SettingsView()
             }
@@ -384,6 +360,9 @@ struct ProfileView: View {
             }
             .navigationDestination(isPresented: $showBookmarksNav) {
                 SpotGridScreen(context: .bookmarks, userId: userId)
+            }
+            .navigationDestination(isPresented: $showFollowRequestsNav) {
+                FollowRequestsView()
             }
             .alert("Delete this spot? This can’t be undone.", isPresented: $showDeleteConfirm) {
                 Button("Delete", role: .destructive) {
@@ -439,32 +418,20 @@ struct ProfileView: View {
 extension ProfileView {
     @MainActor
     private func deleteSpotFromProfile(_ spot: Spot) async {
-        guard let id = spot.id else {
-            SpotLogger.error("Profile delete requested for spot without id")
-            pendingDeleteSpot = nil
-            return
-        }
+        guard let id = spot.id else { return }
         if deletingSpotIds.contains(id) { return }
         deletingSpotIds.insert(id)
 
-        // Optimistic removal
-        let previousSpots = spots
-        let previousSelected = selectedSpot
+        let prevSpots = spots
         spots.removeAll { $0.id == id }
-        if selectedSpot?.id == id { selectedSpot = nil }
 
         do {
-            SpotLogger.info("Profile: deleting spot id=\(id)")
             try await SpotService.shared.deleteSpot(spot)
             deletingSpotIds.remove(id)
-            pendingDeleteSpot = nil
         } catch {
-            SpotLogger.error("Profile: delete failed id=\(id): \(error.localizedDescription)")
-            // Rollback
-            spots = previousSpots
-            selectedSpot = previousSelected
+            SpotLogger.error("Profile delete failed: \(error.localizedDescription)")
+            spots = prevSpots
             deletingSpotIds.remove(id)
-            pendingDeleteSpot = nil
         }
     }
 }

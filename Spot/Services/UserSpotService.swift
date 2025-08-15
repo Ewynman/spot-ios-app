@@ -89,11 +89,20 @@ class UserSpotService {
 
     func requestFollow(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
-        let currentUserRef = db.collection("users").document(currentUserId)
-        currentUserRef.updateData([
-            "requestedFollows": FieldValue.arrayUnion([targetUserId])
-        ]) { error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        let now = FieldValue.serverTimestamp()
+        let reqRef = db.collection("users").document(targetUserId).collection("followRequests").document(currentUserId)
+        // Write a request doc with denormed fields for list UI
+        db.collection("users").document(currentUserId).getDocument { snap, _ in
+            let username = snap?.data()? ["username"] as? String ?? ""
+            let photoURL = snap?.data()? ["profileImageURL"] as? String ?? ""
+            reqRef.setData([
+                "requesterUid": currentUserId,
+                "createdAt": now,
+                "username": username,
+                "photoURL": photoURL
+            ]) { error in
+                if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+            }
         }
     }
 
@@ -119,10 +128,8 @@ class UserSpotService {
 
     func cancelFollowRequest(userId targetUserId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let currentUserId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
-        let currentUserRef = db.collection("users").document(currentUserId)
-        currentUserRef.updateData([
-            "requestedFollows": FieldValue.arrayRemove([targetUserId])
-        ]) { error in
+        let reqRef = db.collection("users").document(targetUserId).collection("followRequests").document(currentUserId)
+        reqRef.delete { error in
             if let error = error { completion(.failure(error)) } else { completion(.success(())) }
         }
     }
