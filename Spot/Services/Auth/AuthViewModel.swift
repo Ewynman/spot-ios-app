@@ -13,6 +13,8 @@ class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isLoading: Bool = true
     @Published var userId: String? = nil
+    @Published var isEmailVerified: Bool = false
+    @Published var emailResendAvailableAt: Date? = nil
     @Published var likedSpots: [String] = []
     @Published var bookmarkedSpots: [String] = []
     @Published var blockedUsers: [String] = []
@@ -37,6 +39,7 @@ class AuthViewModel: ObservableObject {
                     self?.userId = user.uid
                     self?.isAuthenticated = true
                     self?.isLoading = false
+                    self?.isEmailVerified = user.isEmailVerified
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
                 }
@@ -46,6 +49,7 @@ class AuthViewModel: ObservableObject {
                     self?.userId = nil
                     self?.isAuthenticated = false
                     self?.isLoading = false
+                    self?.isEmailVerified = false
                     self?.likedSpots = []
                     self?.bookmarkedSpots = []
                     self?.blockedUsers = []
@@ -260,6 +264,73 @@ class AuthViewModel: ObservableObject {
         Firestore.firestore().collection("users").document(userId).updateData(["isPrivate": isPrivate]) { error in
             if let error = error { completion(.failure(error)) } else { completion(.success(())) }
         }
+    }
+
+    // MARK: - Email Verification
+    func sendVerificationEmail() async {
+        guard let user = Auth.auth().currentUser else { return }
+        do {
+            try await user.sendEmailVerification()
+            SpotLogger.info("Auth.EmailVerify.Sent")
+            await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
+        } catch {
+            SpotLogger.error("sendVerificationEmail failed: \(error.localizedDescription)")
+        }
+    }
+
+    func canResendVerification() -> Bool {
+        guard let t = emailResendAvailableAt else { return true }
+        return Date() >= t
+    }
+
+    func secondsUntilResend() -> Int {
+        guard let t = emailResendAvailableAt else { return 0 }
+        return max(0, Int(t.timeIntervalSinceNow.rounded()))
+    }
+
+    func checkVerificationStatus() async -> Bool {
+        guard let user = Auth.auth().currentUser else { return false }
+        do {
+            try await user.reload()
+            let verified = user.isEmailVerified
+            if verified { SpotLogger.info("Auth.EmailVerify.Verified") }
+            await MainActor.run { self.isEmailVerified = verified }
+            if verified, let uid = user.uid as String? {
+                // Persist server-side marker for analytics and visibility
+                try? await Firestore.firestore().collection("users").document(uid).setData(["isVerified": true], merge: true)
+            }
+            return verified
+        } catch {
+            SpotLogger.error("checkVerificationStatus failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func verifyBeforeUpdateEmail(_ newEmail: String) async throws {
+        guard let user = Auth.auth().currentUser else { throw NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]) }
+        do {
+            try await user.sendEmailVerification(beforeUpdatingEmail: newEmail)
+            SpotLogger.info("Auth.ChangeEmail.VerifySent")
+            await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
+        } catch {
+            let ns = error as NSError
+            if ns.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                SpotLogger.warning("Auth.ChangeEmail.ReauthRequired")
+            } else {
+                SpotLogger.error("Auth.ChangeEmail.Error(\(ns.code))")
+            }
+            throw error
+        }
+    }
+
+    var maskedEmail: String {
+        let e = Auth.auth().currentUser?.email ?? ""
+        guard let at = e.firstIndex(of: "@") else { return e }
+        let name = e[..<at]
+        let domain = e[at...]
+        let keep = min(2, name.count)
+        let head = name.prefix(keep)
+        return String(head) + "****" + String(domain)
     }
 
     // MARK: - Reauthentication

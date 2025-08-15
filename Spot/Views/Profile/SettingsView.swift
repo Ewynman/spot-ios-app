@@ -257,13 +257,29 @@ struct SettingsView: View {
         }
 
         if !email.isEmpty && email != Auth.auth().currentUser?.email {
-            group.enter()
-            // For security, require reauth before email/password modifications
-            authVM.reauthenticate(currentPassword: currentPassword) { _ in
-                authVM.updateEmail(email) { result in
-                    if case let .failure(err) = result { firstError = firstError ?? err }
-                    group.leave()
-                }
+            // Ask user to confirm change and send verification link
+            DispatchQueue.main.async {
+                let newEmail = email
+                // Present inline confirm style in place
+                let alert = UIAlertController(title: "Confirm new email", message: "We’ll send a verification link to \(newEmail). Your email will update after you verify.", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: { _ in }))
+                alert.addAction(UIAlertAction(title: "Send & Verify", style: .default, handler: { _ in
+                    Task {
+                        do {
+                            // Reauth best-effort
+                            if !currentPassword.isEmpty { await withCheckedContinuation { cont in authVM.reauthenticate(currentPassword: currentPassword) { _ in cont.resume() } } }
+                            try await authVM.verifyBeforeUpdateEmail(newEmail)
+                            // Navigate to confirmation screen
+                            if let root = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController {
+                                let hosting = UIHostingController(rootView: ConfirmNewEmailView(newEmail: newEmail).environmentObject(authVM))
+                                root.present(hosting, animated: true)
+                            }
+                        } catch {
+                            firstError = firstError ?? error
+                        }
+                    }
+                }))
+                UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController?.present(alert, animated: true)
             }
         }
 

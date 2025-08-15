@@ -262,6 +262,13 @@ struct SignupView: View {
                     changeReq.displayName = self.username
                     changeReq.commitChanges(completion: nil)
                 }
+                // Send verification email and push confirm screen
+                Task { await AuthViewModel().sendVerificationEmail() }
+                DispatchQueue.main.async {
+                    let confirm = ConfirmEmailView().environmentObject(AuthViewModel())
+                    let hosting = UIHostingController(rootView: confirm)
+                    UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController?.present(hosting, animated: true)
+                }
                 // Now that we're authenticated, upload the profile picture
                 ProfilePictureUploader.shared.uploadProfilePicture(image: profileImage) { uploadResult in
                     DispatchQueue.main.async {
