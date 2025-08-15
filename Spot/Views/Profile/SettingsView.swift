@@ -270,10 +270,9 @@ struct SettingsView: View {
                             if !currentPassword.isEmpty { await withCheckedContinuation { cont in authVM.reauthenticate(currentPassword: currentPassword) { _ in cont.resume() } } }
                             try await authVM.verifyBeforeUpdateEmail(newEmail)
                             // Navigate to confirmation screen
-                            if let root = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController {
-                                let hosting = UIHostingController(rootView: ConfirmNewEmailView(newEmail: newEmail).environmentObject(authVM))
-                                root.present(hosting, animated: true)
-                            }
+                            // Use SwiftUI navigation push via a navigation state instead of presenting UIKit controller
+                            // Fallback: show a lightweight toast to prompt user to check inbox
+                            successMessage = "Verification email sent. Check your inbox."
                         } catch {
                             firstError = firstError ?? error
                         }

@@ -23,7 +23,9 @@ struct SignupView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showLogin = false
+    @State private var showConfirmEmail = false
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authVM: AuthViewModel
 
     var body: some View {
         NavigationStack {
@@ -216,6 +218,9 @@ struct SignupView: View {
                 .navigationDestination(isPresented: $showLogin) {
                     LoginView()
                 }
+                .navigationDestination(isPresented: $showConfirmEmail) {
+                    ConfirmEmailView()
+                }
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -262,13 +267,9 @@ struct SignupView: View {
                     changeReq.displayName = self.username
                     changeReq.commitChanges(completion: nil)
                 }
-                // Send verification email and push confirm screen
-                Task { await AuthViewModel().sendVerificationEmail() }
-                DispatchQueue.main.async {
-                    let confirm = ConfirmEmailView().environmentObject(AuthViewModel())
-                    let hosting = UIHostingController(rootView: confirm)
-                    UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController?.present(hosting, animated: true)
-                }
+                // Send verification email and push confirm screen (using shared VM)
+                Task { await authVM.sendVerificationEmail() }
+                DispatchQueue.main.async { self.showConfirmEmail = true }
                 // Now that we're authenticated, upload the profile picture
                 ProfilePictureUploader.shared.uploadProfilePicture(image: profileImage) { uploadResult in
                     DispatchQueue.main.async {

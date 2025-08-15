@@ -17,12 +17,14 @@ struct RootView: View {
                 LaunchView()
             } else if authViewModel.isAuthenticated {
                 ZStack {
-                    HomepageView()
-                        .onAppear {
-                            // Process any pending deep links when user becomes authenticated
-                            deepLinkState.processPendingDeepLinks()
+                    // Main content (verified vs confirm)
+                    Group {
+                        if authViewModel.isEmailVerified {
+                            HomepageView()
+                        } else {
+                            ConfirmEmailView()
                         }
-                    
+                    }
                     // Shared Spot Overlay
                     if deepLinkState.isNavigatingToSpot, let spot = deepLinkState.spotDetailSpot {
                         VStack(spacing: 0) {
@@ -108,6 +110,10 @@ struct RootView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: deepLinkState.showSpotUnavailable)
                     }
+                }
+                .onAppear {
+                    // Process any pending deep links when user becomes authenticated
+                    deepLinkState.processPendingDeepLinks()
                 }
             } else {
                 WelcomeView()

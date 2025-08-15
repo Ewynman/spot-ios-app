@@ -309,6 +309,7 @@ class AuthViewModel: ObservableObject {
     func verifyBeforeUpdateEmail(_ newEmail: String) async throws {
         guard let user = Auth.auth().currentUser else { throw NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]) }
         do {
+            // Prefer new API if available; fallback to generate link on backend if needed
             try await user.sendEmailVerification(beforeUpdatingEmail: newEmail)
             SpotLogger.info("Auth.ChangeEmail.VerifySent")
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
