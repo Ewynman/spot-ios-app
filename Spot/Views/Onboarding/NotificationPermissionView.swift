@@ -59,9 +59,11 @@ struct NotificationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            PermissionManager.shared.requestNotificationPermission { granted in
-                                print("Notifications granted: \(granted)")
-                                navigateToSignup = true
+                            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                                DispatchQueue.main.async {
+                                    SpotLogger.info("Notifications granted: \(granted)")
+                                    navigateToSignup = true
+                                }
                             }
                         }) {
                             Text("Allow Notifications")

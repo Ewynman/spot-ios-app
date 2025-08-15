@@ -37,9 +37,18 @@ struct SpotApp: App {
                     RootView()
                         .environmentObject(authViewModel)
                         .environmentObject(deepLinkState)
+                        .environmentObject(PermissionManager.shared)
                         .onAppear {
+                            // Handle fresh install detection
+                            let wasAutoSignedOut = FreshInstallDetector.shared.handleFreshInstall()
+                            
                             // Process any pending deep links after app is ready
                             deepLinkState.processPendingDeepLinks()
+                            
+                            // Request permissions if needed (after login)
+                            if authViewModel.isAuthenticated {
+                                PermissionManager.shared.requestPermissionsIfNeeded()
+                            }
                         }
                 }
             }

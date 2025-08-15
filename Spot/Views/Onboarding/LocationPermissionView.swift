@@ -58,7 +58,7 @@ struct LocationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            PermissionManager.shared.requestLocationPermission()
+                            PermissionManager.shared.requestPermissionsIfNeeded()
                             navigateToNotifications = true
                         }) {
                             Text("Enable Location")

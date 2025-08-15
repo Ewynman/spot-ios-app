@@ -16,6 +16,23 @@ enum Constants {
         static let textPrimary = Color(hex: "#1D2C24")     // Main text color (all text except button text)
         static let accent = Color(hex: "#DEE6D8")          // Accent color for vibe tags only
     }
+    
+    enum UserDefaultsKeys {
+        static let firstRun = "firstRun"
+        static let notificationsRequested = "notificationsRequested"
+        static let locationPermissionRequested = "locationPermissionRequested"
+        static let lastKnownLocationStatus = "lastKnownLocationStatus"
+        static let lastKnownNotificationStatus = "lastKnownNotificationStatus"
+    }
+    
+    enum Analytics {
+        static let authReinstall = "AuthReinstall"
+        static let permissionsRequested = "Perms.Requested"
+        static let feedDropPrivate = "Feed.DropPrivate"
+        static let imageLoadFailed = "Image.LoadFailed"
+        static let authEmailInUse = "Auth.EmailInUse"
+        static let authDeleteByEmail = "Auth.DeleteByEmail"
+    }
 }
 
 extension Color {

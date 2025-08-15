@@ -35,19 +35,10 @@ class AuthViewModel: ObservableObject {
                 SpotLogger.debug("Auth state changed - user signed in: \(user.uid)")
                 DispatchQueue.main.async {
                     self?.userId = user.uid
-                }
-                // Verify user exists in Firestore
-                AuthService.shared.verifyUserExists { exists in
-                    DispatchQueue.main.async {
-                        self?.isAuthenticated = exists
-                        self?.isLoading = false
-                        if exists {
-                            self?.refreshUserSpotLists()
-                        }
-                        if !exists {
-                            SpotLogger.warning("User authenticated but no Firestore document exists")
-                        }
-                    }
+                    self?.isAuthenticated = true
+                    self?.isLoading = false
+                    self?.refreshUserSpotLists()
+                    self?.refreshBlockedUsers()
                 }
             } else {
                 DispatchQueue.main.async {
@@ -64,17 +55,45 @@ class AuthViewModel: ObservableObject {
     }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: profileImageURL, isPrivate: isPrivate) { result in
-            DispatchQueue.main.async {
-                completion(result)
+        Task {
+            do {
+                let result = try await AuthService.shared.signUp(email: email, password: password)
+                switch result {
+                case .success(let user):
+                    DispatchQueue.main.async {
+                        completion(.success(()))
+                    }
+                case .emailInUse(let emailInUseType):
+                    DispatchQueue.main.async {
+                        completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: emailInUseType.message])))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
             }
         }
     }
 
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signIn(email: email, password: password) { result in
-            DispatchQueue.main.async {
-                completion(result)
+        Task {
+            do {
+                let result = try await AuthService.shared.signIn(email: email, password: password)
+                switch result {
+                case .success(let user):
+                    DispatchQueue.main.async {
+                        completion(.success(()))
+                    }
+                case .emailInUse:
+                    DispatchQueue.main.async {
+                        completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unexpected email in use during sign in"])))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
             }
         }
     }
@@ -198,15 +217,13 @@ class AuthViewModel: ObservableObject {
     }
 
     func updateEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.updateEmail(email, completion: completion)
-        // Also persist a copy in Firestore for convenience
-        if let userId = userId {
-            Firestore.firestore().collection("users").document(userId).updateData(["email": email])
-        }
+        // TODO: Implement email update with reauthentication
+        completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Email update not implemented yet"])))
     }
 
     func updatePassword(_ password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.updatePassword(password, completion: completion)
+        // TODO: Implement password update with reauthentication
+        completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Password update not implemented yet"])))
     }
 
     func setPrivateAccount(_ isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {

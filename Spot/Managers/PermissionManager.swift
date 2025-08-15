@@ -8,44 +8,96 @@
 import Foundation
 import CoreLocation
 import UserNotifications
+import UIKit
 
 class PermissionManager: NSObject, ObservableObject {
-    
     static let shared = PermissionManager()
-    
     private let locationManager = CLLocationManager()
-
-    override private init() {
+    
+    @Published var locationStatus: CLAuthorizationStatus = .notDetermined
+    @Published var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @Published var showLocationBanner = false
+    @Published var showNotificationBanner = false
+    
+    private override init() {
         super.init()
         locationManager.delegate = self
+        updatePermissionStatuses()
     }
-
-    // MARK: - Location Permission
     
-    func requestLocationPermission() {
-        let status = locationManager.authorizationStatus
-
-        switch status {
-        case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
-        case .denied, .restricted:
-            // You can show an alert to guide user to Settings
-            print("Location access denied.")
-        case .authorizedWhenInUse, .authorizedAlways:
-            print("Location access granted.")
-        @unknown default:
-            break
-        }
-    }
-
-    // MARK: - Notification Permission
-
-    func requestNotificationPermission(completion: @escaping (Bool) -> Void) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+    // MARK: - Permission Status Updates
+    
+    func updatePermissionStatuses() {
+        locationStatus = locationManager.authorizationStatus
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
-                completion(granted)
+                self.notificationStatus = settings.authorizationStatus
             }
         }
+    }
+    
+    // MARK: - Post-Login Permission Requests
+    
+    /// Request permissions after successful login if not determined
+    func requestPermissionsIfNeeded() {
+        requestLocationPermissionIfNeeded()
+        requestNotificationPermissionIfNeeded()
+    }
+    
+    private func requestLocationPermissionIfNeeded() {
+        let userDefaults = UserDefaults.standard
+        let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
+        
+        if !hasRequested && locationStatus == .notDetermined {
+            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=requesting")
+            locationManager.requestWhenInUseAuthorization()
+            userDefaults.set(true, forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
+        }
+    }
+    
+    private func requestNotificationPermissionIfNeeded() {
+        let userDefaults = UserDefaults.standard
+        let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.notificationsRequested)
+        
+        if !hasRequested && notificationStatus == .notDetermined {
+            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=requesting")
+            
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                DispatchQueue.main.async {
+                    if granted {
+                        SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=granted")
+                    } else {
+                        SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=denied")
+                        self.showNotificationBanner = true
+                    }
+                    self.updatePermissionStatuses()
+                }
+            }
+            
+            userDefaults.set(true, forKey: Constants.UserDefaultsKeys.notificationsRequested)
+        }
+    }
+    
+    // MARK: - Banner Actions
+    
+    func openLocationSettings() {
+        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settingsUrl)
+        }
+    }
+    
+    func openNotificationSettings() {
+        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settingsUrl)
+        }
+    }
+    
+    func dismissLocationBanner() {
+        showLocationBanner = false
+    }
+    
+    func dismissNotificationBanner() {
+        showNotificationBanner = false
     }
 }
 
@@ -53,11 +105,16 @@ class PermissionManager: NSObject, ObservableObject {
 
 extension PermissionManager: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
-            print("Location authorized")
+        let newStatus = manager.authorizationStatus
+        locationStatus = newStatus
+        
+        switch newStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=granted")
+            showLocationBanner = false
         case .denied, .restricted:
-            print("Location denied")
+            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=denied")
+            showLocationBanner = true
         case .notDetermined:
             break
         @unknown default:
