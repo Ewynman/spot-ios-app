@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "updatedAt": "2025-08-15T00:00:00Z",
+  "reserved": [
+    "admin", "administrator", "moderator", "mod",
+    "support", "help", "owner", "official",
+    "spot", "spotapp", "team", "system",
+    "apple", "google", "meta", "spot", "spotTeam"
+  ],
+  "exact": ["fuck", "shit", "bitch", "asshole", "nigga", "nigger", "niggas", "niggers", "nigga", "nigger", "niggas", "niggers"],
+  "contains": ["fuck", "shit", "bitch", "asshol", "dick", "cum", "porn", "nude", "nigga", "nigger", "niggas", "niggers", "nigga", "nigger", "niggas", "niggers"],
+  "patterns": [
+    "(?i)f[\\W_]*[uuv\\*][\\W_]*[ckq]+",
+    "(?i)sh[\\W_]*[i1\\!][\\W_]*t+",
+    "(?i)b[\\W_]*[i1\\!][\\W_]*t?ch+",
+    "(?i)a[\\W_]*s[\\W_]*s[\\W_]*h?o?l[e3]+"
+  ],
+  "length": { "min": 3, "max": 20 },
+  "charset": {
+    "allowRegex": "^[a-z0-9._-]+$",
+    "disallowLeading": [".", "_", "-"],
+    "disallowTrailing": [".", "_", "-"],
+    "disallowConsecutive": ["..", "__", "--", "._", "_.", "-.", ".-", "_ -", "-_"]
+  }
+}

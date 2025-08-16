@@ -159,6 +159,24 @@ struct SignupView: View {
                             return
                         }
 
+                        // Username validation (client-fast)
+                        let validator = UsernameValidator()
+                        switch validator.validate(username) {
+                        case .ok:
+                            break
+                        case .tooShort:
+                            errorMessage = "Username is too short"; return
+                        case .tooLong:
+                            errorMessage = "Username is too long"; return
+                        case .invalidChars:
+                            errorMessage = "Username has invalid characters"; return
+                        case .reserved:
+                            errorMessage = "That username is reserved"; return
+                        case .blocked:
+                            SpotLogger.warning("Username.Blocked raw=\(username) norm=\(validator.normalized(username)) reason=blocked")
+                            errorMessage = "That username isn’t allowed"; return
+                        }
+
                         guard password == confirmPassword else {
                             errorMessage = "Passwords do not match."
                             return

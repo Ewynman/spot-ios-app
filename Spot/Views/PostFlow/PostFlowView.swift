@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 import CoreLocation
 
 struct PostFlowView: View {
@@ -9,6 +10,8 @@ struct PostFlowView: View {
     @State private var selectedLocation: LocationData?
     @State private var selectedVibe: String = ""
     @State private var isUploading = false
+    @State private var isPosting = false
+    @State private var moderationMessage: String? = nil
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var toastIsError = false
@@ -110,6 +113,8 @@ struct PostFlowView: View {
     }
     
     private func handleFinish() {
+        if isPosting { return }
+        isPosting = true
         SpotLogger.info("User completed post flow")
         SpotLogger.debug("Post data - Image: \(selectedImage != nil), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
         
@@ -140,17 +145,85 @@ struct PostFlowView: View {
                     if let userId = Auth.auth().currentUser?.uid {
                         SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
                     }
-                    showToastWith(message: "Spot posted!", isError: false)
-                    SpotLogger.info("Spot posted and vibeStats updated")
-                    onPostSuccess?()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        dismiss()
-                    }
+                    // Gate by moderation: wait up to ~20s for approved, else reject/timeout
+                    Task { await self.awaitModerationAndFinish() }
                 case .failure(let error):
                     showToastWith(message: error.localizedDescription, isError: true)
                     SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
+                    isPosting = false
                 }
             }
+        }
+    }
+
+    private func awaitModerationAndFinish() async {
+        guard let uid = Auth.auth().currentUser?.uid else { isPosting = false; return }
+        // We need the latest spot doc; since SpotUploader writes the doc ID internally, fetch most recent by this user
+        // If you have the postId, prefer using it directly.
+        let db = Firestore.firestore()
+        do {
+            let snap = try await db.collection("spots").whereField("userId", isEqualTo: uid).order(by: "createdAt", descending: true).limit(to: 1).getDocuments()
+            guard let doc = snap.documents.first else { isPosting = false; return }
+            let spotRef = doc.reference
+            SpotLogger.info("Moderation.Check.Begin spotId=\(doc.documentID)")
+
+            // Poll up to ~20s to avoid blocking issues
+            for _ in 0..<20 {
+                let latest = try await spotRef.getDocument()
+                if await self.evaluateModeration(doc: latest) { return }
+                try await Task.sleep(nanoseconds: 1_000_000_000) // 1s
+            }
+            SpotLogger.warning("Moderation.Check.Timeout spotId=\(doc.documentID)")
+            await MainActor.run {
+                self.moderationMessage = "We couldn’t verify your image yet. Please retry."
+                self.showToastWith(message: self.moderationMessage ?? "", isError: true)
+                self.isPosting = false
+            }
+        } catch {
+            SpotLogger.error("Moderation gate error: \(error.localizedDescription)")
+            await MainActor.run { self.isPosting = false }
+        }
+    }
+
+    private func evaluateModeration(doc: DocumentSnapshot) async -> Bool {
+        let data = doc.data() ?? [:]
+        let moderation = data["moderation"] as? [String: Any]
+        let status = moderation?["status"] as? String ?? "pending"
+        let scores = moderation?["scores"] as? [String: Any]
+
+        if status == "approved" {
+            let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
+            if ok {
+                SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
+                await MainActor.run {
+                    self.showToastWith(message: "Spot posted!", isError: false)
+                    self.onPostSuccess?()
+                    self.isPosting = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.dismiss() }
+                }
+                return true
+            } else {
+                SpotLogger.warning("Post.Publish.Blocked reason=\(reason ?? "over_threshold")")
+                await MainActor.run {
+                    self.moderationMessage = "This photo violates our guidelines and can’t be posted."
+                    self.showToastWith(message: self.moderationMessage ?? "", isError: true)
+                    self.isPosting = false
+                }
+                return true
+            }
+        } else if status == "rejected" {
+            SpotLogger.warning("Moderation.Check.Rejected spotId=\(doc.documentID) scores=\(scores ?? [:])")
+            // Hard block: delete the spot doc so it never surfaces
+            try? await doc.reference.delete()
+            await MainActor.run {
+                self.moderationMessage = "This photo violates our guidelines and can’t be posted."
+                self.showToastWith(message: self.moderationMessage ?? "", isError: true)
+                self.isPosting = false
+            }
+            return true
+        } else {
+            SpotLogger.debug("Moderation.Check.Pending spotId=\(doc.documentID)")
+            return false
         }
     }
     

@@ -244,6 +244,19 @@ struct SettingsView: View {
         let group = DispatchGroup()
         var firstError: Error?
 
+        // Username validation before updating
+        let validator = UsernameValidator()
+        switch validator.validate(username) {
+        case .ok: break
+        case .tooShort: isSaving = false; errorMessage = "Username is too short"; return
+        case .tooLong: isSaving = false; errorMessage = "Username is too long"; return
+        case .invalidChars: isSaving = false; errorMessage = "Username has invalid characters"; return
+        case .reserved: isSaving = false; errorMessage = "That username is reserved"; return
+        case .blocked:
+            SpotLogger.warning("Username.Blocked raw=\(username) norm=\(validator.normalized(username)) reason=blocked")
+            isSaving = false; errorMessage = "That username isn’t allowed"; return
+        }
+
         group.enter()
         authVM.updateUsername(username) { result in
             if case let .failure(err) = result { firstError = firstError ?? err }
