@@ -64,18 +64,14 @@ class AuthViewModel: ObservableObject {
                 let result = try await AuthService.shared.signUp(email: email, password: password)
                 switch result {
                 case .success(_):
-                    DispatchQueue.main.async {
-                        completion(.success(()))
-                    }
+                    await MainActor.run { completion(.success(())) }
                 case .emailInUse(let emailInUseType):
-                    DispatchQueue.main.async {
+                    await MainActor.run {
                         completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: emailInUseType.message])))
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
@@ -86,18 +82,14 @@ class AuthViewModel: ObservableObject {
                 let result = try await AuthService.shared.signIn(email: email, password: password)
                 switch result {
                 case .success(_):
-                    DispatchQueue.main.async {
-                        completion(.success(()))
-                    }
+                    await MainActor.run { completion(.success(())) }
                 case .emailInUse:
-                    DispatchQueue.main.async {
+                    await MainActor.run {
                         completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unexpected email in use during sign in"])))
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
@@ -183,42 +175,59 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Settings Updates
+    // MARK: - Settings Updates (async Firestore)
     func updateUsername(_ username: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
-        // Check uniqueness before updating
+        guard let userId = userId else {
+            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
+            return
+        }
         Task {
             do {
+                // Check uniqueness
                 let snapshot = try await Firestore.firestore()
                     .collection("users")
                     .whereField("username", isEqualTo: username)
                     .limit(to: 1)
                     .getDocuments()
                 if let doc = snapshot.documents.first, doc.documentID != userId {
-                    completion(.failure(NSError(domain: "AuthVM", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username is already taken"])) )
+                    await MainActor.run {
+                        completion(.failure(NSError(domain: "AuthVM", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username is already taken"])))
+                    }
                     return
                 }
-                Firestore.firestore().collection("users").document(userId).updateData(["username": username]) { error in
-                    if let error = error { completion(.failure(error)) } else {
-                        // Also update FirebaseAuth display name for consistency
-                        if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
-                            changeReq.displayName = username
-                            changeReq.commitChanges(completion: nil)
-                        }
-                        completion(.success(()))
-                    }
+
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(userId)
+                    .updateData(["username": username])
+
+                if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
+                    changeReq.displayName = username
+                    try? await commitProfileChange(changeReq)
                 }
+
+                await MainActor.run { completion(.success(())) }
             } catch {
-                completion(.failure(error))
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
 
     func updateName(_ name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
-        let data = ["name": name]
-        Firestore.firestore().collection("users").document(userId).updateData(data) { error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        guard let userId = userId else {
+            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
+            return
+        }
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(userId)
+                    .updateData(["name": name])
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
         }
     }
 
@@ -227,29 +236,39 @@ class AuthViewModel: ObservableObject {
             completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
             return
         }
-        // Normalize email
         let newEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         AuthService.shared.updateEmail(newEmail) { result in
             switch result {
             case .failure(let error):
-                // Temporary bypass: if FirebaseAuth updateEmail fails (e.g., requires verification),
-                // mirror the email to Firestore and treat as success. We'll implement full flow later.
+                // Fallback: mirror to Firestore only
                 SpotLogger.warning("AuthViewModel.updateEmail failed: \(error.localizedDescription) — falling back to Firestore-only sync")
-                Firestore.firestore().collection("users").document(userId).updateData(["email": newEmail]) { err in
-                    if let err = err {
-                        SpotLogger.error("AuthViewModel.updateEmail Firestore fallback failed: \(err.localizedDescription)")
-                        completion(.failure(error))
-                    } else {
-                        completion(.success(()))
+                Task {
+                    do {
+                        try await Firestore.firestore()
+                            .collection("users")
+                            .document(userId)
+                            .updateData(["email": newEmail])
+                        await MainActor.run { completion(.success(())) }
+                    } catch {
+                        SpotLogger.error("AuthViewModel.updateEmail Firestore fallback failed: \(error.localizedDescription)")
+                        await MainActor.run { completion(.failure(error)) }
                     }
                 }
+
             case .success:
                 // Mirror to Firestore profile
-                Firestore.firestore().collection("users").document(userId).updateData(["email": newEmail]) { err in
-                    if let err = err {
-                        SpotLogger.warning("AuthViewModel.updateEmail: FirebaseAuth updated but Firestore email sync failed: \(err.localizedDescription)")
+                Task {
+                    do {
+                        try await Firestore.firestore()
+                            .collection("users")
+                            .document(userId)
+                            .updateData(["email": newEmail])
+                        await MainActor.run { completion(.success(())) }
+                    } catch {
+                        SpotLogger.warning("AuthViewModel.updateEmail: FirebaseAuth updated but Firestore email sync failed: \(error.localizedDescription)")
+                        await MainActor.run { completion(.success(())) } // keep your original behavior
                     }
-                    completion(.success(()))
                 }
             }
         }
@@ -260,9 +279,20 @@ class AuthViewModel: ObservableObject {
     }
 
     func setPrivateAccount(_ isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else { completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]))); return }
-        Firestore.firestore().collection("users").document(userId).updateData(["isPrivate": isPrivate]) { error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        guard let userId = userId else {
+            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
+            return
+        }
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(userId)
+                    .updateData(["isPrivate": isPrivate])
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
         }
     }
 
@@ -376,21 +406,34 @@ class AuthViewModel: ObservableObject {
                 blockedUsers.append(targetUserId)
             }
         }
-        
+
         SpotLogger.info("User blocked: \(targetUserId)")
     }
-    
+
     func unblockUser(userId targetUserId: String) async throws {
         guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
         
         try await Firestore.firestore().collection("users").document(currentUserId).updateData([
             "blockedUsers": FieldValue.arrayRemove([targetUserId])
         ])
-        
+
         await MainActor.run {
             blockedUsers.removeAll { $0 == targetUserId }
         }
-        
+
         SpotLogger.info("User unblocked: \(targetUserId)")
+    }
+}
+
+// MARK: - Helper
+private func commitProfileChange(_ changeReq: UserProfileChangeRequest) async throws {
+    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        changeReq.commitChanges { error in
+            if let error = error {
+                cont.resume(throwing: error)
+            } else {
+                cont.resume(returning: ())
+            }
+        }
     }
 }

@@ -112,15 +112,14 @@ struct PhotoSelectionView: View {
             
             Spacer()
         }
-        .onChange(of: photoPickerItem) { newItem in
-            Task {
-                if let data = try? await newItem?.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    SpotLogger.info("User selected photo from gallery")
-                    selectedImage = uiImage
-                } else {
-                    SpotLogger.warning("Failed to load photo from gallery")
-                }
+        .task(id: photoPickerItem) {
+            guard let item = photoPickerItem else { return }
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let uiImage = UIImage(data: data) {
+                SpotLogger.info("User selected photo from gallery")
+                selectedImage = uiImage
+            } else {
+                SpotLogger.warning("Failed to load photo from gallery")
             }
         }
         .sheet(isPresented: $showCamera) {

@@ -1,3 +1,10 @@
+//
+//  ProfileView.swift
+//  Spot
+//
+//  Created by Edward Wynman on 8/13/25.
+//
+
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
@@ -164,21 +171,32 @@ struct FollowRequestsView: View {
         processing.insert(req.id)
         do {
             try await service.accept(requesterUid: req.requesterUid, targetUid: uid)
-            await MainActor.run { items.removeAll { $0.id == req.id }; processing.remove(req.id) }
+            await MainActor.run {
+                items.removeAll { $0.id == req.id }
+                _ = processing.remove(req.id)
+            }
         } catch {
-            await MainActor.run { processing.remove(req.id) }
+            await MainActor.run {
+                _ = processing.remove(req.id)
+            }
             SpotLogger.error("Accept failed: \(error.localizedDescription)")
         }
     }
+
 
     private func deny(_ req: FollowRequest) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         processing.insert(req.id)
         do {
             try await service.deny(requesterUid: req.requesterUid, targetUid: uid)
-            await MainActor.run { items.removeAll { $0.id == req.id }; processing.remove(req.id) }
+            await MainActor.run {
+                items.removeAll { $0.id == req.id }
+                _ = processing.remove(req.id)
+            }
         } catch {
-            await MainActor.run { processing.remove(req.id) }
+            await MainActor.run {
+                _ = processing.remove(req.id)
+            }
             SpotLogger.error("Deny failed: \(error.localizedDescription)")
         }
     }

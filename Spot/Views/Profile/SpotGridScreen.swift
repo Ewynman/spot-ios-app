@@ -255,8 +255,6 @@ struct SpotGridScreen: View {
                 await bookmarksViewModel.loadInitial()
             }
             SpotLogger.info("SpotGridScreen: Data loaded successfully for context: \(context)")
-        } catch {
-            SpotLogger.error("SpotGridScreen: Failed to load data for context \(context): \(error.localizedDescription)")
         }
     }
 }

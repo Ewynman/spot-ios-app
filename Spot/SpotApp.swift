@@ -43,7 +43,7 @@ struct SpotApp: App {
                         .environmentObject(PermissionManager.shared)
                         .onAppear {
                             // Handle fresh install detection
-                            let wasAutoSignedOut = FreshInstallDetector.shared.handleFreshInstall()
+                            _ = FreshInstallDetector.shared.handleFreshInstall()
                             
                             // Process any pending deep links after app is ready
                             deepLinkState.processPendingDeepLinks()
