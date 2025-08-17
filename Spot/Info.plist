@@ -21,12 +21,7 @@
 			</array>
 		</dict>
 	</array>
-	<key>UIAppFonts</key>
-	<array>
-		<string>SFProRounded-Black.otf</string>
-		<string>SFProRounded-Bold.otf</string>
-		<string>SFProRounded-Regular.otf</string>
-		<string>SFProRounded-Semibold.otf</string>
-	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 </dict>
 </plist>

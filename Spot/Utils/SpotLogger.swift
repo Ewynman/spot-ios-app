@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
@@ -47,15 +48,32 @@ final class SpotLogger {
     }
     
     // MARK: - Private Logging Implementation
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.spotapp.spot", category: "SpotLogger")
+
     private static func log(_ level: LogLevel, message: String, file: String, function: String, line: Int) {
         guard level >= minimumLevel else { return }
         let timestamp = DateFormatter.logFormatter.string(from: Date())
         let fileName = URL(fileURLWithPath: file).lastPathComponent
-        let paddedLevel = level.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0)
-        let logMessage = "[SpotLogger][\(paddedLevel)] [\(timestamp)] \(fileName):\(line) | \(function) | \(message)"
+        let logMessage = "[SpotLogger][\(level.rawValue)] [\(timestamp)] \(fileName):\(line) | \(function) | \(message)"
+
+        // Use unified logging so each call is a distinct record with proper level filtering
+        switch level {
+        case .debug:
+            logger.debug("\(logMessage, privacy: .public)")
+        case .info:
+            logger.info("\(logMessage, privacy: .public)")
+        case .warning:
+            logger.warning("\(logMessage, privacy: .public)")
+        case .error:
+            logger.error("\(logMessage, privacy: .public)")
+        case .firebase:
+            logger.notice("\(logMessage, privacy: .public)")
+        }
+
+        // Optional: also print to Xcode console as a fallback
+        #if DEBUG
         print(logMessage)
-        print("") // Add blank line for readability
-        // TODO: Add Firebase/remote logging here if needed
+        #endif
     }
 }
 

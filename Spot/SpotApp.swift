@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseCore
+import FirebaseCrashlytics
 
 @main
 struct SpotApp: App {
@@ -18,6 +19,8 @@ struct SpotApp: App {
 
     init() {
         FirebaseApp.configure()
+        // Optional: enable collection immediately for local builds
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
     }
 
     var body: some Scene {

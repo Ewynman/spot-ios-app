@@ -7,9 +7,14 @@
 
 import UIKit
 import SwiftUI
+import FirebaseCore
+import FirebaseCrashlytics
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        // Firebase configured in SpotApp.init(); ensure Crashlytics is enabled
+        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
+        Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
         return true
     }
     

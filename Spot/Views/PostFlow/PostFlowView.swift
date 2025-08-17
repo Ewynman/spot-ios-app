@@ -175,7 +175,7 @@ struct PostFlowView: View {
             }
             SpotLogger.warning("Moderation.Check.Timeout spotId=\(doc.documentID)")
             await MainActor.run {
-                self.moderationMessage = "We couldn’t verify your image yet. Please retry."
+                self.moderationMessage = "We couldn’t verify your image yet. Please retry.This is day zero of making the best new social media app and youre coming along for the eride this is anoytjer angle even though you dont get to see my screen and now I have my third angle ho[wejfijwhefowenfiuwhc0ijckjwnhcoijwdlnweoim"
                 self.showToastWith(message: self.moderationMessage ?? "", isError: true)
                 self.isPosting = false
             }

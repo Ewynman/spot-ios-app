@@ -5,7 +5,7 @@ import FirebaseFirestore
 /// Session-scoped, in-memory cache for author privacy and follow state.
 /// Keyed by authorId.
 /// Entry: `isPrivate`, `isFollowedByViewer`, `lastCheckedAt`.
-final class AuthorPrivacyCache {
+actor AuthorPrivacyCache {
     struct Entry {
         var isPrivate: Bool
         var isFollowedByViewer: Bool
@@ -67,29 +67,41 @@ final class AuthorPrivacyCache {
             Array(missing[$0..<min($0 + 10, missing.count)])
         }
 
-        await withTaskGroup(of: Void.self) { group in
+        let results = await withTaskGroup(of: [String: Entry].self, returning: [String: Entry].self) { group in
             for chunk in chunks {
                 group.addTask { [db] in
+                    var map: [String: Entry] = [:]
                     do {
                         let snap = try await db.collection("users").whereField(FieldPath.documentID(), in: chunk).getDocuments()
                         let now = Date()
                         for doc in snap.documents {
                             let uid = doc.documentID
                             let isPrivate = (doc.data()["isPrivate"] as? Bool) ?? false
-                            let isFollowed = self.cachedFollowing.contains(uid)
-                            self.authorIdToEntry[uid] = Entry(isPrivate: isPrivate, isFollowedByViewer: isFollowed, lastCheckedAt: now)
+                            map[uid] = Entry(isPrivate: isPrivate, isFollowedByViewer: false, lastCheckedAt: now)
                         }
-                        // For any user that didn't return (deleted?), mark as public=false (hidden)
+                        // Mark non-returned as hidden
                         let returned = Set(snap.documents.map { $0.documentID })
                         let missingFromChunk = Set(chunk).subtracting(returned)
                         for uid in missingFromChunk {
-                            self.authorIdToEntry[uid] = Entry(isPrivate: true, isFollowedByViewer: false, lastCheckedAt: Date())
+                            map[uid] = Entry(isPrivate: true, isFollowedByViewer: false, lastCheckedAt: Date())
                         }
                     } catch {
                         SpotLogger.error("AuthorPrivacyCache warm failed for chunk count=\(chunk.count): \(error.localizedDescription)")
                     }
+                    return map
                 }
             }
+            var combined: [String: Entry] = [:]
+            for await part in group {
+                for (k, v) in part { combined[k] = v }
+            }
+            return combined
+        }
+        // Now merge results into actor state, computing isFollowed based on current cachedFollowing
+        let now2 = Date()
+        for (uid, base) in results {
+            let followed = cachedFollowing.contains(uid)
+            authorIdToEntry[uid] = Entry(isPrivate: base.isPrivate, isFollowedByViewer: followed, lastCheckedAt: now2)
         }
     }
 
@@ -166,5 +178,6 @@ final class AuthorPrivacyCache {
         }
     }
 }
+
 
 

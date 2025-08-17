@@ -70,7 +70,7 @@ final class FollowRequestsService {
         try await batch.commit()
 
         // Local: invalidate privacy cache so future checks reload
-        AuthorPrivacyCache.shared.invalidate(authorId: requesterUid)
+        await AuthorPrivacyCache.shared.invalidate(authorId: requesterUid)
     }
 
     func deny(requesterUid: String, targetUid: String) async throws {

@@ -63,7 +63,7 @@ class AuthViewModel: ObservableObject {
             do {
                 let result = try await AuthService.shared.signUp(email: email, password: password)
                 switch result {
-                case .success(let user):
+                case .success(_):
                     DispatchQueue.main.async {
                         completion(.success(()))
                     }
@@ -85,7 +85,7 @@ class AuthViewModel: ObservableObject {
             do {
                 let result = try await AuthService.shared.signIn(email: email, password: password)
                 switch result {
-                case .success(let user):
+                case .success(_):
                     DispatchQueue.main.async {
                         completion(.success(()))
                     }
@@ -108,15 +108,15 @@ class AuthViewModel: ObservableObject {
             isAuthenticated = false
             // Clear deep link state when user logs out
             DeepLinkState.shared.clearUserSession()
-            // Clear privacy session cache
-            AuthorPrivacyCache.shared.clear()
+            // Clear privacy session cache (actor)
+            Task { await AuthorPrivacyCache.shared.clear() }
         } catch {
             SpotLogger.error("Failed to signout:\(error.localizedDescription)")
         }
     }
 
     func refreshUserSpotLists() {
-        guard let userId = userId else { return }
+        guard userId != nil else { return }
         UserSpotService.shared.fetchUserSpotLists { [weak self] liked, bookmarked in
             DispatchQueue.main.async {
                 self?.likedSpots = liked

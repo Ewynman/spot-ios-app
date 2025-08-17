@@ -161,11 +161,12 @@ struct SpotCard: View {
             }
 
             // MARK: — Interaction Bar
+            // let _ is to be userId done to supress warnings
             HStack {
                 HStack(spacing: 16) {
                     Button {
-                        guard !isLoadingLike, let spotId = spot.id, let userId = userId else { return }
-                        let prev = isLiked
+                        guard !isLoadingLike, let spotId = spot.id, let _ = userId else { return }
+                        _ = isLiked
                         isLiked.toggle()
                         isLoadingLike = true
                         if isLiked {
@@ -183,8 +184,8 @@ struct SpotCard: View {
                     .buttonStyle(PlainButtonStyle())
 
                     Button {
-                        guard !isLoadingSave, let spotId = spot.id, let userId = userId else { return }
-                        let prev = isSaved
+                        guard !isLoadingSave, let spotId = spot.id, let _ = userId else { return }
+                        _ = isSaved
                         isSaved.toggle()
                         isLoadingSave = true
                         if isSaved {
@@ -204,7 +205,8 @@ struct SpotCard: View {
                     // Owner-only overflow menu, placed next to bookmark
                     let currentUserId = userId ?? authVM.userId ?? ""
                     let ownerId = spot.userId ?? ""
-                    let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
+                    // isOwneer set to _ to supress warnings
+                    let _ = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
                     // Three-dot menu for all spots
                     Button {
                         SpotLogger.debug("Menu tapped for spot id=\(spot.id ?? "nil") [\(source)]")
