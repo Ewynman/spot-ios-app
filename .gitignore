@@ -26,3 +26,4 @@ GoogleService-Info.plist
 *.xcodeproj/xcuserdata/
 
 GoogleService-Info
+*.txt
