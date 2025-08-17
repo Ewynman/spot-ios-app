@@ -140,7 +140,7 @@ extension DeepLinkRouter {
     func logDeepLinkEvent(origin: DeepLinkOrigin, spotId: String?, isColdStart: Bool, success: Bool, errorReason: String? = nil) {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         
-        let analytics = DeepLinkAnalytics(
+        _ = DeepLinkAnalytics(
             origin: origin,
             spotId: spotId,
             appVersion: appVersion,

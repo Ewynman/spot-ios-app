@@ -98,7 +98,7 @@ final class SpotService {
                         authorIsPrivate: data["authorIsPrivate"] as? Bool
                     )
                 }
-                
+
                 // Apply privacy filter on the map
                 Task {
                     do {
@@ -107,18 +107,10 @@ final class SpotService {
                         self?.lastFetchTime = Date()
                         SpotLogger.info("fetchSpotsForMap: Parsed and cached \(filtered.count) spots (after privacy filter)")
                         completion(.success(filtered))
-                    } catch {
-                        SpotLogger.error("Privacy filtering failed: \(error.localizedDescription)")
-                        // Fallback to raw spots
-                        self?.cachedSpots = spots
-                        self?.lastFetchTime = Date()
-                        completion(.success(spots))
                     }
                 }
             }
     }
-
-    // No private filter here; use AuthorPrivacyCache.shared.filter
 
     // MARK: - Fetch Single Spot
     

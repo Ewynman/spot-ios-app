@@ -40,13 +40,12 @@ actor AuthorPrivacyCache {
 
     /// Preload cache for the provided authors in a single batched pass.
     /// Logs: Privacy.Cache warm authors=<n>
-    @discardableResult
     func warm(authorIds: Set<String>) async {
         guard !authorIds.isEmpty else { return }
 
         // Refresh following + blocked once per TTL
         async let _ = refreshFollowingIfNeeded()
-        async let __ = refreshBlockedIfNeeded()
+        async let _ = refreshBlockedIfNeeded()
 
         // Determine which authors are missing or stale
         let now = Date()

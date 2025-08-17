@@ -41,7 +41,7 @@ struct LocationSelectionView: View {
                 TextField("Search for a place...", text: $searchText)
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
-                    .onChange(of: searchText) { newValue in
+                    .onChange(of: searchText) { _, newValue in
                         searchPlaces(query: newValue)
                     }
             }
@@ -348,48 +348,50 @@ struct NearbyPlaceRow: View {
 struct LocationMapView: View {
     let location: LocationData
     let onConfirm: (LocationData) -> Void
-    @Environment(\.dismiss) var dismiss
-    @State private var region: MKCoordinateRegion
+    @Environment(\.dismiss) private var dismiss
+    @State private var position: MapCameraPosition
     @State private var draggedLocation: LocationData
-    @State private var centerCoordinate: CLLocationCoordinate2D
     @State private var currentLocationName: String
     @State private var geocodeWorkItem: DispatchWorkItem?
     private let geocoder = CLGeocoder()
-    @State private var isGeocoding: Bool = false
-    @State private var allowConfirmDespiteGeocoding: Bool = false
-    
+    @State private var isGeocoding = false
+    @State private var allowConfirmDespiteGeocoding = false
+
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
         self.onConfirm = onConfirm
-        self._region = State(initialValue: MKCoordinateRegion(
+        let region = MKCoordinateRegion(
             center: location.coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-        ))
-        self._draggedLocation = State(initialValue: location)
-        self._centerCoordinate = State(initialValue: location.coordinate)
-        self._currentLocationName = State(initialValue: location.placeName)
+        )
+        _position = State(initialValue: .region(region))
+        _draggedLocation = State(initialValue: location)
+        _currentLocationName = State(initialValue: location.placeName)
     }
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
-                Map(coordinateRegion: $region, annotationItems: [draggedLocation]) { location in
-                    MapAnnotation(coordinate: location.coordinate) {
+                Map(position: $position) {
+                    // Blue dot (appears when permission granted)
+                    UserAnnotation()
+
+                    // Your custom “green_marker” pin
+                    Annotation("", coordinate: draggedLocation.coordinate, anchor: .bottom) {
                         Image("green_marker")
                             .resizable()
                             .frame(width: 40, height: 40)
                     }
                 }
-                .preferredColorScheme(.light) 
-                .onChange(of: region.center.latitude) { _ in
-                    updateDraggedLocation()
+                // Get notified when the user pans/zooms and update the selection
+                .onMapCameraChange(frequency: .onEnd) { context in
+                    let center = context.region.center
+                    updateDraggedLocation(to: center)
                 }
-                .onChange(of: region.center.longitude) { _ in
-                    updateDraggedLocation()
-                }
-                
+                .preferredColorScheme(.light)
+
+                // Top “current name” chip
                 VStack {
-                    // Current Location Display
                     HStack {
                         Image(systemName: "mappin.circle.fill")
                             .foregroundColor(Constants.Colors.primary)
@@ -405,13 +407,13 @@ struct LocationMapView: View {
                     .cornerRadius(8)
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
-                    
+
                     Spacer()
-                    
+
+                    // Confirm
                     Button("Confirm Location") {
                         onConfirm(draggedLocation)
                     }
-                    .buttonStyle(PlainButtonStyle())
                     .buttonStyle(PlainButtonStyle())
                     .font(FontManager.buttonText())
                     .foregroundColor(.white)
@@ -422,58 +424,55 @@ struct LocationMapView: View {
                     .padding(.horizontal, 32)
                     .padding(.bottom, 32)
                     .disabled(isGeocoding && !allowConfirmDespiteGeocoding)
-                    .overlay(
-                        Group {
-                            if isGeocoding && !allowConfirmDespiteGeocoding {
-                                Text("Resolving location…")
-                                    .font(FontManager.primaryText())
-                                    .foregroundColor(.white)
-                                    .padding(.top, 8)
-                            }
-                        }, alignment: .top
-                    )
+
+                }
+                // Handy built-in controls
+                .overlay(alignment: .topTrailing) {
+                    VStack(spacing: 8) {
+                        MapUserLocationButton()
+                        MapCompass()
+                        MapPitchToggle()
+                        MapScaleView()
+                    }
+                    .padding()
                 }
             }
             .navigationTitle("Confirm Location")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .buttonStyle(PlainButtonStyle())
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(PlainButtonStyle())
                 }
             }
         }
     }
-    
-    private func updateDraggedLocation() {
-        let newCoordinate = region.center
-        // Always update coordinate immediately so we save moved coords
-        self.draggedLocation = LocationData(
-            coordinate: newCoordinate,
-            placeName: self.draggedLocation.placeName,
-            address: self.draggedLocation.address
+
+    // MARK: - Reverse geocode the new center (debounced)
+    private func updateDraggedLocation(to newCenter: CLLocationCoordinate2D) {
+        draggedLocation = LocationData(
+            coordinate: newCenter,
+            placeName: draggedLocation.placeName,
+            address: draggedLocation.address
         )
 
-        // Debounce reverse geocoding to avoid rate limits and cancellations
         geocodeWorkItem?.cancel()
         isGeocoding = true
         allowConfirmDespiteGeocoding = false
-        // Allow confirm after 5 seconds if still geocoding
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             if self.isGeocoding {
                 self.allowConfirmDespiteGeocoding = true
                 SpotLogger.warning("Reverse geocode timeout reached; allowing confirm.")
             }
         }
-        let work = DispatchWorkItem { [newCoordinate] in
-            let loc = CLLocation(latitude: newCoordinate.latitude, longitude: newCoordinate.longitude)
+
+        let work = DispatchWorkItem { [newCenter] in
+            let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
             self.geocoder.cancelGeocode()
             self.geocoder.reverseGeocodeLocation(loc) { placemarks, error in
                 DispatchQueue.main.async {
                     if let error = error as NSError? {
-                        // MKErrorDomain Code=4 is often Cancellation; don't downgrade UI on errors
                         SpotLogger.warning("Reverse geocode failed: \(error.localizedDescription)")
                         self.isGeocoding = false
                         return
@@ -490,7 +489,7 @@ struct LocationMapView: View {
 
                     let prettyName = display.isEmpty ? (placemark.name ?? self.draggedLocation.placeName) : display
                     self.draggedLocation = LocationData(
-                        coordinate: newCoordinate,
+                        coordinate: newCenter,
                         placeName: prettyName,
                         address: address.isEmpty ? nil : address
                     )

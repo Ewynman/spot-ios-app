@@ -30,8 +30,10 @@ final class FeedRepository: ObservableObject {
 
             while accRecent.count + accTrending.count < pageSize && attempts < 5 {
                 attempts += 1
-                async let recent = candidate.fetchRecent(last: rc)
-                async let trending = candidate.fetchTrending(last: tc)
+                let lastRc = rc
+                let lastTc = tc
+                async let recent = candidate.fetchRecent(last: lastRc)
+                async let trending = candidate.fetchTrending(last: lastTc)
                 let (r, t) = try await (recent, trending)
                 rc = r.last; tc = t.last
 
@@ -80,8 +82,10 @@ final class FeedRepository: ObservableObject {
 
             while pageRecent.count + pageTrending.count < pageSize && attempts < 5 {
                 attempts += 1
-                async let r = candidate.fetchRecent(last: rc)
-                async let t = candidate.fetchTrending(last: tc)
+                let lastRc = rc
+                let lastTc = tc
+                async let r = candidate.fetchRecent(last: lastRc)
+                async let t = candidate.fetchTrending(last: lastTc)
                 let (nr, nt) = try await (r, t)
                 rc = nr.last
                 tc = nt.last

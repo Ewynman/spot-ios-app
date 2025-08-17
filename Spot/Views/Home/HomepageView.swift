@@ -196,7 +196,7 @@ struct HomepageView: View {
                                  }
                                 )
                                 .transition(.opacity)
-                             .onChange(of: feedViewType) { newValue in
+                             .onChange(of: feedViewType) { _, newValue in
                                  if newValue == "Map" {
                                      feedVM.loadMapSpots(forceRefresh: true)
                                  }

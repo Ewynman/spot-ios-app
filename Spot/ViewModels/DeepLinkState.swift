@@ -208,44 +208,4 @@ final class DeepLinkState: ObservableObject {
         
         SpotLogger.info("DeepLinkState: Cleared user session state")
     }
-    
-    // MARK: - Testing
-    
-    func testDeepLink() {
-        // Test with a sample spot ID - replace with a real one from your database
-        let testSpotId = "EB28B022-D9EA-4ABE-BB65-A67CD171993A"
-        SpotLogger.info("DeepLinkState: Testing deep link with spot ID: \(testSpotId)")
-        openSpot(testSpotId)
-    }
-    
-    func testWithRealSpot() {
-        // This method can be used to test with a real spot from the database
-        // You can replace this with actual spot fetching logic
-        Task {
-            do {
-                // Get the first spot from the feed for testing
-                let spots = try await SpotService.shared.fetchSpotsForMap(forceRefresh: true) { result in
-                    switch result {
-                    case .success(let spots):
-                        if let firstSpot = spots.first, let spotId = firstSpot.id {
-                            DispatchQueue.main.async {
-                                self.openSpot(spotId)
-                            }
-                        }
-                    case .failure(let error):
-                        SpotLogger.error("Failed to get test spot: \(error.localizedDescription)")
-                    }
-                }
-            } catch {
-                SpotLogger.error("Failed to test with real spot: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    func testCustomSchemeParsing() {
-        // Test the exact URL from your logs: spotapp://spot/EB28B022-D9EA-4ABE-BB65-A67CD171993A
-        let testUrl = URL(string: "spotapp://spot/EB28B022-D9EA-4ABE-BB65-A67CD171993A")!
-        SpotLogger.info("DeepLinkState: Testing custom scheme parsing with URL: \(testUrl.absoluteString)")
-        handleDeepLink(testUrl, origin: .customScheme, isColdStart: false)
-    }
 }

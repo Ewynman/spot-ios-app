@@ -76,7 +76,7 @@ struct SignupView: View {
                                 }
                             }
                         }
-                        .onChange(of: photoPickerItem) { newItem in
+                        .onChange(of: photoPickerItem) { _, newItem in
                             Task {
                                 if let data = try? await newItem?.loadTransferable(type: Data.self),
                                    let uiImage = UIImage(data: data) {

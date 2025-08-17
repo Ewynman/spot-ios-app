@@ -37,23 +37,8 @@ class AuthService {
     }
     
     private func handleEmailInUse(email: String) async throws -> AuthResult {
-        // Check what providers are available for this email
-        let providers = try await Auth.auth().fetchSignInMethods(forEmail: email)
-        
-        SpotLogger.info("\(Constants.Analytics.authEmailInUse) providers=\(providers) action=detected")
-        
-        if providers.contains("password") {
-            // Account exists with password
-            return .emailInUse(.passwordAccount)
-        } else if providers.contains(where: { $0.contains("apple.com") || $0.contains("google.com") }) {
-            // Account exists with federated provider
-            let provider = providers.first { $0.contains("apple.com") || $0.contains("google.com") } ?? "unknown"
-            return .emailInUse(.federatedAccount(provider))
-        } else {
-            // Empty providers (rare race condition or wrong project)
-            SpotLogger.error("\(Constants.Analytics.authEmailInUse) providers=\(providers) action=inconsistentState")
-            return .emailInUse(.inconsistentState)
-        }
+        SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
+        return .emailInUse(.passwordAccount)
     }
     
     // MARK: - Sign In

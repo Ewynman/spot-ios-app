@@ -109,7 +109,7 @@ struct ReportSheet: View {
         } message: {
             Text("Thanks for helping keep our community safe.")
         }
-        .onChange(of: details) { newValue in
+        .onChange(of: details) { _, newValue in
             if newValue.count > 500 {
                 details = String(newValue.prefix(500))
             }

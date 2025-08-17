@@ -8,6 +8,7 @@ import MapKit
 
 struct ProfileMapView: View {
     let spots: [Spot]
+    var markerOffset: CGFloat = 100
 
     @State private var cameraPosition: MapCameraPosition
     @State private var selectedSpot: Spot? = nil
@@ -17,6 +18,7 @@ struct ProfileMapView: View {
     // MARK: - Init
     init(spots: [Spot], onSpotTap: ((Spot) -> Void)? = nil) {
         self.spots = spots
+        _ = onSpotTap // silence unused param for now
 
         if let region = Self.regionToFit(spots) {
             _cameraPosition = State(initialValue: .region(region))
@@ -41,7 +43,9 @@ struct ProfileMapView: View {
                     position: $cameraPosition,
                     spots: spots,
                     selectedSpot: selectedSpot,
-                    onSelect: select
+                    onSelect: { spot, coord in
+                        select(spot, coord, geo.size) // <- size-aware so we can offset in points
+                    }
                 )
             }
             // Split layout via bottom inset (prevents Metal-layer crashes and keeps map interactive)
@@ -88,15 +92,24 @@ struct ProfileMapView: View {
     }
 
     // MARK: - Actions
-    private func select(_ spot: Spot, _ coordinate: CLLocationCoordinate2D) {
+    private func select(_ spot: Spot, _ coordinate: CLLocationCoordinate2D, _ viewSize: CGSize) {
         selectedSpot = spot
+
+        // Base zoom you already use
+        let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        let baseRegion = MKCoordinateRegion(center: coordinate, span: span)
+
+        // Degrees of latitude per rendered point at the chosen zoom
+        let latPerPoint = baseRegion.span.latitudeDelta / max(viewSize.height, 1)
+
+        // Positive markerOffset lifts the pin UP visually → move the *camera* SOUTH
+        let adjustedCenter = CLLocationCoordinate2D(
+            latitude: coordinate.latitude - latPerPoint * markerOffset,
+            longitude: coordinate.longitude
+        )
+
         withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            cameraPosition = .region(
-                MKCoordinateRegion(
-                    center: coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )
-            )
+            cameraPosition = .region(MKCoordinateRegion(center: adjustedCenter, span: span))
         }
     }
 

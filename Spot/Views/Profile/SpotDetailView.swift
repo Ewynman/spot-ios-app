@@ -16,7 +16,7 @@ struct SpotDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var region: MKCoordinateRegion
+    @State private var cameraPosition: MapCameraPosition
     @State private var isLiked: Bool
     @State private var isSaved: Bool
     @State private var showDeleteConfirm: Bool = false
@@ -44,15 +44,15 @@ struct SpotDetailView: View {
         self.onDismiss = onDismiss
 
         if let lat = spot.latitude, let long = spot.longitude {
-            _region = State(initialValue: MKCoordinateRegion(
+            _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: lat, longitude: long),
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            ))
+            )))
         } else {
-            _region = State(initialValue: MKCoordinateRegion(
+            _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 25.7617, longitude: -80.1918),
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            ))
+            )))
         }
 
         _isLiked = State(initialValue: spot.isLiked ?? false)
@@ -204,14 +204,14 @@ struct SpotDetailView: View {
             }
 
             if isMapView {
-                Map(coordinateRegion: $region, annotationItems: [spot]) { spot in
-                    MapAnnotation(coordinate: CLLocationCoordinate2D(
-                        latitude: spot.latitude ?? 0,
-                        longitude: spot.longitude ?? 0
-                    )) {
-                        Image("green_marker")
-                            .resizable()
-                            .frame(width: 40, height: 40)
+                Map(position: $cameraPosition) {
+                    if let lat = spot.latitude, let lon = spot.longitude {
+                        let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                        Annotation("", coordinate: coord) {
+                            Image("green_marker")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                        }
                     }
                 }
                 .preferredColorScheme(.light)

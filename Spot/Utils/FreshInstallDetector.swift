@@ -23,7 +23,7 @@ class FreshInstallDetector {
             userDefaults.set(true, forKey: Constants.UserDefaultsKeys.firstRun)
             
             // Check if Firebase Auth has a persisted user
-            if let currentUser = Auth.auth().currentUser {
+            if Auth.auth().currentUser != nil {
                 SpotLogger.info("\(Constants.Analytics.authReinstall) hadKeychainUser=true action=autoSignOut")
                 
                 // Auto sign out the persisted user

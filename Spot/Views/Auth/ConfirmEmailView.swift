@@ -99,7 +99,7 @@ struct ConfirmEmailView: View {
             Task {
                 // Always reload to get fresh isEmailVerified and update Firestore flag
                 let ok = await authVM.checkVerificationStatus()
-                if ok { proceed() }
+                if ok { await proceed() }
             }
             if elapsed >= max { SpotLogger.warning("Auth.EmailVerify.Timeout"); timer.invalidate() }
         }
