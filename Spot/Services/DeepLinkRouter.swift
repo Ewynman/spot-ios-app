@@ -32,21 +32,25 @@ final class DeepLinkRouter {
     private init() {}
     
     // MARK: - URL Parsing
-    
     func parseURL(_ url: URL) -> DeepLinkRoute {
         SpotLogger.debug("DeepLinkRouter: Parsing URL: \(url.absoluteString)")
         SpotLogger.debug("DeepLinkRouter: Host: \(url.host ?? "nil"), Path: \(url.path), PathComponents: \(url.pathComponents)")
-        
-        // Handle Universal Links (https://spotapp.online/s/:spotId or https://ngrok-free.app/s/:spotId for DEBUG)
-        if url.scheme == "https" && (url.host == "spotapp.online" || url.host == "www.spotapp.online" || url.host == "454ab5d34eb4.ngrok-free.app") {
+
+        // Handle Universal Links (https://spotapp.online/s/:spotId, localhost for testing, or ngrok for DEBUG)
+        if url.scheme == "https" && (url.host == "spotapp.online" || url.host == "www.spotapp.online" || url.host == "localhost" || url.host == "454ab5d34eb4.ngrok-free.app") {
             return parseUniversalLink(url)
         }
-        
+
+        // Handle HTTP localhost for testing
+        if url.scheme == "http" && url.host == "localhost" {
+            return parseUniversalLink(url)
+        }
+
         // Handle Custom Scheme (spotapp://spot/:spotId)
         if url.scheme == "spotapp" {
             return parseCustomScheme(url)
         }
-        
+
         SpotLogger.warning("DeepLinkRouter: Unknown URL scheme: \(url.scheme ?? "nil")")
         return .unknown
     }

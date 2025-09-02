@@ -43,11 +43,7 @@ struct ShareSheet: View {
         Task {
             // Universal link that will deep link to app or redirect to App Store
             // For local testing, use ngrok. For production, use spotapp.online
-            #if DEBUG
-            let spotUrl = "https://454ab5d34eb4.ngrok-free.app/s/\(spot.id ?? "")"
-            #else
             let spotUrl = "https://spotapp.online/s/\(spot.id ?? "")"
-            #endif
             let metadata = LPLinkMetadata()
             metadata.originalURL = URL(string: spotUrl)
             metadata.url = metadata.originalURL
