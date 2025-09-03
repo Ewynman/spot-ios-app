@@ -24,6 +24,26 @@ struct PostFlowView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
+                    // Gate: require verified email
+                    if !(Auth.auth().currentUser?.isEmailVerified ?? false) {
+                        VStack(spacing: 12) {
+                            Text("Email verification required to post")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            Button(action: { dismiss() }) {
+                                Text("Close")
+                                    .font(FontManager.buttonText())
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(20)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(16)
+                        .background(Constants.Colors.background)
+                    } else {
                     // Progress Indicator
                     ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
                     
@@ -55,7 +75,7 @@ struct PostFlowView: View {
                         onFinish: handleFinish
                     )
                 }
-                .background(Color(hex: "F5F3EF"))
+                }
                 
                 // Top status overlays
                 VStack(spacing: 8) {
@@ -70,6 +90,7 @@ struct PostFlowView: View {
                 }
                 .padding(.top, 8)
             }
+            .background(Constants.Colors.background.ignoresSafeArea())
         }
         .navigationBarBackButtonHidden(true)
         .toolbar {

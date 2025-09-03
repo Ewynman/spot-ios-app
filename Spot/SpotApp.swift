@@ -19,16 +19,6 @@ struct SpotApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
-        #if DEBUG
-        AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
-        #else
-        if #available(iOS 14.0, *) {
-            AppCheck.setAppCheckProviderFactory(AppAttestProviderFactory())
-        } else {
-            AppCheck.setAppCheckProviderFactory(DeviceCheckProviderFactory())
-        }
-        #endif
-
         FirebaseApp.configure()
         // Optional: enable collection immediately for local builds
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)

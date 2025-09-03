@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import FirebaseFirestore // Added for DocumentSnapshot
+import FirebaseAuth
 
 class FeedViewModel: ObservableObject {
     @Published var spots: [Spot] = []
@@ -130,7 +131,9 @@ struct HomepageView: View {
     @StateObject private var feedVM = FeedViewModel()
     @State private var selectedTab = "Home"
     @State private var showUploadView = false
+    @State private var showVerifyToast = false
     @State private var feedViewType = "Feed" // "Feed" or "Map"
+    @State private var showRulesSheet = false
     private let feedTabs = ["Feed", "Map"]
     // Tour
     @StateObject private var tourManager = HomeTourManager()
@@ -152,7 +155,11 @@ struct HomepageView: View {
                             TopNavigationView(
                                 title: "SPOT",
                                 rightButton: .plus,
-                                showUploadView: $showUploadView
+                                showUploadView: $showUploadView,
+                                onPlusTapped: {
+                                    // Always show posting rules first
+                                    showRulesSheet = true
+                                }
                             )
                             
                             if selectedTab == "Home" {
@@ -217,7 +224,30 @@ struct HomepageView: View {
                     .background(Color(hex: "F5F3EF"))
             }
             }
+            .overlay(alignment: .top) {
+                if showVerifyToast {
+                    ToastView(message: "Please verify your email to post a spot.", isError: true)
+                        .transition(.move(edge: .top))
+                        .padding(.top, 8)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                withAnimation { showVerifyToast = false }
+                            }
+                        }
+                }
+            }
             .background(Color(hex: "F5F3EF"))
+            .sheet(isPresented: $showRulesSheet) {
+                PostingRulesView(onAgree: {
+                    // Proceed to post flow if verified
+                    if Auth.auth().currentUser?.isEmailVerified ?? false {
+                        showRulesSheet = false
+                        showUploadView = true
+                    } else {
+                        // Let the rules view drive Verify flow; no-op here
+                    }
+                })
+            }
 //            .overlay(alignment: .topLeading) { DebugPerfOverlay() }
             .navigationDestination(isPresented: $showUploadView) {
                 PostFlowView(onPostSuccess: {

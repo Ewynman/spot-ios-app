@@ -13,6 +13,7 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isLoggedIn = false
+    @State private var resetMessage: String?
     @Environment(\.dismiss) var dismiss
     
     private func handleLoginError(_ error: Error) -> String {
@@ -72,6 +73,36 @@ struct LoginView: View {
                     }
                     .padding(.horizontal, 32)
 
+                    // Forgot Password
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else {
+                                errorMessage = "Enter your email to reset your password"
+                                return
+                            }
+                            errorMessage = nil
+                            resetMessage = nil
+                            Task {
+                                do {
+                                    try await AuthService.shared.resetPassword(email: trimmed)
+                                    SpotLogger.info("Auth.ResetPassword.Requested email=\(trimmed)")
+                                    await MainActor.run { resetMessage = "Password reset link sent. Check your email." }
+                                } catch {
+                                    SpotLogger.error("Auth.ResetPassword.Error: \(error.localizedDescription)")
+                                    await MainActor.run { errorMessage = "Could not send reset email. Please try again." }
+                                }
+                            }
+                        }) {
+                            Text("Forgot Password?")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.horizontal, 32)
+
                     // Login Button
                     Button(action: {
                         guard !email.isEmpty, !password.isEmpty else {
@@ -112,6 +143,15 @@ struct LoginView: View {
                     if let error = errorMessage {
                         Text(error)
                             .foregroundColor(.red)
+                            .font(FontManager.primaryText())
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+                            .padding(.horizontal, 32)
+                    }
+                    // Reset success
+                    if let msg = resetMessage {
+                        Text(msg)
+                            .foregroundColor(.green)
                             .font(FontManager.primaryText())
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)

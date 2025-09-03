@@ -31,18 +31,21 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         do {
             var spot = try document.data(as: Spot.self)
             
-            // If we have location data, format it as City, State
-            if let latitude = spot.latitude,
-               let longitude = spot.longitude {
+            // Preserve authored locationName (e.g., venue/building) if present.
+            // Only fallback to reverse-geocoded City, State when locationName is empty.
+            let hasCustomLocation = !(spot.locationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            if !hasCustomLocation, let latitude = spot.latitude, let longitude = spot.longitude {
                 let location = CLLocation(latitude: latitude, longitude: longitude)
                 let geocoder = CLGeocoder()
-                
                 do {
                     let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                    if let placemark = placemarks.first,
-                       let city = placemark.locality,
-                       let state = placemark.administrativeArea {
-                        spot.locationName = "\(city), \(state)"
+                    if let placemark = placemarks.first {
+                        // Prefer placemark.name when available (often POI/venue), otherwise City, State
+                        if let name = placemark.name, !name.isEmpty {
+                            spot.locationName = name
+                        } else if let city = placemark.locality, let state = placemark.administrativeArea {
+                            spot.locationName = "\(city), \(state)"
+                        }
                     }
                 } catch {
                     SpotLogger.error("Geocoding failed for spot: \(error.localizedDescription)")

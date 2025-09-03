@@ -5,6 +5,7 @@ struct TopNavigationView: View {
     let showBackButton: Bool
     let rightButton: RightButtonType
     @Binding var showUploadView: Bool
+    var onPlusTapped: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     
     enum RightButtonType {
@@ -17,12 +18,14 @@ struct TopNavigationView: View {
         title: String,
         showBackButton: Bool = false,
         rightButton: RightButtonType = .none,
-        showUploadView: Binding<Bool> = .constant(false)
+        showUploadView: Binding<Bool> = .constant(false),
+        onPlusTapped: (() -> Void)? = nil
     ) {
         self.title = title
         self.showBackButton = showBackButton
         self.rightButton = rightButton
         self._showUploadView = showUploadView
+        self.onPlusTapped = onPlusTapped
     }
     
     var body: some View {
@@ -56,7 +59,7 @@ struct TopNavigationView: View {
                 case .plus:
                     Button(action: {
                         SpotLogger.info("User tapped + button to start post flow")
-                        showUploadView = true
+                        if let onPlusTapped { onPlusTapped() } else { showUploadView = true }
                     }) {
                         Image(systemName: "plus")
                             .font(.system(size: 18, weight: .semibold))
