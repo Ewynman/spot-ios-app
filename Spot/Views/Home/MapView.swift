@@ -6,6 +6,7 @@ import CoreLocation
 struct MapView: View {
     let spots: [Spot]
     @StateObject private var locationManager = LocationManager.shared
+    @EnvironmentObject var authVM: AuthViewModel
 
     // iOS 17 camera replacement for coordinateRegion
     @State private var cameraPosition: MapCameraPosition

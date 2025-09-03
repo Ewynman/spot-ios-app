@@ -9,6 +9,7 @@ import SwiftUI
 
 struct NotificationPermissionView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var navigateToSignup = false
 
     var body: some View {
@@ -59,12 +60,7 @@ struct NotificationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                                DispatchQueue.main.async {
-                                    SpotLogger.info("Notifications granted: \(granted)")
-                                    navigateToSignup = true
-                                }
-                            }
+                            permissionManager.requestNotificationPermission()
                         }) {
                             Text("Allow Notifications")
                                 .font(FontManager.buttonText())
@@ -96,6 +92,11 @@ struct NotificationPermissionView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .onChange(of: permissionManager.notificationStatus) { _, newStatus in
+            if newStatus != .notDetermined {
+                navigateToSignup = true
+            }
+        }
     }
 }
 

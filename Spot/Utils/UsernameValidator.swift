@@ -45,10 +45,10 @@ struct UsernameValidator {
                 patterns: nil,
                 length: .init(min: 3, max: 20),
                 charset: .init(
-                    allowRegex: "^[a-z0-9._-]+$",
+                    allowRegex: "^[A-Za-z0-9._-]+$",
                     disallowLeading: [".", "_", "-"],
                     disallowTrailing: [".", "_", "-"],
-                    disallowConsecutive: ["..","__","--","._","_.","-.",".-","_-","-_"]
+                    disallowConsecutive: ["..","__","--","._","_.","-.",".-","_ -","-_"]
                 )
             )
         }

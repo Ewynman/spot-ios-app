@@ -165,8 +165,7 @@ struct SpotCard: View {
             HStack {
                 HStack(spacing: 16) {
                     Button {
-                        guard !isLoadingLike, let spotId = spot.id, let _ = userId else { return }
-                        _ = isLiked
+                        guard !isLoadingLike, let spotId = spot.id, authVM.userId != nil else { return }
                         isLiked.toggle()
                         isLoadingLike = true
                         if isLiked {
@@ -184,8 +183,7 @@ struct SpotCard: View {
                     .buttonStyle(PlainButtonStyle())
 
                     Button {
-                        guard !isLoadingSave, let spotId = spot.id, let _ = userId else { return }
-                        _ = isSaved
+                        guard !isLoadingSave, let spotId = spot.id, authVM.userId != nil else { return }
                         isSaved.toggle()
                         isLoadingSave = true
                         if isSaved {

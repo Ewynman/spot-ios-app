@@ -150,9 +150,10 @@ class UserSpotService {
         
         SpotLogger.info("UserSpotService: Fetching liked spots for user: \(userId)")
         
-        // Get user's liked spots array
+        // Get user's liked and bookmarked spots arrays
         let userDoc = try await db.collection("users").document(userId).getDocument()
         let likedSpotIds = userDoc.data()?["likedSpots"] as? [String] ?? []
+        let bookmarkedSpotIds = userDoc.data()?["bookmarkedSpots"] as? [String] ?? []
         
         SpotLogger.info("UserSpotService: Found \(likedSpotIds.count) liked spot IDs")
         
@@ -163,7 +164,18 @@ class UserSpotService {
         
         // For now, we'll use the array-based approach but sort by creation time
         // In a future migration, we could move to subcollections with timestamps
-        let spots = try await fetchSpotsByIds(likedSpotIds)
+        // Fetch and mark each spot with like/save flags
+        var spots = try await fetchSpotsByIds(likedSpotIds)
+        let likedSet = Set(likedSpotIds)
+        let savedSet = Set(bookmarkedSpotIds)
+        spots = spots.map { s in
+            var m = s
+            if let id = m.id {
+                m.isLiked = likedSet.contains(id)
+                m.isSaved = savedSet.contains(id)
+            }
+            return m
+        }
         
         // Sort by createdAt descending (most recent first)
         let sortedSpots = spots.sorted { (spot1, spot2) in
@@ -186,16 +198,28 @@ class UserSpotService {
             throw NSError(domain: "No user", code: 0)
         }
         
-        // Get user's bookmarked spots array
+        // Get user's bookmarked and liked spots arrays
         let userDoc = try await db.collection("users").document(userId).getDocument()
         let bookmarkedSpotIds = userDoc.data()?["bookmarkedSpots"] as? [String] ?? []
+        let likedSpotIds = userDoc.data()?["likedSpots"] as? [String] ?? []
         
         if bookmarkedSpotIds.isEmpty {
             return PaginatedSpotsResult(spots: [], lastCursor: nil, hasMore: false)
         }
         
         // For now, we'll use the array-based approach but sort by creation time
-        let spots = try await fetchSpotsByIds(bookmarkedSpotIds)
+        // Fetch and mark each spot with like/save flags
+        var spots = try await fetchSpotsByIds(bookmarkedSpotIds)
+        let savedSet = Set(bookmarkedSpotIds)
+        let likedSet = Set(likedSpotIds)
+        spots = spots.map { s in
+            var m = s
+            if let id = m.id {
+                m.isSaved = savedSet.contains(id)
+                m.isLiked = likedSet.contains(id)
+            }
+            return m
+        }
         
         // Sort by createdAt descending (most recent first)
         let sortedSpots = spots.sorted { (spot1, spot2) in

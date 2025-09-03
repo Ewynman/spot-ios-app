@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LocationPermissionView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var navigateToNotifications = false
 
     var body: some View {
@@ -58,8 +59,7 @@ struct LocationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            PermissionManager.shared.requestPermissionsIfNeeded()
-                            navigateToNotifications = true
+                            permissionManager.requestLocationPermission()
                         }) {
                             Text("Enable Location")
                                 .font(FontManager.buttonText())
@@ -91,6 +91,11 @@ struct LocationPermissionView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .onChange(of: permissionManager.locationStatus) { _, newStatus in
+            if newStatus != .notDetermined {
+                navigateToNotifications = true
+            }
+        }
     }
 }
 

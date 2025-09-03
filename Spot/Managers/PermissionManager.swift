@@ -43,6 +43,49 @@ class PermissionManager: NSObject, ObservableObject {
         requestLocationPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
     }
+
+    // MARK: - Explicit Requests (for onboarding buttons)
+    func requestLocationPermission() {
+        updatePermissionStatuses()
+        if locationStatus == .notDetermined {
+            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location action=explicit")
+            locationManager.requestWhenInUseAuthorization()
+            UserDefaults.standard.set(true, forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
+        } else if locationStatus == .denied || locationStatus == .restricted {
+            showLocationBanner = true
+        }
+    }
+
+    func requestNotificationPermission() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status = settings.authorizationStatus
+            DispatchQueue.main.async {
+                self.notificationStatus = status
+                switch status {
+                case .notDetermined:
+                    SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push action=explicit")
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                        DispatchQueue.main.async {
+                            if granted {
+                                SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=granted")
+                            } else {
+                                SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=denied")
+                                self.showNotificationBanner = true
+                            }
+                            UserDefaults.standard.set(true, forKey: Constants.UserDefaultsKeys.notificationsRequested)
+                            self.updatePermissionStatuses()
+                        }
+                    }
+                case .denied, .provisional, .ephemeral:
+                    self.showNotificationBanner = true
+                case .authorized:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+    }
     
     private func requestLocationPermissionIfNeeded() {
         let userDefaults = UserDefaults.standard

@@ -1,6 +1,8 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import PhotosUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -19,6 +21,10 @@ struct SettingsView: View {
     @State private var originalUsername: String = ""
     @State private var confirmDelete: Bool = false
     @State private var deletePassword: String = ""
+    @State private var profileImageURL: String? = nil
+    @State private var selectedProfileImage: UIImage? = nil
+    @State private var photoPickerItem: PhotosPickerItem? = nil
+    @State private var isUploadingPhoto: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +51,60 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
+                    sectionHeader("Profile Photo")
+
+                    PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                        ZStack {
+                            if let image = selectedProfileImage {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                            } else if let urlString = profileImageURL, let url = URL(string: urlString) {
+                                AsyncImage(url: url) { img in
+                                    img.resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(Constants.Colors.primary)
+                                }
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                            } else {
+                                Circle()
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: 100, height: 100)
+                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(Constants.Colors.primary)
+                                    )
+                            }
+
+                            if isUploadingPhoto {
+                                Circle()
+                                    .fill(Color.black.opacity(0.15))
+                                    .frame(width: 100, height: 100)
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .onChange(of: photoPickerItem) { _, newItem in
+                        Task {
+                            if let data = try? await newItem?.loadTransferable(type: Data.self),
+                               let uiImage = UIImage(data: data) {
+                                selectedProfileImage = uiImage
+                                uploadProfilePhoto(uiImage)
+                            }
+                        }
+                    }
+
                     sectionHeader("Account")
 
                     SettingsTextField(title: "Username", text: $username)
@@ -199,6 +259,7 @@ struct SettingsView: View {
                     name = data["name"] as? String ?? ""
                     email = data["email"] as? String ?? (Auth.auth().currentUser?.email ?? "")
                     isPrivate = data["isPrivate"] as? Bool ?? false
+                    profileImageURL = data["profileImageURL"] as? String
                 }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
@@ -333,6 +394,43 @@ struct SettingsView: View {
             withAnimation {
                 errorMessage = nil
                 successMessage = nil
+            }
+        }
+    }
+
+    private func uploadProfilePhoto(_ image: UIImage) {
+        SpotLogger.info("Settings.ProfilePhoto.Upload.start")
+        isUploadingPhoto = true
+        errorMessage = nil
+        successMessage = nil
+
+        ProfilePictureUploader.shared.uploadProfilePicture(image: image) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let imageURL):
+                    guard let uid = Auth.auth().currentUser?.uid else {
+                        self.isUploadingPhoto = false
+                        self.showToast(message: "No user session", isError: true)
+                        SpotLogger.error("Settings.ProfilePhoto.Upload.noUser")
+                        return
+                    }
+                    Firestore.firestore().collection("users").document(uid).updateData(["profileImageURL": imageURL]) { err in
+                        self.isUploadingPhoto = false
+                        if let err = err {
+                            self.showToast(message: "Failed to update profile picture: \(err.localizedDescription)", isError: true)
+                            SpotLogger.error("Settings.ProfilePhoto.UpdateFirestore.failed: \(err.localizedDescription)")
+                        } else {
+                            self.profileImageURL = imageURL
+                            self.selectedProfileImage = nil
+                            self.showToast(message: "Profile photo updated", isError: false)
+                            SpotLogger.info("Settings.ProfilePhoto.Updated ok")
+                        }
+                    }
+                case .failure(let error):
+                    self.isUploadingPhoto = false
+                    self.showToast(message: "Failed to upload photo: \(error.localizedDescription)", isError: true)
+                    SpotLogger.error("Settings.ProfilePhoto.Upload.failed: \(error.localizedDescription)")
+                }
             }
         }
     }

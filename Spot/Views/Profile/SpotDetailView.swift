@@ -19,6 +19,8 @@ struct SpotDetailView: View {
     @State private var cameraPosition: MapCameraPosition
     @State private var isLiked: Bool
     @State private var isSaved: Bool
+    @State private var isLoadingLike: Bool = false
+    @State private var isLoadingSave: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var isDeleting: Bool = false
     
@@ -140,14 +142,36 @@ struct SpotDetailView: View {
                     // Interaction bar
                     HStack {
                         HStack(spacing: 16) {
-                            Button(action: { isLiked.toggle() }) {
+                            Button(action: {
+                                guard !isLoadingLike, let spotId = spot.id, authVM.userId != nil else { return }
+                                isLiked.toggle()
+                                isLoadingLike = true
+                                if isLiked {
+                                    authVM.likeSpot(spotId)
+                                    isLoadingLike = false
+                                } else {
+                                    authVM.unlikeSpot(spotId)
+                                    isLoadingLike = false
+                                }
+                            }) {
                                 Image(systemName: isLiked ? "heart.fill" : "heart")
                                     .foregroundColor(isLiked ? .red : .gray)
                                     .font(.system(size: 22))
                             }
                             .buttonStyle(PlainButtonStyle())
 
-                            Button(action: { isSaved.toggle() }) {
+                            Button(action: {
+                                guard !isLoadingSave, let spotId = spot.id, authVM.userId != nil else { return }
+                                isSaved.toggle()
+                                isLoadingSave = true
+                                if isSaved {
+                                    authVM.bookmarkSpot(spotId)
+                                    isLoadingSave = false
+                                } else {
+                                    authVM.unbookmarkSpot(spotId)
+                                    isLoadingSave = false
+                                }
+                            }) {
                                 Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                                     .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
                                     .font(.system(size: 22))
