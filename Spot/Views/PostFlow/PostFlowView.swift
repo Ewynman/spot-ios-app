@@ -11,15 +11,15 @@ struct PostFlowView: View {
     @State private var selectedVibe: String = ""
     @State private var isUploading = false
     @State private var isPosting = false
-    @State private var moderationMessage: String? = nil
+    @State private var moderationMessage: String?
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var toastIsError = false
-    
-    var onPostSuccess: (() -> Void)? = nil
-    
+
+    var onPostSuccess: (() -> Void)?
+
     private let totalSteps = 3
-    
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
@@ -46,7 +46,7 @@ struct PostFlowView: View {
                     } else {
                     // Progress Indicator
                     ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
-                    
+
                     // Step Content
                     Group {
                         switch currentStep {
@@ -64,7 +64,7 @@ struct PostFlowView: View {
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
-                    
+
                     // Navigation Buttons
                     NavigationButtonsView(
                         currentStep: $currentStep,
@@ -76,7 +76,7 @@ struct PostFlowView: View {
                     )
                 }
                 }
-                
+
                 // Top status overlays
                 VStack(spacing: 8) {
                     if isUploading {
@@ -101,7 +101,7 @@ struct PostFlowView: View {
             }
         }
     }
-    
+
     private var canProceedToNextStep: Bool {
         switch currentStep {
         case 1:
@@ -114,7 +114,7 @@ struct PostFlowView: View {
             return false
         }
     }
-    
+
     private func handleBack() {
         if currentStep > 1 {
             SpotLogger.debug("User went back from step \(currentStep) to step \(currentStep - 1)")
@@ -123,7 +123,7 @@ struct PostFlowView: View {
             }
         }
     }
-    
+
     private func handleNext() {
         if currentStep < totalSteps {
             SpotLogger.debug("User progressed from step \(currentStep) to step \(currentStep + 1)")
@@ -132,13 +132,13 @@ struct PostFlowView: View {
             }
         }
     }
-    
+
     private func handleFinish() {
         if isPosting { return }
         isPosting = true
         SpotLogger.info("User completed post flow")
         SpotLogger.debug("Post data - Image: \(selectedImage != nil), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
-        
+
         guard let image = selectedImage,
               let location = selectedLocation,
               !selectedVibe.isEmpty,
@@ -149,9 +149,9 @@ struct PostFlowView: View {
             showToastWith(message: "All fields are required to post a spot.", isError: true)
             return
         }
-        
+
         isUploading = true
-        
+
         SpotUploader.shared.uploadSpot(
             image: image,
             vibeTag: selectedVibe,
@@ -247,7 +247,7 @@ struct PostFlowView: View {
             return false
         }
     }
-    
+
     private func showToastWith(message: String, isError: Bool) {
         toastMessage = message
         toastIsError = isError
@@ -266,7 +266,7 @@ struct PostFlowView: View {
 struct ProgressIndicatorView: View {
     let currentStep: Int
     let totalSteps: Int
-    
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(1...totalSteps, id: \.self) { step in
@@ -288,7 +288,7 @@ struct NavigationButtonsView: View {
     let onBack: () -> Void
     let onNext: () -> Void
     let onFinish: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 16) {
             if currentStep > 1 {
@@ -307,7 +307,7 @@ struct NavigationButtonsView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            
+
             Button(action: currentStep == totalSteps ? onFinish : onNext) {
                 Text(currentStep == totalSteps ? "Post" : "Next")
                     .font(FontManager.buttonText())
@@ -331,7 +331,15 @@ struct LocationData: Identifiable, Equatable {
     let coordinate: CLLocationCoordinate2D
     let placeName: String
     let address: String?
-    
+    let isCustomName: Bool
+
+    init(coordinate: CLLocationCoordinate2D, placeName: String, address: String?, isCustomName: Bool = false) {
+        self.coordinate = coordinate
+        self.placeName = placeName
+        self.address = address
+        self.isCustomName = isCustomName
+    }
+
     static func == (lhs: LocationData, rhs: LocationData) -> Bool {
         return lhs.id == rhs.id
     }
@@ -382,4 +390,4 @@ struct ToastView: View {
 #Preview {
     PostFlowView()
 }
- 
+

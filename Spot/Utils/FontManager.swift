@@ -8,7 +8,7 @@ struct FontManager {
             return fallback
         }
     }
-    
+
     // SF Pro Rounded font names
     static let sfProRoundedBlack = "SFProRounded-Black"
     static let sfProRoundedBold = "SFProRounded-Bold"
@@ -21,7 +21,7 @@ struct FontManager {
             fallback: .system(size: 24, weight: .black, design: .rounded)
         )
     }
-    
+
     static func sectionHeader() -> Font {
         return customFont(
             name: sfProRoundedBold,
@@ -29,7 +29,7 @@ struct FontManager {
             fallback: .system(size: 24, weight: .bold, design: .rounded)
         )
     }
-    
+
     static func primaryText() -> Font {
         return customFont(
             name: sfProRoundedRegular,
@@ -37,7 +37,7 @@ struct FontManager {
             fallback: .system(size: 12, weight: .regular, design: .rounded)
         )
     }
-    
+
     static func buttonText() -> Font {
         return customFont(
             name: sfProRoundedSemibold,
@@ -45,4 +45,4 @@ struct FontManager {
             fallback: .system(size: 12, weight: .semibold, design: .rounded)
         )
     }
-} 
+}

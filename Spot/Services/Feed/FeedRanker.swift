@@ -40,10 +40,10 @@ final class FeedRanker {
                 let ts = s.createdAt?.timeIntervalSince1970 ?? 0
                 return "u:\(uid)#t:\(ts)"
             }()
-            guard !seen.contains(key) else { 
+            guard !seen.contains(key) else {
                 excludedByBlendSeen += 1
                 FeedDiagnostics.logExclusion(reason: "blend_seen", source: "FeedRanker.blend", spot: s)
-                return 
+                return
             }
             picked.append(s)
             seen.insert(key)
@@ -57,10 +57,8 @@ final class FeedRanker {
             for s in recent where picked.count < pageSize { push(s) }
             for s in trending where picked.count < pageSize { push(s) }
         }
-        
+
         SpotLogger.debug("FeedRanker blend: recent=\(recent.count), trending=\(trending.count), picked=\(picked.count), excludedByBlendSeen=\(excludedByBlendSeen)")
         return picked
     }
 }
-
-

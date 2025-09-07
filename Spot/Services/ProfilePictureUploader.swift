@@ -57,4 +57,4 @@ final class ProfilePictureUploader {
 
         uploadProfilePictureForSignup(image: image, uid: uid, completion: completion)
     }
-} 
+}

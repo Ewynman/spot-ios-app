@@ -7,9 +7,9 @@ struct CoachMarkOverlay: View {
     let isLast: Bool
     let onNext: () -> Void
     let onSkip: () -> Void
-    
+
     @State private var animate: Bool = false
-    
+
     var body: some View {
         ZStack {
             // Dim layer with cutout using destinationOut
@@ -67,7 +67,6 @@ struct CoachMarkOverlay: View {
         .accessibilityElement(children: .contain)
     }
 }
-
 
 // Demo overlay that draws its own fake card and highlights the requested element
 struct CoachDemoOverlay: View {

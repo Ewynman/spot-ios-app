@@ -6,8 +6,8 @@ final class FeedRepository: ObservableObject {
     private init() {}
 
     @Published private(set) var spots: [Spot] = []
-    private var recentCursor: DocumentSnapshot? = nil
-    private var trendingCursor: DocumentSnapshot? = nil
+    private var recentCursor: DocumentSnapshot?
+    private var trendingCursor: DocumentSnapshot?
     private var isColdStart = true
 
     private let candidate = FeedCandidateService.shared
@@ -17,15 +17,15 @@ final class FeedRepository: ObservableObject {
 
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
-        
+
         // Log cold start diagnostics
         FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
-        
+
         do {
             var accRecent: [Spot] = []
             var accTrending: [Spot] = []
-            var rc: DocumentSnapshot? = nil
-            var tc: DocumentSnapshot? = nil
+            var rc: DocumentSnapshot?
+            var tc: DocumentSnapshot?
             var attempts = 0
 
             while accRecent.count + accTrending.count < pageSize && attempts < 5 {
@@ -98,26 +98,26 @@ final class FeedRepository: ObservableObject {
             recentCursor = rc
             trendingCursor = tc
             let blended = ranker.blend(recent: ranker.rankRecent(pageRecent), trending: ranker.rankTrending(pageTrending), pageSize: pageSize)
-            
+
             // Prevent duplicates already in feed when appending
             let existingIds = Set(self.spots.compactMap { $0.id })
             let excludedByExistingIds = blended.filter { spot in
                 if let id = spot.id { return existingIds.contains(id) }
                 return false
             }.count
-            
+
             let newUnique = blended.filter { spot in
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
-            
+
             // Log exclusion diagnostics
             for spot in blended {
                 if let id = spot.id, existingIds.contains(id) {
                     FeedDiagnostics.logExclusion(reason: "existing_id", source: "FeedRepository.loadMore", spot: spot)
                 }
             }
-            
+
             SpotLogger.info("Feed loadMore: newRecent=\(pageRecent.count), newTrending=\(pageTrending.count), blended=\(blended.count), excludedByExistingIds=\(excludedByExistingIds), appending=\(newUnique.count)")
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch {
@@ -125,5 +125,3 @@ final class FeedRepository: ObservableObject {
         }
     }
 }
-
-

@@ -1,7 +1,6 @@
 import Foundation
 import FirebaseFirestore
 
-
 final class FeedCandidateService {
     static let shared = FeedCandidateService()
     private init() {}
@@ -62,5 +61,3 @@ final class FeedCandidateService {
         }
     }
 }
-
-

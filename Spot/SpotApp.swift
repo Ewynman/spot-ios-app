@@ -15,7 +15,7 @@ struct SpotApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var deepLinkState = DeepLinkState.shared
     @State private var showLaunchScreen = true
-    
+
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
@@ -45,10 +45,10 @@ struct SpotApp: App {
                         .onAppear {
                             // Handle fresh install detection
                             _ = FreshInstallDetector.shared.handleFreshInstall()
-                            
+
                             // Process any pending deep links after app is ready
                             deepLinkState.processPendingDeepLinks()
-                            
+
                             // Request permissions if needed (after login)
                             if authViewModel.isAuthenticated {
                                 PermissionManager.shared.requestPermissionsIfNeeded()

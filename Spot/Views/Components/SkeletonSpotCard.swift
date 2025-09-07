@@ -37,5 +37,3 @@ struct SkeletonSpotCard: View {
         LinearGradient(gradient: Gradient(colors: [Color.gray.opacity(0.25), Color.gray.opacity(0.35), Color.gray.opacity(0.25)]), startPoint: .leading, endPoint: .trailing)
     }
 }
-
-

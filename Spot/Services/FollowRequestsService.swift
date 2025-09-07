@@ -79,5 +79,3 @@ final class FollowRequestsService {
         try await reqRef.delete()
     }
 }
-
-

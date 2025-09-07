@@ -13,16 +13,16 @@ import FirebaseStorage
 final class SpotService {
     static let shared = SpotService()
     private init() {}
-    
+
     private var cachedSpots: [Spot] = []
     private var lastFetchTime: Date?
     private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
-    
+
     private var isCacheValid: Bool {
         guard let lastFetch = lastFetchTime else { return false }
         return Date().timeIntervalSince(lastFetch) < cacheValidityDuration
     }
-    
+
     func createSpot(imageURL: String, latitude: Double, longitude: Double, vibeTag: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated."])))
@@ -46,7 +46,7 @@ final class SpotService {
             }
         }
     }
-    
+
     func fetchSpotsForMap(forceRefresh: Bool = false, completion: @escaping (Result<[Spot], Error>) -> Void) {
         // Return cached spots if available and cache is still valid
         if !forceRefresh && !cachedSpots.isEmpty && isCacheValid {
@@ -54,7 +54,7 @@ final class SpotService {
             completion(.success(cachedSpots))
             return
         }
-        
+
         SpotLogger.debug("Running fetchSpotsForMap query with order by 'createdAt'")
         Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
@@ -64,13 +64,13 @@ final class SpotService {
                     completion(.failure(error))
                     return
                 }
-                
+
                 guard let documents = snapshot?.documents else {
                     SpotLogger.warning("fetchSpotsForMap: No documents returned")
                     completion(.success([]))
                     return
                 }
-                
+
                 let spots = documents.compactMap { document -> Spot? in
                     let data = document.data()
                     SpotLogger.debug("Parsing spot doc id: \(document.documentID)")
@@ -113,20 +113,20 @@ final class SpotService {
     }
 
     // MARK: - Fetch Single Spot
-    
+
     func fetchSpotById(_ spotId: String) async throws -> Spot? {
         SpotLogger.debug("SpotService: Fetching spot by ID: \(spotId)")
-        
+
         let docRef = Firestore.firestore().collection("spots").document(spotId)
         let document = try await docRef.getDocument()
-        
+
         guard document.exists else {
             SpotLogger.warning("SpotService: Spot not found with ID: \(spotId)")
             return nil
         }
-        
+
         let data = document.data() ?? [:]
-        
+
         // Check if user is blocked
         if let userId = data["userId"] as? String {
             let isBlocked = await checkIfUserIsBlocked(userId)
@@ -135,7 +135,7 @@ final class SpotService {
                 return nil
             }
         }
-        
+
         guard let userId = data["userId"] as? String,
               let imageURL = data["imageURL"] as? String,
               let latitude = data["latitude"] as? Double,
@@ -143,7 +143,7 @@ final class SpotService {
             SpotLogger.error("SpotService: Invalid spot data for ID: \(spotId)")
             return nil
         }
-        
+
         let spot = Spot(
             id: document.documentID,
             userId: userId,
@@ -160,14 +160,14 @@ final class SpotService {
             createdAt: (data["createdAt"] as? Timestamp)?.dateValue(),
             authorIsPrivate: data["authorIsPrivate"] as? Bool
         )
-        
+
         SpotLogger.info("SpotService: Successfully fetched spot: \(spotId)")
         return spot
     }
-    
+
     private func checkIfUserIsBlocked(_ userId: String) async -> Bool {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
-        
+
         do {
             let userDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
             let blockedUsers = userDoc.data()?["blockedUsers"] as? [String] ?? []

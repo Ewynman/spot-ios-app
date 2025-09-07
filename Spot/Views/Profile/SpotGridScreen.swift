@@ -10,7 +10,7 @@ import SwiftUI
 enum SpotGridContext {
     case likes
     case bookmarks
-    
+
     var title: String {
         switch self {
         case .likes:
@@ -19,7 +19,7 @@ enum SpotGridContext {
             return "Your Bookmarks"
         }
     }
-    
+
     var emptyStateTitle: String {
         switch self {
         case .likes:
@@ -28,7 +28,7 @@ enum SpotGridContext {
             return "No Saved Spots"
         }
     }
-    
+
     var emptyStateMessage: String {
         switch self {
         case .likes:
@@ -37,7 +37,7 @@ enum SpotGridContext {
             return "You haven't saved any spots yet."
         }
     }
-    
+
     var emptyStateIcon: String {
         switch self {
         case .likes:
@@ -51,14 +51,14 @@ enum SpotGridContext {
 struct SpotGridScreen: View {
     let context: SpotGridContext
     let userId: String?
-    
+
     @StateObject private var likesViewModel = LikesViewModel()
     @StateObject private var bookmarksViewModel = BookmarksViewModel()
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedSpot: Spot?
     @State private var showSpotDetail = false
-    
+
     private var viewModel: (any ObservableObject) {
         switch context {
         case .likes:
@@ -67,7 +67,7 @@ struct SpotGridScreen: View {
             return bookmarksViewModel
         }
     }
-    
+
     private var spots: [Spot] {
         switch context {
         case .likes:
@@ -76,7 +76,7 @@ struct SpotGridScreen: View {
             return bookmarksViewModel.spots
         }
     }
-    
+
     private var isLoading: Bool {
         switch context {
         case .likes:
@@ -85,7 +85,7 @@ struct SpotGridScreen: View {
             return bookmarksViewModel.isLoading
         }
     }
-    
+
     private var errorMessage: String? {
         switch context {
         case .likes:
@@ -94,7 +94,7 @@ struct SpotGridScreen: View {
             return bookmarksViewModel.errorMessage
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Custom Header
@@ -107,16 +107,16 @@ struct SpotGridScreen: View {
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(Constants.Colors.primary)
                 }
-                
+
                 Spacer()
-                
+
                 Text(context.title)
                     .font(FontManager.sectionHeader())
                     .fontWeight(.bold)
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Spacer()
-                
+
                 // Invisible spacer for balance
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .semibold))
@@ -125,7 +125,7 @@ struct SpotGridScreen: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 16)
-            
+
             // Content
             if isLoading && spots.isEmpty {
                 // Loading state
@@ -139,16 +139,16 @@ struct SpotGridScreen: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 60))
                         .foregroundColor(.orange)
-                    
+
                     Text("Something went wrong")
                         .font(FontManager.sectionHeader())
                         .foregroundColor(Constants.Colors.primary)
-                    
+
                     Text(errorMessage)
                         .font(FontManager.primaryText())
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
-                    
+
                     Button {
                         Task {
                             await loadData()
@@ -163,7 +163,7 @@ struct SpotGridScreen: View {
                             .cornerRadius(20)
                     }
                     .buttonStyle(PlainButtonStyle())
-                    
+
                     Spacer()
                 }
             } else if spots.isEmpty {
@@ -202,30 +202,30 @@ struct SpotGridScreen: View {
         }
         .onAppear {
             SpotLogger.info("SpotGridScreen: onAppear for context: \(context)")
-            
+
             Task {
                 await loadData()
             }
         }
     }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Spacer()
-            
+
             Image(systemName: context.emptyStateIcon)
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
-            
+
             Text(context.emptyStateTitle)
                 .font(FontManager.sectionHeader())
                 .foregroundColor(Constants.Colors.primary)
-            
+
             Text(context.emptyStateMessage)
                 .font(FontManager.primaryText())
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
-            
+
             Button {
                 dismiss()
             } label: {
@@ -238,15 +238,15 @@ struct SpotGridScreen: View {
                     .cornerRadius(20)
             }
             .buttonStyle(PlainButtonStyle())
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private func loadData() async {
         SpotLogger.info("SpotGridScreen: Loading data for context: \(context)")
-        
+
         do {
             switch context {
             case .likes:

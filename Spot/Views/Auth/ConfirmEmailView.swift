@@ -8,7 +8,7 @@ struct ConfirmEmailView: View {
     @State private var isChecking = false
     @State private var timerActive = true
     @State private var secondsLeft: Int = 0
-    @State private var showToast: String? = nil
+    @State private var showToast: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -128,5 +128,3 @@ struct ConfirmEmailView: View {
         dismiss()
     }
 }
-
-

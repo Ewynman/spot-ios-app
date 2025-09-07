@@ -10,7 +10,7 @@ struct MapView: View {
 
     // iOS 17 camera replacement for coordinateRegion
     @State private var cameraPosition: MapCameraPosition
-    @State private var selectedSpot: Spot? = nil
+    @State private var selectedSpot: Spot?
 
     @Environment(\.verticalSizeClass) private var vSize
 

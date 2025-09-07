@@ -11,8 +11,8 @@ import MapKit
 struct SpotDetailView: View {
     let spot: Spot
     let isMapView: Bool // true if opened from map, false if opened from grid
-    var sourceContext: SpotGridContext? = nil // Context for back button text
-    var onDismiss: (() -> Void)? = nil
+    var sourceContext: SpotGridContext? // Context for back button text
+    var onDismiss: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
@@ -23,7 +23,7 @@ struct SpotDetailView: View {
     @State private var isLoadingSave: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var isDeleting: Bool = false
-    
+
     private var backButtonText: String {
         if let sourceContext = sourceContext {
             switch sourceContext {
@@ -38,7 +38,7 @@ struct SpotDetailView: View {
             return "Back to All Spots"
         }
     }
-    
+
     init(spot: Spot, isMapView: Bool, sourceContext: SpotGridContext? = nil, onDismiss: (() -> Void)? = nil) {
         self.spot = spot
         self.isMapView = isMapView
@@ -60,7 +60,7 @@ struct SpotDetailView: View {
         _isLiked = State(initialValue: spot.isLiked ?? false)
         _isSaved = State(initialValue: spot.isSaved ?? false)
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Top Bar
@@ -75,7 +75,7 @@ struct SpotDetailView: View {
                             SpotLogger.info("Analytics: back_from_spot_detail_context=bookmarks")
                         }
                     }
-                    
+
                     onDismiss?()
                     dismiss()
                 }) {
@@ -88,12 +88,12 @@ struct SpotDetailView: View {
                     .foregroundColor(Constants.Colors.primary)
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            
+
             if isMapView {
                 HStack(spacing: 12) {
                     if let profileImageURL = spot.userProfileImageURL {
@@ -107,13 +107,13 @@ struct SpotDetailView: View {
                         .frame(width: 32, height: 32)
                         .clipShape(Circle())
                     }
-                    
+
                     Text(spot.username ?? "")
                         .font(FontManager.primaryText())
                         .fontWeight(.semibold)
-                    
+
                     Spacer()
-                    
+
                     if let locationName = spot.locationName {
                         Text(locationName)
                             .font(FontManager.primaryText())

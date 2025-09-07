@@ -12,7 +12,7 @@ struct LaunchView: View {
         ZStack {
             Constants.Colors.background
                 .ignoresSafeArea()
-            
+
             Text("SPOT")
                 .font(FontManager.logoTitle())
                 .foregroundColor(Constants.Colors.primary)

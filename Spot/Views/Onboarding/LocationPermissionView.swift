@@ -18,7 +18,7 @@ struct LocationPermissionView: View {
                 Constants.Colors.background.ignoresSafeArea()
 
                 VStack(spacing: 22) {
-                    
+
                     // Custom Back Button
                     HStack {
                         CustomBackButton {

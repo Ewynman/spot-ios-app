@@ -9,25 +9,25 @@ class ProfileViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: Error?
     private var loadTask: Task<Void, Never>?
-    
+
     deinit {
         loadTask?.cancel()
     }
-    
+
     func loadUserProfile() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
-        
+
         await MainActor.run {
             isLoading = true
             error = nil
         }
-        
+
         loadTask?.cancel()
         loadTask = Task {
             do {
                 let docRef = Firestore.firestore().collection("users").document(userId)
                 let snapshot = try await docRef.getDocument()
-                
+
                 guard let data = snapshot.data() else {
                     await MainActor.run {
                         self.isLoading = false
@@ -35,12 +35,12 @@ class ProfileViewModel: ObservableObject {
                     }
                     return
                 }
-                
+
                 let username = data["username"] as? String ?? "User"
                 let profileImageURL = data["profileImageURL"] as? String
                 let vibeStats = data["vibeStats"] as? [String: Int]
                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
-                
+
                 let user = User(
                     id: userId,
                     username: username,
@@ -50,12 +50,12 @@ class ProfileViewModel: ObservableObject {
                     vibeStats: vibeStats,
                     createdAt: createdAt
                 )
-                
+
                 await MainActor.run {
                     self.user = user
                     self.isLoading = false
                 }
-                
+
                 SpotLogger.info("Loaded profile for user: \(username)")
                 await loadUserSpots()
             } catch {
@@ -67,10 +67,10 @@ class ProfileViewModel: ObservableObject {
             }
         }
     }
-    
+
     func loadUserSpots() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
-        
+
         loadTask?.cancel()
         loadTask = Task {
             do {
@@ -78,16 +78,16 @@ class ProfileViewModel: ObservableObject {
                     .collection("spots")
                     .whereField("userId", isEqualTo: userId)
                     .order(by: "createdAt", descending: true)
-                
+
                 let snapshot = try await query.getDocuments()
-                
+
                 let spots = try await withThrowingTaskGroup(of: Spot?.self) { group in
                     for document in snapshot.documents {
                         group.addTask {
                             return try await Spot.fromDocument(document)
                         }
                     }
-                    
+
                     var validSpots: [Spot] = []
                     for try await spot in group {
                         if let spot = spot {
@@ -96,11 +96,11 @@ class ProfileViewModel: ObservableObject {
                     }
                     return validSpots
                 }
-                
+
                 await MainActor.run {
                     self.spots = spots
                 }
-                
+
                 SpotLogger.info("Loaded \(spots.count) spots for user: \(userId)")
             } catch {
                 SpotLogger.error("Failed to load user spots: \(error.localizedDescription)")
@@ -110,19 +110,19 @@ class ProfileViewModel: ObservableObject {
             }
         }
     }
-    
+
     func togglePrivateProfile() {
         guard let userId = Auth.auth().currentUser?.uid else { return }
-        
+
         Task {
             do {
                 let userRef = Firestore.firestore().collection("users").document(userId)
                 let currentPrivacy = user?.isPrivate ?? false
-                
+
                 try await userRef.updateData([
                     "isPrivate": !currentPrivacy
                 ])
-                
+
                 await MainActor.run {
                     // Create a new User instance with updated privacy
                     if var updatedUser = self.user {
@@ -130,7 +130,7 @@ class ProfileViewModel: ObservableObject {
                         self.user = updatedUser
                     }
                 }
-                
+
                 SpotLogger.info("Updated profile privacy: \(!currentPrivacy)")
             } catch {
                 SpotLogger.error("Failed to toggle profile privacy: \(error.localizedDescription)")
@@ -140,11 +140,11 @@ class ProfileViewModel: ObservableObject {
             }
         }
     }
-    
+
     func requestAccess() {
         guard let targetUserId = user?.id,
               let currentUserId = Auth.auth().currentUser?.uid else { return }
-        
+
         Task {
             do {
                 let requestData: [String: Any] = [
@@ -153,7 +153,7 @@ class ProfileViewModel: ObservableObject {
                     "status": "pending",
                     "createdAt": FieldValue.serverTimestamp()
                 ]
-                
+
                 try await Firestore.firestore().collection("accessRequests").addDocument(data: requestData)
                 SpotLogger.info("Sent access request to user: \(targetUserId)")
             } catch {
@@ -164,7 +164,7 @@ class ProfileViewModel: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - Preview Data
     static let previewViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
@@ -203,7 +203,7 @@ class ProfileViewModel: ObservableObject {
         ]
         return vm
     }()
-    
+
     static let previewOtherUserViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
         vm.user = User(
@@ -232,7 +232,7 @@ class ProfileViewModel: ObservableObject {
         ]
         return vm
     }()
-    
+
     static let previewPrivateViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
         vm.user = User(
@@ -244,7 +244,7 @@ class ProfileViewModel: ObservableObject {
         )
         return vm
     }()
-    
+
     static let previewEmptyViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
         vm.user = User(
@@ -267,7 +267,7 @@ extension ProfileViewModel {
         case unauthorized
         case unknown
         case missingIndex
-        
+
         var errorDescription: String? {
             switch self {
             case .userNotFound:
@@ -283,4 +283,4 @@ extension ProfileViewModel {
             }
         }
     }
-} 
+}

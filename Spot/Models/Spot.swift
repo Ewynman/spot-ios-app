@@ -26,11 +26,11 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var createdAt: Date?
     // Optional denormalized snapshot to enable quick pre-filtering.
     var authorIsPrivate: Bool?
-    
+
     static func fromDocument(_ document: QueryDocumentSnapshot) async throws -> Spot? {
         do {
             var spot = try document.data(as: Spot.self)
-            
+
             // Preserve authored locationName (e.g., venue/building) if present.
             // Only fallback to reverse-geocoded City, State when locationName is empty.
             let hasCustomLocation = !(spot.locationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -51,18 +51,18 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
                     SpotLogger.error("Geocoding failed for spot: \(error.localizedDescription)")
                 }
             }
-            
+
             return spot
         } catch {
             SpotLogger.error("Failed to decode spot: \(error.localizedDescription)")
             return nil
         }
     }
-    
+
     static func == (lhs: Spot, rhs: Spot) -> Bool {
         lhs.id == rhs.id
     }
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }

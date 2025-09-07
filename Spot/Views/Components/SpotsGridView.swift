@@ -9,7 +9,7 @@ import SwiftUI
 struct SpotsGridView: View {
     let spots: [Spot]
     let onSpotTapped: (Spot) -> Void
-    var onLoadMore: (() -> Void)? = nil
+    var onLoadMore: (() -> Void)?
     var columns: Int = 2 // Default to 2 columns for backward compatibility
 
     private var gridColumns: [GridItem] {
@@ -31,7 +31,7 @@ struct SpotsGridView: View {
             .padding(.horizontal, 12)
             .padding(.top, 12)
             if let onLoadMore {
-                GeometryReader { geo in
+                GeometryReader { _ in
                     Color.clear
                         .onAppear {
                             // Prefetch when bottom sentinel appears
@@ -47,7 +47,7 @@ struct SpotsGridView: View {
 struct SpotGridItem: View {
     let spot: Spot
     let columns: Int
-    
+
     private var itemWidth: CGFloat {
         let screenWidth = UIScreen.main.bounds.width
         let padding: CGFloat = 12 * 2 // horizontal padding

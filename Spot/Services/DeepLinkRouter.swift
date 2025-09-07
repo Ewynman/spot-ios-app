@@ -30,7 +30,7 @@ struct DeepLinkAnalytics {
 final class DeepLinkRouter {
     static let shared = DeepLinkRouter()
     private init() {}
-    
+
     // MARK: - URL Parsing
     func parseURL(_ url: URL) -> DeepLinkRoute {
         SpotLogger.debug("DeepLinkRouter: Parsing URL: \(url.absoluteString)")
@@ -54,10 +54,10 @@ final class DeepLinkRouter {
         SpotLogger.warning("DeepLinkRouter: Unknown URL scheme: \(url.scheme ?? "nil")")
         return .unknown
     }
-    
+
     private func parseUniversalLink(_ url: URL) -> DeepLinkRoute {
         let pathComponents = url.pathComponents.filter { $0 != "/" }
-        
+
         // Pattern: /s/:spotId
         if pathComponents.count == 2 && pathComponents[0] == "s" {
             let spotId = pathComponents[1]
@@ -68,17 +68,17 @@ final class DeepLinkRouter {
                 SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Universal Link: \(spotId)")
             }
         }
-        
+
         SpotLogger.warning("DeepLinkRouter: Invalid Universal Link path: \(url.path)")
         return .unknown
     }
-    
+
     private func parseCustomScheme(_ url: URL) -> DeepLinkRoute {
         let pathComponents = url.pathComponents.filter { $0 != "/" }
         let host = url.host?.lowercased()
-        
+
         SpotLogger.debug("DeepLinkRouter: Custom scheme parsing - Host: \(host ?? "nil"), PathComponents: \(pathComponents)")
-        
+
         // Pattern 1: spotapp://spot/:spotId (host = "spot", path = "/:spotId")
         if host == "spot" && pathComponents.count == 1 {
             let spotId = pathComponents[0]
@@ -89,7 +89,7 @@ final class DeepLinkRouter {
                 SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (host variant): \(spotId)")
             }
         }
-        
+
         // Pattern 2: spotapp:///spot/:spotId (host = nil, path = "/spot/:spotId")
         if host == nil && pathComponents.count == 2 && pathComponents[0].lowercased() == "spot" {
             let spotId = pathComponents[1]
@@ -100,7 +100,7 @@ final class DeepLinkRouter {
                 SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (path variant): \(spotId)")
             }
         }
-        
+
         // Pattern 3: spotapp://open?spotId=:spotId (query variant)
         if host == "open" || (host == nil && pathComponents.count == 1 && pathComponents[0].lowercased() == "open") {
             if let spotId = url.queryParameters?["spotId"] {
@@ -112,11 +112,11 @@ final class DeepLinkRouter {
                 }
             }
         }
-        
+
         SpotLogger.warning("DeepLinkRouter: Invalid Custom Scheme - Host: \(host ?? "nil"), Path: \(url.path)")
         return .unknown
     }
-    
+
     private func isValidSpotId(_ spotId: String) -> Bool {
         // Basic validation: non-empty and reasonable length
         return !spotId.isEmpty && spotId.count <= 50 && spotId.range(of: "^[a-zA-Z0-9_-]+$", options: .regularExpression) != nil
@@ -129,7 +129,7 @@ extension URL {
     var queryParameters: [String: String]? {
         guard let components = URLComponents(url: self, resolvingAgainstBaseURL: true),
               let queryItems = components.queryItems else { return nil }
-        
+
         var items: [String: String] = [:]
         for queryItem in queryItems {
             items[queryItem.name] = queryItem.value
@@ -143,7 +143,7 @@ extension URL {
 extension DeepLinkRouter {
     func logDeepLinkEvent(origin: DeepLinkOrigin, spotId: String?, isColdStart: Bool, success: Bool, errorReason: String? = nil) {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        
+
         _ = DeepLinkAnalytics(
             origin: origin,
             spotId: spotId,
@@ -152,13 +152,13 @@ extension DeepLinkRouter {
             success: success,
             errorReason: errorReason
         )
-        
+
         if success {
             SpotLogger.info("DeepLinkRouter: Success - origin: \(origin), spotId: \(spotId ?? "nil"), coldStart: \(isColdStart)")
         } else {
             SpotLogger.error("DeepLinkRouter: Failure - origin: \(origin), spotId: \(spotId ?? "nil"), reason: \(errorReason ?? "unknown")")
         }
-        
+
         // TODO: Send to analytics service when implemented
         // AnalyticsService.shared.trackDeepLink(analytics)
     }

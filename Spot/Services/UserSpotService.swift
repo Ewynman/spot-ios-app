@@ -6,7 +6,7 @@ class UserSpotService {
     static let shared = UserSpotService()
     private let db = Firestore.firestore()
     private var userId: String? { Auth.auth().currentUser?.uid }
-    
+
     // MARK: - Like/Unlike
     func likeSpot(spotId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
@@ -21,7 +21,7 @@ class UserSpotService {
             }
         }
     }
-    
+
     func unlikeSpot(spotId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
         let userRef = db.collection("users").document(userId)
@@ -35,7 +35,7 @@ class UserSpotService {
             }
         }
     }
-    
+
     // MARK: - Bookmark/Unbookmark
     func bookmarkSpot(spotId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
@@ -50,7 +50,7 @@ class UserSpotService {
             }
         }
     }
-    
+
     func unbookmarkSpot(spotId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let userId = userId else { completion(.failure(NSError(domain: "No user", code: 0))); return }
         let userRef = db.collection("users").document(userId)
@@ -64,11 +64,11 @@ class UserSpotService {
             }
         }
     }
-    
+
     // MARK: - Fetch liked/bookmarked spots
     func fetchUserSpotLists(completion: @escaping (_ liked: [String], _ bookmarked: [String]) -> Void) {
         guard let userId = userId else { completion([], []); return }
-        db.collection("users").document(userId).getDocument { snapshot, error in
+        db.collection("users").document(userId).getDocument { snapshot, _ in
             let liked = snapshot?.data()? ["likedSpots"] as? [String] ?? []
             let bookmarked = snapshot?.data()? ["bookmarkedSpots"] as? [String] ?? []
             completion(liked, bookmarked)
@@ -133,35 +133,35 @@ class UserSpotService {
             if let error = error { completion(.failure(error)) } else { completion(.success(())) }
         }
     }
-    
+
     // MARK: - New Paginated Likes/Bookmarks (using existing array schema)
-    
+
     struct PaginatedSpotsResult {
         let spots: [Spot]
         let lastCursor: DocumentSnapshot?
         let hasMore: Bool
     }
-    
+
     func fetchLikedSpots(pageSize: Int = 24, lastCursor: DocumentSnapshot? = nil) async throws -> PaginatedSpotsResult {
         guard let userId = userId else {
             SpotLogger.error("UserSpotService: No user ID available")
             throw NSError(domain: "No user", code: 0)
         }
-        
+
         SpotLogger.info("UserSpotService: Fetching liked spots for user: \(userId)")
-        
+
         // Get user's liked and bookmarked spots arrays
         let userDoc = try await db.collection("users").document(userId).getDocument()
         let likedSpotIds = userDoc.data()?["likedSpots"] as? [String] ?? []
         let bookmarkedSpotIds = userDoc.data()?["bookmarkedSpots"] as? [String] ?? []
-        
+
         SpotLogger.info("UserSpotService: Found \(likedSpotIds.count) liked spot IDs")
-        
+
         if likedSpotIds.isEmpty {
             SpotLogger.info("UserSpotService: No liked spots found")
             return PaginatedSpotsResult(spots: [], lastCursor: nil, hasMore: false)
         }
-        
+
         // For now, we'll use the array-based approach but sort by creation time
         // In a future migration, we could move to subcollections with timestamps
         // Fetch and mark each spot with like/save flags
@@ -176,37 +176,37 @@ class UserSpotService {
             }
             return m
         }
-        
+
         // Sort by createdAt descending (most recent first)
         let sortedSpots = spots.sorted { (spot1, spot2) in
             (spot1.createdAt ?? Date.distantPast) > (spot2.createdAt ?? Date.distantPast)
         }
-        
+
         // Simple pagination - return all spots for now since we're using arrays
         // In production with subcollections, you'd implement proper cursor-based pagination
         let hasMore = false // No pagination for array-based approach
-        
+
         return PaginatedSpotsResult(
             spots: sortedSpots,
             lastCursor: nil,
             hasMore: hasMore
         )
     }
-    
+
     func fetchBookmarkedSpots(pageSize: Int = 24, lastCursor: DocumentSnapshot? = nil) async throws -> PaginatedSpotsResult {
         guard let userId = userId else {
             throw NSError(domain: "No user", code: 0)
         }
-        
+
         // Get user's bookmarked and liked spots arrays
         let userDoc = try await db.collection("users").document(userId).getDocument()
         let bookmarkedSpotIds = userDoc.data()?["bookmarkedSpots"] as? [String] ?? []
         let likedSpotIds = userDoc.data()?["likedSpots"] as? [String] ?? []
-        
+
         if bookmarkedSpotIds.isEmpty {
             return PaginatedSpotsResult(spots: [], lastCursor: nil, hasMore: false)
         }
-        
+
         // For now, we'll use the array-based approach but sort by creation time
         // Fetch and mark each spot with like/save flags
         var spots = try await fetchSpotsByIds(bookmarkedSpotIds)
@@ -220,26 +220,26 @@ class UserSpotService {
             }
             return m
         }
-        
+
         // Sort by createdAt descending (most recent first)
         let sortedSpots = spots.sorted { (spot1, spot2) in
             (spot1.createdAt ?? Date.distantPast) > (spot2.createdAt ?? Date.distantPast)
         }
-        
+
         // Simple pagination - return all spots for now since we're using arrays
         // In production with subcollections, you'd implement proper cursor-based pagination
         let hasMore = false // No pagination for array-based approach
-        
+
         return PaginatedSpotsResult(
             spots: sortedSpots,
             lastCursor: nil,
             hasMore: hasMore
         )
     }
-    
+
     private func fetchSpotsByIds(_ spotIds: [String]) async throws -> [Spot] {
         guard !spotIds.isEmpty else { return [] }
-        
+
         // Batch fetch spots
         let spotsRef = db.collection("spots")
         let spots = try await withThrowingTaskGroup(of: Spot?.self) { group in
@@ -257,7 +257,7 @@ class UserSpotService {
                     }
                 }
             }
-            
+
             var results: [Spot] = []
             for try await spot in group {
                 if let spot = spot {
@@ -266,19 +266,19 @@ class UserSpotService {
             }
             return results
         }
-        
+
         // Filter out blocked users' spots
         let currentUserId = Auth.auth().currentUser?.uid
         if let currentUserId {
             let userDoc = try await db.collection("users").document(currentUserId).getDocument()
             let blockedUsers = userDoc.data()?["blockedUsers"] as? [String] ?? []
-            
+
             return spots.filter { spot in
                 guard let spotUserId = spot.userId else { return false }
                 return !blockedUsers.contains(spotUserId)
             }
         }
-        
+
         return spots
     }
 }

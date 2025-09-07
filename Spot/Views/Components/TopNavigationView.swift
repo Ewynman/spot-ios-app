@@ -5,15 +5,15 @@ struct TopNavigationView: View {
     let showBackButton: Bool
     let rightButton: RightButtonType
     @Binding var showUploadView: Bool
-    var onPlusTapped: (() -> Void)? = nil
+    var onPlusTapped: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
-    
+
     enum RightButtonType {
         case none
         case settings
         case plus
     }
-    
+
     init(
         title: String,
         showBackButton: Bool = false,
@@ -27,7 +27,7 @@ struct TopNavigationView: View {
         self._showUploadView = showUploadView
         self.onPlusTapped = onPlusTapped
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             HStack {
@@ -40,13 +40,13 @@ struct TopNavigationView: View {
                             .foregroundColor(Constants.Colors.primary)
                     }
                 }
-                
+
                 Text(title)
                     .font(FontManager.logoTitle())
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Spacer()
-                
+
                 switch rightButton {
                 case .settings:
                     Button(action: {
@@ -97,21 +97,21 @@ struct TopNavigationView_Previews: PreviewProvider {
                 showUploadView: .constant(false)
             )
             .previewDisplayName("Homepage")
-            
+
             // With Back Button
             TopNavigationView(
                 title: "Profile",
                 showBackButton: true
             )
             .previewDisplayName("With Back")
-            
+
             // With Settings
             TopNavigationView(
                 title: "Profile",
                 rightButton: .settings
             )
             .previewDisplayName("With Settings")
-            
+
             // Basic
             TopNavigationView(
                 title: "Profile"
@@ -120,4 +120,4 @@ struct TopNavigationView_Previews: PreviewProvider {
         }
         .previewLayout(.sizeThatFits)
     }
-} 
+}

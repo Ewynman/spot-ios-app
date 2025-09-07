@@ -133,9 +133,9 @@ actor AuthorPrivacyCache {
         for s in spots {
             guard let author = s.userId else { continue }
             if let v = viewerId, v == author { filtered.append(s); continue }
-            if cachedBlockedUsers.contains(author) { 
+            if cachedBlockedUsers.contains(author) {
                 SpotLogger.info("Privacy.Drop spotId=\(s.id ?? "nil") authorId=\(author) reason=blocked_user")
-                continue 
+                continue
             }
             if let allowed = isAllowed(authorId: author) {
                 if allowed { filtered.append(s) } else {
@@ -177,6 +177,3 @@ actor AuthorPrivacyCache {
         }
     }
 }
-
-
-

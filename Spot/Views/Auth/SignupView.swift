@@ -53,7 +53,7 @@ struct SignupView: View {
                         Text("Add Profile Picture")
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
-                        
+
                         PhotosPicker(selection: $photoPickerItem, matching: .images) {
                             ZStack {
                                 if let image = selectedProfileImage {
@@ -243,7 +243,7 @@ struct SignupView: View {
         }
         .navigationBarBackButtonHidden(true)
     }
-    
+
     private func validateAndSignUp() {
         Task {
             do {
@@ -272,10 +272,10 @@ struct SignupView: View {
 
     private func uploadProfilePictureAndSignUp() {
         guard let profileImage = selectedProfileImage else { return }
-        
+
         isLoading = true
         errorMessage = nil
-        
+
         // First create user with empty profile picture URL
         AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "", isPrivate: isPrivate) { result in
             switch result {
@@ -299,11 +299,11 @@ struct SignupView: View {
                                 self.errorMessage = "Failed to get user ID"
                                 return
                             }
-                            
+
                             let userData: [String: Any] = [
                                 "profileImageURL": imageURL
                             ]
-                            
+
                             Firestore.firestore().collection("users").document(uid).updateData(userData) { error in
                                 self.isLoading = false
                                 if let error = error {
@@ -328,7 +328,6 @@ struct SignupView: View {
         }
     }
 }
-
 
 // MARK: - Custom Reusable Fields
 

@@ -7,7 +7,7 @@ enum LogLevel: String, CaseIterable, Comparable {
     case warning = "WARNING"
     case error = "ERROR"
     case firebase = "FIREBASE"
-    
+
     // For filtering: debug < info < warning < error < firebase
     static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
         let order: [LogLevel] = [.debug, .info, .warning, .error, .firebase]
@@ -18,35 +18,35 @@ enum LogLevel: String, CaseIterable, Comparable {
 final class SpotLogger {
     static let shared = SpotLogger()
     private init() {}
-    
+
     // MARK: - Configuration
     static var minimumLevel: LogLevel = .debug // Change to .info, .warning, etc. to filter
-    
+
     static func setMinimumLevel(_ level: LogLevel) {
         minimumLevel = level
     }
-    
+
     // MARK: - Public Logging Methods
     static func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         log(.debug, message: message, file: file, function: function, line: line)
     }
-    
+
     static func info(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         log(.info, message: message, file: file, function: function, line: line)
     }
-    
+
     static func warning(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         log(.warning, message: message, file: file, function: function, line: line)
     }
-    
+
     static func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         log(.error, message: message, file: file, function: function, line: line)
     }
-    
+
     static func firebase(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         log(.firebase, message: message, file: file, function: function, line: line)
     }
-    
+
     // MARK: - Private Logging Implementation
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.spotapp.spot", category: "SpotLogger")
 

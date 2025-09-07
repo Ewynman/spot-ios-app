@@ -10,7 +10,7 @@ import MapKit
 import FirebaseFirestore
 
 struct ProfileView: View {
-    var userId: String? = nil
+    var userId: String?
     // If true, this screen was pushed from another screen (e.g., Feed/Search).
     // In that case, show a custom back button and hide bottom nav.
     var fromNavigationPush: Bool = false
@@ -34,7 +34,7 @@ struct ProfileView: View {
     @State private var showBookmarksNav: Bool = false
     @State private var showFollowRequestsNav: Bool = false
     @State private var followRequestsCount: Int = 0
-    @State private var followReqListener: ListenerRegistration? = nil
+    @State private var followReqListener: ListenerRegistration?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -227,10 +227,34 @@ struct ProfileView: View {
                             }
 
                             if selectedTab == "Spots" {
-                                SpotsGridView(spots: spots) { tapped in
-                                    selectedSpot = tapped
+                                if let selectedSpot {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("< Back to all spots")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                            .padding(.leading, 12)
+                                            .padding(.bottom, 4)
+                                            .onTapGesture {
+                                                withAnimation { self.selectedSpot = nil }
+                                            }
+
+                                        SpotCard(
+                                            spot: selectedSpot,
+                                            showUserInfo: false,
+                                            userId: userId,
+                                            onDelete: { pendingDeleteSpot = selectedSpot; showDeleteConfirm = true },
+                                            source: "ProfileInline",
+                                            backAction: { withAnimation { self.selectedSpot = nil } }
+                                        )
+                                    }
+                                    .transition(.opacity)
+                                    .zIndex(1)
+                                } else {
+                                    SpotsGridView(spots: spots) { tapped in
+                                        selectedSpot = tapped
+                                    }
+                                    .zIndex(0)
                                 }
-                                .zIndex(0)
                             } else {
                                 // Map tab
                                 ProfileMapView(spots: spots) { tapped in
@@ -340,7 +364,7 @@ struct ProfileView: View {
             }
             .background(Constants.Colors.background.ignoresSafeArea())
             .navigationBarBackButtonHidden(true)
-            .toolbar(.hidden, for: .navigationBar) 
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 // Only load if we haven't loaded this user yet
                 if lastLoadedUserId != userId {

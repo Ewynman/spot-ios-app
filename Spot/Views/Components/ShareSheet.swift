@@ -13,7 +13,7 @@ struct ShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var shareItems: [Any] = []
     @State private var isLoading = true
-    
+
     var body: some View {
         NavigationView {
             VStack {
@@ -38,7 +38,7 @@ struct ShareSheet: View {
             prepareShareItems()
         }
     }
-    
+
     private func prepareShareItems() {
         Task {
             // Universal link that will deep link to app or redirect to App Store
@@ -49,7 +49,7 @@ struct ShareSheet: View {
             metadata.url = metadata.originalURL
             metadata.title = spot.locationName ?? "Check out this Spot"
             metadata.imageProvider = nil
-            
+
             // Create subtitle with vibe and username
             var subtitle = ""
             if let vibe = spot.vibeTag, !vibe.isEmpty {
@@ -59,11 +59,11 @@ struct ShareSheet: View {
                 if !subtitle.isEmpty { subtitle += " • " }
                 subtitle += "by @\(username)"
             }
-            
+
             if !subtitle.isEmpty {
                 metadata.setValue(subtitle, forKey: "summary")
             }
-            
+
             // Try to load image for preview
             if let imageURL = spot.imageURL, let url = URL(string: imageURL) {
                 do {
@@ -75,9 +75,9 @@ struct ShareSheet: View {
                     SpotLogger.warning("Failed to load image for share preview: \(error.localizedDescription)")
                 }
             }
-            
+
             let linkItem = SpotShareItem(url: spotUrl, metadata: metadata)
-            
+
             await MainActor.run {
                 shareItems = [linkItem, spotUrl]
                 isLoading = false
@@ -91,21 +91,21 @@ struct ShareSheet: View {
 class SpotShareItem: NSObject, UIActivityItemSource {
     private let url: String
     private let metadata: LPLinkMetadata
-    
+
     init(url: String, metadata: LPLinkMetadata) {
         self.url = url
         self.metadata = metadata
         super.init()
     }
-    
+
     func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
         return url
     }
-    
+
     func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
         return url
     }
-    
+
     func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
         return metadata
     }
@@ -114,11 +114,11 @@ class SpotShareItem: NSObject, UIActivityItemSource {
 // UIViewControllerRepresentable for native share sheet
 struct ShareActivityView: UIViewControllerRepresentable {
     let activityItems: [Any]
-    
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
         return controller
     }
-    
+
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -9,6 +9,7 @@ struct SearchPage<T> {
 final class FirestoreSearchDataSource {
     private let db = Firestore.firestore()
     private let pageSize = 24
+    private let placesPage = 24
 
     // MARK: Users
     func searchUsers(prefix: String, last: DocumentSnapshot? = nil) async throws -> SearchPage<[String: Any]> {
@@ -83,6 +84,18 @@ final class FirestoreSearchDataSource {
         guard !prefix.isEmpty else { return [] }
         let lower = prefix.lowercased()
         do {
+            // 0) First consult user-created canonical places
+            var placeNames: [String] = []
+            do {
+                let ps = try await db.collection("places")
+                    .order(by: "name_lower")
+                    .start(at: [lower])
+                    .end(at: [lower + "\u{f8ff}"])
+                    .limit(to: limit)
+                    .getDocuments()
+                placeNames = ps.documents.compactMap { $0.data()["name"] as? String }
+            } catch { }
+
             let snap = try await db.collection("spots")
                 .order(by: "locationName_lower")
                 .start(at: [lower])
@@ -90,6 +103,7 @@ final class FirestoreSearchDataSource {
                 .limit(to: limit)
                 .getDocuments()
             var set = Set<String>()
+            for n in placeNames { set.insert(n.lowercased()) }
             for d in snap.documents {
                 if let name = (d.data()["locationName_lower"] as? String) ?? (d.data()["locationName"] as? String)?.lowercased() {
                     set.insert(name)
@@ -236,5 +250,3 @@ final class FirestoreSearchDataSource {
 // 1) spots: locationName_lower ASC, createdAt DESC
 // 2) spots: vibeTag_lower ASC, createdAt DESC
 // Single-field index: users.username_lower ASC
-
-

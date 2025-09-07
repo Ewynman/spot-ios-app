@@ -4,7 +4,7 @@ struct SearchView: View {
     @StateObject private var vm = SearchViewModel()
     @State private var path: [String] = []
     @FocusState private var focused: Bool
-    
+
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 16) {
@@ -158,5 +158,3 @@ private struct SectionHeader: View {
             .padding(.horizontal, 16)
     }
 }
-
-

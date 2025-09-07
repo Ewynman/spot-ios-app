@@ -19,8 +19,9 @@ struct SpotCard: View {
     let spot: Spot
     let showUserInfo: Bool    // show profile pic + username if true
     let userId: String?
-    var onDelete: (() -> Void)? = nil
+    var onDelete: (() -> Void)?
     var source: String = "Unknown"
+    var backAction: (() -> Void)?
     @State private var showDeleteConfirm: Bool = false
     @State private var showShareSheet: Bool = false
     @State private var showReportSheet: Bool = false
@@ -34,19 +35,34 @@ struct SpotCard: View {
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
 
-    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown") {
+    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil) {
         self.spot = spot
         self.showUserInfo = showUserInfo
         self.userId = userId
         self.onDelete = onDelete
         self.source = source
+        self.backAction = backAction
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // MARK: — Header: Username (optional) + Location
             HStack {
-                if showUserInfo, let userId = spot.userId {
+                if let backAction {
+                    Button {
+                        backAction()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Constants.Colors.primary)
+                            Text("Back to all spots")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else if showUserInfo, let userId = spot.userId {
                     NavigationLink {
                         ProfileView(userId: userId, fromNavigationPush: true)
                             .navigationBarBackButtonHidden(true)
@@ -54,8 +70,7 @@ struct SpotCard: View {
                         HStack(spacing: 8) {
                             // Profile Image
                             if let urlString = spot.userProfileImageURL,
-                               let url = URL(string: urlString)
-                            {
+                               let url = URL(string: urlString) {
                                 AsyncImage(url: url) { img in
                                     img.resizable()
                                        .scaledToFill()
@@ -292,16 +307,16 @@ struct SpotCard: View {
             ReportSheet(spot: spot)
         }
     }
-    
+
     // MARK: - Custom Menu
     private var customMenuOverlay: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack {
                 // Tappable background to dismiss
                 Color.black.opacity(0.001)
                     .ignoresSafeArea()
                     .onTapGesture { showCustomMenu = false }
-                
+
                 // Position menu near the three dots button
                 VStack {
                     Spacer()
@@ -316,12 +331,12 @@ struct SpotCard: View {
             }
         }
     }
-    
+
     private var customMenuContent: some View {
         let currentUserId = userId ?? authVM.userId ?? ""
         let ownerId = spot.userId ?? ""
         let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
-        
+
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
@@ -337,10 +352,10 @@ struct SpotCard: View {
                 .padding(12)
             }
             .buttonStyle(PlainButtonStyle())
-            
+
             if !isOwner {
                 Divider()
-                
+
                 Button {
                     showCustomMenu = false
                     SpotLogger.debug("Report tapped for spot id=\(spot.id ?? "nil") [\(source)]")
@@ -355,9 +370,9 @@ struct SpotCard: View {
                     .padding(12)
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
                 Divider()
-                
+
                 Button {
                     showCustomMenu = false
                     if let targetUserId = spot.userId {
@@ -381,10 +396,10 @@ struct SpotCard: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            
+
             if isOwner, onDelete != nil {
                 Divider()
-                
+
                 Button {
                     showCustomMenu = false
                     SpotLogger.debug("Delete tapped for spot id=\(spot.id ?? "nil") [\(source)]")

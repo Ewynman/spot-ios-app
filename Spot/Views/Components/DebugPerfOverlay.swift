@@ -21,5 +21,3 @@
 //     private func fmt(_ t: TimeInterval?) -> String { guard let t else { return "-" }; return String(format: "%.2fs", t) }
 //     private func fmt2(_ v: Double?) -> String { guard let v else { return "-" }; return String(format: "%.2fs", v) }
 // }
-
-

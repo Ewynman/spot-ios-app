@@ -10,7 +10,7 @@ struct User: Identifiable, Codable {
     var vibeStats: [String: Int]?
     var createdAt: Date?
     var blockedUsers: [String]?
-    
+
     // Preview data
     static let previewUser = User(
         id: "preview123",
@@ -26,4 +26,4 @@ struct User: Identifiable, Codable {
         createdAt: Date(),
         blockedUsers: []
     )
-} 
+}

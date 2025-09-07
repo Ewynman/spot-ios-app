@@ -2,10 +2,10 @@ import SwiftUI
 
 struct VibeSelectionView: View {
     @Binding var selectedVibe: String
-    
+
     private let vibeTags = [
         "Chill Spot",
-        "Hidden Gem", 
+        "Hidden Gem",
         "Scenic View",
         "Romantic",
         "Great For Photos",
@@ -23,7 +23,7 @@ struct VibeSelectionView: View {
         "Waterfront",
         "Study Spot"
     ]
-    
+
     var body: some View {
         VStack(spacing: 24) {
             // Header
@@ -31,14 +31,14 @@ struct VibeSelectionView: View {
                 Text("Pick Your Vibe")
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Text("Select one vibe that best captures the mood or feeling of your spot. It helps others understand the experience in a glance.")
                     .font(FontManager.primaryText())
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
-            
+
             // Vibe Tags Grid
             ScrollView {
                 LazyVGrid(columns: [
@@ -58,7 +58,7 @@ struct VibeSelectionView: View {
                 }
                 .padding(.horizontal, 32)
             }
-            
+
             Spacer()
         }
     }
@@ -69,7 +69,7 @@ struct VibeTagButton: View {
     let vibe: String
     let isSelected: Bool
     let onTap: () -> Void
-    
+
     var body: some View {
         Button(action: onTap) {
             Text(vibe)
@@ -93,4 +93,4 @@ struct VibeTagButton: View {
 
 #Preview {
     VibeSelectionView(selectedVibe: .constant(""))
-} 
+}

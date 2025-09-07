@@ -21,9 +21,9 @@ struct SettingsView: View {
     @State private var originalUsername: String = ""
     @State private var confirmDelete: Bool = false
     @State private var deletePassword: String = ""
-    @State private var profileImageURL: String? = nil
-    @State private var selectedProfileImage: UIImage? = nil
-    @State private var photoPickerItem: PhotosPickerItem? = nil
+    @State private var profileImageURL: String?
+    @State private var selectedProfileImage: UIImage?
+    @State private var photoPickerItem: PhotosPickerItem?
     @State private var isUploadingPhoto: Bool = false
 
     var body: some View {
@@ -151,7 +151,7 @@ struct SettingsView: View {
 
                     // Privacy & Account Section
                     sectionHeader("Privacy & Account")
-                    
+
                     NavigationLink {
                         BlockedUsersView()
                     } label: {
@@ -499,5 +499,3 @@ struct SettingsSecureField: View {
 }
 
 // Note: Reuse the global ToastView defined in PostFlow; no local duplicate here.
-
-

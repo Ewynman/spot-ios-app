@@ -6,7 +6,7 @@ struct ConfirmNewEmailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
     @State private var isChecking = false
-    @State private var showToast: String? = nil
+    @State private var showToast: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -92,5 +92,3 @@ struct ConfirmNewEmailView: View {
         }
     }
 }
-
-

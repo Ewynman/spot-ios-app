@@ -8,7 +8,7 @@
 import SwiftUI
 
 enum Constants {
-    
+
     enum Colors {
         static let background = Color(hex: "#F5F3EF")      // Main background color, button text color
         static let buttonText = Color(hex: "#F5F3EF")      // Button text color
@@ -16,7 +16,7 @@ enum Constants {
         static let textPrimary = Color(hex: "#1D2C24")     // Main text color (all text except button text)
         static let accent = Color(hex: "#DEE6D8")          // Accent color for vibe tags only
     }
-    
+
     enum UserDefaultsKeys {
         static let firstRun = "firstRun"
         static let notificationsRequested = "notificationsRequested"
@@ -24,7 +24,7 @@ enum Constants {
         static let lastKnownLocationStatus = "lastKnownLocationStatus"
         static let lastKnownNotificationStatus = "lastKnownNotificationStatus"
     }
-    
+
     enum Analytics {
         static let authReinstall = "AuthReinstall"
         static let permissionsRequested = "Perms.Requested"

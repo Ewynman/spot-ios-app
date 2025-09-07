@@ -18,9 +18,7 @@ struct ModerationPolicy {
         var lowered: [String: Int] = [:]
         for (k, v) in scores {
             let key = norm(k)
-            if let i = v as? Int { lowered[key] = i }
-            else if let d = v as? Double { lowered[key] = Int(d.rounded()) }
-            else if let s = v as? String, let i = Int(s) { lowered[key] = i }
+            if let i = v as? Int { lowered[key] = i } else if let d = v as? Double { lowered[key] = Int(d.rounded()) } else if let s = v as? String, let i = Int(s) { lowered[key] = i }
         }
 
         func over(_ keys: [String], _ limit: Int) -> Bool {
@@ -37,5 +35,3 @@ struct ModerationPolicy {
         return (true, nil)
     }
 }
-
-

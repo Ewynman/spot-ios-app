@@ -15,28 +15,28 @@ import UIKit
 final class SpotUploader {
     static let shared = SpotUploader()
     private init() {}
-    
+
     static func incrementUserVibeStat(userId: String, vibeTag: String) {
         SpotLogger.debug("Incrementing vibe stat for user \(userId) - vibe: \(vibeTag)")
         let userRef = Firestore.firestore().collection("users").document(userId)
-        
+
         userRef.getDocument { snapshot, error in
             if let error = error {
                 SpotLogger.error("Failed to get user doc for vibe stats: \(error.localizedDescription)")
                 return
             }
-            
+
             guard let data = snapshot?.data() else {
                 SpotLogger.error("No user data found for vibe stats")
                 return
             }
-            
+
             // Get existing vibeStats or create new
             var vibeStats = data["vibeStats"] as? [String: Int] ?? [:]
-            
+
             // Increment the count for this vibe
             vibeStats[vibeTag] = (vibeStats[vibeTag] ?? 0) + 1
-            
+
             // Update the user document
             userRef.updateData([
                 "vibeStats": vibeStats
@@ -49,27 +49,27 @@ final class SpotUploader {
             }
         }
     }
-    
+
     private func getCurrentUserData(completion: @escaping (Result<(String, String?), Error>) -> Void) {
         guard let uid = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             return
         }
-        
+
         Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
             if let error = error {
                 SpotLogger.error("Failed to fetch user data: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
             }
-            
+
             guard let data = snapshot?.data(),
                   let username = data["username"] as? String else {
                 SpotLogger.error("Invalid user data format")
                 completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
                 return
             }
-            
+
             let profileImageURL = data["profileImageURL"] as? String
             completion(.success((username, profileImageURL)))
         }
@@ -88,7 +88,7 @@ final class SpotUploader {
             SpotLogger.error("User not authenticated for spot upload")
             return
         }
-        
+
         // First get current user data
         getCurrentUserData { [weak self] result in
             switch result {
@@ -111,7 +111,7 @@ final class SpotUploader {
             }
         }
     }
-    
+
     private func performSpotUpload(
         image: UIImage,
         vibeTag: String,
@@ -161,10 +161,21 @@ final class SpotUploader {
                 let geocoder = CLGeocoder()
                 let loc = CLLocation(latitude: latitude, longitude: longitude)
                 geocoder.reverseGeocodeLocation(loc) { placemarks, _ in
-                    let city = placemarks?.first?.locality
-                    let state = placemarks?.first?.administrativeArea
-                    let display = [city, state].compactMap { $0 }.joined(separator: ", ")
-                    let finalLocationName = display.isEmpty ? placeName : display
+                    let trimmedPlace = placeName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let pm = placemarks?.first
+                    let pmName = pm?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let city = pm?.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let state = pm?.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
+                    // Priority: user-selected placeName > placemark.name > City, State
+                    let finalLocationName: String
+                    if !trimmedPlace.isEmpty {
+                        finalLocationName = trimmedPlace
+                    } else if let pmName, !pmName.isEmpty {
+                        finalLocationName = pmName
+                    } else {
+                        finalLocationName = cityState
+                    }
 
                     var data: [String: Any] = [
                         "postId": postId,

@@ -11,11 +11,11 @@ class FeedViewModel: ObservableObject {
     @Published var deletingSpotIds: Set<String> = []
     private var loadTask: Task<Void, Never>?
     private let repo = FeedRepository.shared
-    
+
     deinit {
         loadTask?.cancel()
     }
-    
+
     func loadInitialSpots() async {
         loadTask?.cancel()
         loadTask = Task {
@@ -28,13 +28,13 @@ class FeedViewModel: ObservableObject {
             }
         }
     }
-    
+
     func loadMoreSpots() {
         guard !isLoading, hasMore else { return }
-        
+
         // Cancel any existing task
         loadTask?.cancel()
-        
+
         // Start new loading task
         loadTask = Task {
             await MainActor.run { self.isLoading = true }
@@ -50,11 +50,11 @@ class FeedViewModel: ObservableObject {
             }
         }
     }
-    
+
     func refreshFeed() {
         // Cancel any existing task
         loadTask?.cancel()
-        
+
         // Start new refresh task
         loadTask = Task {
             do {
@@ -62,7 +62,7 @@ class FeedViewModel: ObservableObject {
                     isLoading = true
                 }
                 let spots = try await FeedCache.shared.refreshFeed()
-                
+
                 await MainActor.run {
                     self.spots = spots
                     self.mapSpots = spots
@@ -77,7 +77,7 @@ class FeedViewModel: ObservableObject {
             }
         }
     }
-    
+
     func loadMapSpots(forceRefresh: Bool = false) {
         SpotLogger.debug("Loading spots for map")
         SpotService.shared.fetchSpotsForMap(forceRefresh: forceRefresh) { result in
@@ -139,7 +139,7 @@ struct HomepageView: View {
     @StateObject private var tourManager = HomeTourManager()
     var isFirstSessionAfterSignup: Bool { authVM.isAuthenticated && (authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty) && !tourManager.hasSeenHomeTour }
     @State private var coachFrames: [CoachTarget: CGRect] = [:]
-    
+
     var body: some View {
         NavigationStack {
             HomeTourHost(manager: tourManager, coachFrames: $coachFrames, isFirstSessionAfterSignup: isFirstSessionAfterSignup) {
@@ -161,7 +161,7 @@ struct HomepageView: View {
                                     showRulesSheet = true
                                 }
                             )
-                            
+
                             if selectedTab == "Home" {
                                 // Feed/Map Toggle
                                 VStack(spacing: 0) {
@@ -172,7 +172,7 @@ struct HomepageView: View {
                                                     .font(FontManager.primaryText())
                                                     .fontWeight(feedViewType == tab ? .semibold : .regular)
                                                     .foregroundColor(feedViewType == tab ? Constants.Colors.primary : .gray)
-                                                
+
                                                 Rectangle()
                                                     .fill(feedViewType == tab ? Constants.Colors.primary : Color.clear)
                                                     .frame(height: 2)
@@ -188,7 +188,7 @@ struct HomepageView: View {
                                     .padding(.horizontal, 16)
                                 }
                                 .padding(.top, 24)
-                                
+
                                 // Feed Content
                                 FeedContentView(
                                     isLoading: $feedVM.isLoading,
@@ -217,7 +217,7 @@ struct HomepageView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: selectedTab)
-                
+
                 // Bottom Navigation
                 BottomNavigationView(selectedTab: $selectedTab)
                     .padding(.bottom, 0)
@@ -272,7 +272,7 @@ struct HomepageView: View {
 struct TabNavigationView: View {
     @Binding var selectedTab: String
     let tabs: [String]
-    
+
     var body: some View {
                     HStack(spacing: 32) {
                         ForEach(tabs, id: \.self) { tab in
@@ -293,14 +293,14 @@ struct TabItemView: View {
     let tab: String
     let isSelected: Bool
     let onTap: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 4) {
             Text(tab)
                 .font(FontManager.primaryText())
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundColor(isSelected ? Constants.Colors.primary : .gray)
-            
+
             Rectangle()
                 .fill(isSelected ? Constants.Colors.primary : Color.clear)
                 .frame(height: 2)
@@ -320,7 +320,7 @@ struct FeedContentView: View {
     let userId: String?
     let onDeleteSpot: (Spot) -> Void
     @State private var firstItemRecorded = false
-    
+
     var validSpots: [Spot] {
         spots.filter { spot in
             // For feed, only require imageURL to be present
@@ -332,14 +332,14 @@ struct FeedContentView: View {
             return isValid
         }
     }
-    
+
     var validMapSpots: [Spot] {
         mapSpots.filter { spot in
             spot.latitude != nil &&
             spot.longitude != nil
         }
     }
-    
+
     var body: some View {
         Group {
             if selectedTab == "Map" {
@@ -360,7 +360,7 @@ struct FeedContentView: View {
                     RefreshControl(coordinateSpace: .named("RefreshControl")) {
                         onRefresh()
                     }
-                    
+
                     LazyVStack(spacing: 0) {
                         ForEach(Array(validSpots.enumerated()), id: \.offset) { idx, spot in
                             SpotCard(spot: spot, showUserInfo: true, userId: userId, onDelete: { onDeleteSpot(spot) }, source: "Feed")
@@ -402,9 +402,9 @@ struct FeedContentView: View {
 struct RefreshControl: View {
     let coordinateSpace: CoordinateSpace
     let onRefresh: () -> Void
-    
+
     @State private var isRefreshing = false
-    
+
     var body: some View {
         GeometryReader { geo in
             if geo.frame(in: coordinateSpace).midY > 50 {
@@ -449,20 +449,20 @@ struct EmptyFeedView: View {
     var body: some View {
                     VStack(spacing: 20) {
                         Spacer()
-                        
+
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 60))
                             .foregroundColor(.gray)
-                        
+
                         Text("No Spots Yet")
                             .font(FontManager.sectionHeader())
                             .foregroundColor(Constants.Colors.primary)
-                        
+
             Text("Follow people to see their spots!")
                             .font(FontManager.primaryText())
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
-                        
+
                         Spacer()
                     }
         .background(Color(hex: "F5F3EF"))
@@ -471,7 +471,7 @@ struct EmptyFeedView: View {
 
 struct SpotsListView: View {
     let spots: [Spot]
-    
+
     var body: some View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
@@ -484,7 +484,7 @@ struct SpotsListView: View {
         .background(Color(hex: "F5F3EF"))
                     }
                 }
-                
+
 #Preview() {
     HomepageView()
 }
@@ -494,7 +494,7 @@ struct SpotAnnotation: Identifiable {
     let id = UUID()
     let spot: Spot
     let coordinate: CLLocationCoordinate2D
-    
+
     init(spot: Spot) {
         self.spot = spot
         self.coordinate = CLLocationCoordinate2D(

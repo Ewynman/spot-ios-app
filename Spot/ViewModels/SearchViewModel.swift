@@ -1,7 +1,5 @@
 import Foundation
 import FirebaseFirestore
-import Foundation
-
 @MainActor
 final class SearchViewModel: ObservableObject {
     enum Segment: String, CaseIterable { case users = "Users", locations = "Locations", vibes = "Vibes" }
@@ -34,9 +32,9 @@ final class SearchViewModel: ObservableObject {
     @Published var vibes: [String] = []
 
     // Grids
-    @Published var gridTitle: String? = nil
+    @Published var gridTitle: String?
     @Published var gridSpots: [Spot] = []
-    private var lastGridDoc: DocumentSnapshot? = nil
+    private var lastGridDoc: DocumentSnapshot?
     @Published var isLoadingGrid = false
     @Published var hasMoreGrid = true
 

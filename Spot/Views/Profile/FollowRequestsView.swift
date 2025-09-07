@@ -13,7 +13,7 @@ struct FollowRequestsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var items: [FollowRequest] = []
     @State private var isLoading: Bool = false
-    @State private var last: DocumentSnapshot? = nil
+    @State private var last: DocumentSnapshot?
     @State private var hasMore: Bool = true
     @State private var processing: Set<String> = []
 
@@ -183,7 +183,6 @@ struct FollowRequestsView: View {
         }
     }
 
-
     private func deny(_ req: FollowRequest) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         processing.insert(req.id)
@@ -201,5 +200,3 @@ struct FollowRequestsView: View {
         }
     }
 }
-
-

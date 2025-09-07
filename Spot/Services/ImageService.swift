@@ -11,90 +11,90 @@ import UIKit
 class ImageService {
     static let shared = ImageService()
     private init() {}
-    
+
     private let imageCache = NSCache<NSString, UIImage>()
     private var failedURLs = Set<String>()
     private let maxRetries = 3
-    
+
     /// Load image with retry logic and caching
     func loadImage(from urlString: String, spotId: String? = nil) async -> UIImage? {
         // Check cache first
         if let cachedImage = imageCache.object(forKey: urlString as NSString) {
             return cachedImage
         }
-        
+
         // Check if URL has failed before
         if failedURLs.contains(urlString) {
             SpotLogger.warning("ImageService: Skipping previously failed URL: \(urlString)")
             return nil
         }
-        
+
         // Ensure HTTPS URL
         guard let url = URL(string: urlString), url.scheme == "https" else {
             SpotLogger.error("ImageService: Invalid or non-HTTPS URL: \(urlString)")
             return nil
         }
-        
+
         // Try loading with retries
         for attempt in 1...maxRetries {
             do {
                 let (data, response) = try await URLSession.shared.data(from: url)
-                
+
                 guard let httpResponse = response as? HTTPURLResponse,
                       httpResponse.statusCode == 200,
                       let image = UIImage(data: data) else {
                     throw URLError(.badServerResponse)
                 }
-                
+
                 // Cache successful image
                 imageCache.setObject(image, forKey: urlString as NSString)
-                
+
                 SpotLogger.debug("ImageService: Successfully loaded image from \(url.host ?? "unknown") for spot \(spotId ?? "unknown")")
                 return image
-                
+
             } catch {
                 let errorCode = (error as? URLError)?.code.rawValue ?? -1
                 SpotLogger.warning("ImageService: Load failed for spot \(spotId ?? "unknown") urlHost=\(url.host ?? "unknown") code=\(errorCode) attempt=\(attempt)")
-                
+
                 if attempt == maxRetries {
                     // Final failure - mark URL as failed
                     failedURLs.insert(urlString)
                     SpotLogger.error("\(Constants.Analytics.imageLoadFailed) spotId=\(spotId ?? "nil") urlHost=\(url.host ?? "unknown") code=\(errorCode) attempt=\(attempt)")
                     return nil
                 }
-                
+
                 // Exponential backoff
                 try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
             }
         }
-        
+
         return nil
     }
-    
+
     /// Prefetch images for better UX
     func prefetchImages(for spots: [Spot], limit: Int = 9) {
         let urlsToPrefetch = spots.prefix(limit).compactMap { spot in
             spot.imageURL
         }
-        
+
         Task {
             for url in urlsToPrefetch {
                 _ = await loadImage(from: url, spotId: nil)
             }
         }
     }
-    
+
     /// Clear cache (useful for memory management)
     func clearCache() {
         imageCache.removeAllObjects()
     }
-    
+
     /// Check if an image URL is valid and accessible
     func validateImageURL(_ urlString: String) async -> Bool {
         guard let url = URL(string: urlString), url.scheme == "https" else {
             return false
         }
-        
+
         do {
             let (_, response) = try await URLSession.shared.data(from: url)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -105,18 +105,16 @@ class ImageService {
             return false
         }
     }
-    
+
     /// Convert gs:// URLs to https download URLs
     func convertGSUrlToHTTPS(_ gsUrl: String) -> String? {
         guard gsUrl.hasPrefix("gs://") else {
             return gsUrl
         }
-        
+
         // For now, return nil to indicate conversion needed
         // In production, you'd implement Firebase Storage download URL conversion
         SpotLogger.warning("ImageService: GS URL conversion needed: \(gsUrl)")
         return nil
     }
 }
-
-

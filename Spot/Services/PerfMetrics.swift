@@ -19,5 +19,3 @@ final class PerfMetrics {
         if values[key] == nil { values[key] = value }
     }
 }
-
-

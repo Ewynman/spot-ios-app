@@ -15,7 +15,7 @@ struct LoginView: View {
     @State private var isLoggedIn = false
     @State private var resetMessage: String?
     @Environment(\.dismiss) var dismiss
-    
+
     private func handleLoginError(_ error: Error) -> String {
         let errorCode = (error as NSError).code
         switch errorCode {

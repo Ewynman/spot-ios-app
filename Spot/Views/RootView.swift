@@ -42,16 +42,16 @@ struct RootView: View {
                                     .foregroundColor(Constants.Colors.primary)
                                 }
                                 .buttonStyle(PlainButtonStyle())
-                                
+
                                 Spacer()
-                                
+
                                 Text("Shared Spot")
                                     .font(FontManager.sectionHeader())
                                     .fontWeight(.bold)
                                     .foregroundColor(Constants.Colors.primary)
-                                
+
                                 Spacer()
-                                
+
                                 // Invisible button for balance
                                 Button(action: {}) {
                                     HStack(spacing: 4) {
@@ -67,7 +67,7 @@ struct RootView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
                             .padding(.bottom, 16)
-                            
+
                             // Spot Card
                             ScrollView {
                                 SpotCard(
@@ -84,7 +84,7 @@ struct RootView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .animation(.easeInOut(duration: 0.3), value: deepLinkState.isNavigatingToSpot)
                     }
-                    
+
                     // Loading Overlay
                     if deepLinkState.isLoadingSpot {
                         VStack {
@@ -96,7 +96,7 @@ struct RootView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: deepLinkState.isLoadingSpot)
                     }
-                    
+
                     // Spot Unavailable Overlay
                     if deepLinkState.showSpotUnavailable {
                         VStack {
@@ -131,7 +131,7 @@ struct RootView: View {
                 SpotLogger.warning("RootView: Universal link without webpage URL")
                 return
             }
-            
+
             SpotLogger.info("RootView: Received Universal Link: \(url.absoluteString)")
             deepLinkState.handleDeepLink(url, origin: .universalLink, isColdStart: false)
         }

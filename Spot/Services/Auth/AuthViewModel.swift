@@ -12,9 +12,9 @@ import FirebaseFirestore
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isLoading: Bool = true
-    @Published var userId: String? = nil
+    @Published var userId: String?
     @Published var isEmailVerified: Bool = false
-    @Published var emailResendAvailableAt: Date? = nil
+    @Published var emailResendAvailableAt: Date?
     @Published var likedSpots: [String] = []
     @Published var bookmarkedSpots: [String] = []
     @Published var blockedUsers: [String] = []
@@ -63,7 +63,7 @@ class AuthViewModel: ObservableObject {
             do {
                 let result = try await AuthService.shared.signUp(email: email, password: password)
                 switch result {
-                case .success(_):
+                case .success:
                     await MainActor.run { completion(.success(())) }
                 case .emailInUse(let emailInUseType):
                     await MainActor.run {
@@ -81,7 +81,7 @@ class AuthViewModel: ObservableObject {
             do {
                 let result = try await AuthService.shared.signIn(email: email, password: password)
                 switch result {
-                case .success(_):
+                case .success:
                     await MainActor.run { completion(.success(())) }
                 case .emailInUse:
                     await MainActor.run {
@@ -118,7 +118,7 @@ class AuthViewModel: ObservableObject {
         // Also fetch blocked users
         refreshBlockedUsers()
     }
-    
+
     func refreshBlockedUsers() {
         guard let userId = userId else { return }
         Task {
@@ -391,16 +391,16 @@ class AuthViewModel: ObservableObject {
     func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
         AuthService.shared.deleteAccount(password: password, completion: completion)
     }
-    
+
     // MARK: - Blocking
     func blockUser(userId targetUserId: String) async throws {
         guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
         guard currentUserId != targetUserId else { throw NSError(domain: "Cannot block yourself", code: 0) }
-        
+
         try await Firestore.firestore().collection("users").document(currentUserId).updateData([
             "blockedUsers": FieldValue.arrayUnion([targetUserId])
         ])
-        
+
         await MainActor.run {
             if !blockedUsers.contains(targetUserId) {
                 blockedUsers.append(targetUserId)
@@ -412,7 +412,7 @@ class AuthViewModel: ObservableObject {
 
     func unblockUser(userId targetUserId: String) async throws {
         guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
-        
+
         try await Firestore.firestore().collection("users").document(currentUserId).updateData([
             "blockedUsers": FieldValue.arrayRemove([targetUserId])
         ])

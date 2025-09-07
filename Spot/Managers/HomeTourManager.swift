@@ -12,27 +12,27 @@ final class HomeTourManager: ObservableObject {
     @Published var isWelcomePresented: Bool = false
     @Published var isCoachPresented: Bool = false
     @Published var currentStep: Step = .username
-    
+
     init(userId: String? = nil) {
         configure(userId: userId)
     }
-    
+
     func configure(userId: String?) {
         storageKey = "hasSeenHomeTour." + (userId ?? "guest")
         hasSeenHomeTour = storage.bool(forKey: storageKey)
     }
-    
+
     func startIfNeeded(isFirstSessionAfterSignup: Bool) {
         guard isFirstSessionAfterSignup, !hasSeenHomeTour else { return }
         isWelcomePresented = true
     }
-    
+
     func startCoach() {
         isWelcomePresented = false
         currentStep = .username
         isCoachPresented = true
     }
-    
+
     func next() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         if let next = Step(rawValue: currentStep.rawValue + 1) {
@@ -41,11 +41,11 @@ final class HomeTourManager: ObservableObject {
             complete()
         }
     }
-    
+
     func skip() {
         complete()
     }
-    
+
     private func complete() {
         hasSeenHomeTour = true
         storage.set(true, forKey: storageKey)
@@ -53,5 +53,3 @@ final class HomeTourManager: ObservableObject {
         isCoachPresented = false
     }
 }
-
-

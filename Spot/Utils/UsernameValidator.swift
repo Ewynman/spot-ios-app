@@ -39,7 +39,7 @@ struct UsernameValidator {
         } else {
             self.rules = Rules(
                 version: 1,
-                reserved: ["admin","support","moderator","spot","owner"],
+                reserved: ["admin", "support", "moderator", "spot", "owner"],
                 exact: [],
                 contains: [],
                 patterns: nil,
@@ -48,7 +48,7 @@ struct UsernameValidator {
                     allowRegex: "^[A-Za-z0-9._-]+$",
                     disallowLeading: [".", "_", "-"],
                     disallowTrailing: [".", "_", "-"],
-                    disallowConsecutive: ["..","__","--","._","_.","-.",".-","_ -","-_"]
+                    disallowConsecutive: ["..", "__", "--", "._", "_.", "-.", ".-", "_ -", "-_"]
                 )
             )
         }
@@ -98,15 +98,15 @@ struct UsernameValidator {
         s = s.unicodeScalars.filter { !$0.properties.isDiacritic }.map(String.init).joined()
         // Map leet
         let map: [Character: Character] = [
-            "0":"o", "1":"i", "2":"z", "3":"e", "4":"a", "5":"s", "6":"g", "7":"t", "8":"b", "9":"g",
-            "$":"s", "@":"a"
+            "0": "o", "1": "i", "2": "z", "3": "e", "4": "a", "5": "s", "6": "g", "7": "t", "8": "b", "9": "g",
+            "$": "s", "@": "a"
         ]
         s = String(s.map { map[$0] ?? $0 })
         // Remove separators/punctuation/whitespace (keep only a-z0-9)
         s = s.replacingOccurrences(of: "[^a-z0-9]+", with: "", options: .regularExpression)
         // Collapse repeats
         var out = ""
-        var last: Character? = nil
+        var last: Character?
         for ch in s {
             if ch == last { continue }
             out.append(ch); last = ch
@@ -114,5 +114,3 @@ struct UsernameValidator {
         return out
     }
 }
-
-

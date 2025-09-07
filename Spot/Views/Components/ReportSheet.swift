@@ -17,7 +17,7 @@ enum ReportReason: String, CaseIterable {
     case misinformation = "misinformation"
     case privacy = "privacy"
     case other = "other"
-    
+
     var title: String {
         switch self {
         case .inappropriate:
@@ -47,7 +47,7 @@ struct ReportSheet: View {
     @State private var shouldBlockUser: Bool = false
     @State private var isSubmitting: Bool = false
     @State private var showSuccessMessage: Bool = false
-    
+
     private let reasons: [ReportReason] = [
         .inappropriate,
         .harassment,
@@ -57,7 +57,7 @@ struct ReportSheet: View {
         .privacy,
         .other
     ]
-    
+
     private var canSubmit: Bool {
         guard let reason = selectedReason else { return false }
         if reason == .other && details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -65,12 +65,12 @@ struct ReportSheet: View {
         }
         return !isSubmitting
     }
-    
+
     private var isOwnSpot: Bool {
         guard let currentUserId = authVM.userId, let ownerId = spot.userId else { return false }
         return currentUserId == ownerId
     }
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -93,7 +93,7 @@ struct ReportSheet: View {
                     Button("Cancel") { dismiss() }
                         .disabled(isSubmitting)
                 }
-                
+
                 if !isOwnSpot {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button("Submit") {
@@ -115,7 +115,7 @@ struct ReportSheet: View {
             }
         }
     }
-    
+
     // MARK: - Computed Views
     private var reasonSection: some View {
         Section(header: Text("Reason for reporting")) {
@@ -124,7 +124,7 @@ struct ReportSheet: View {
             }
         }
     }
-    
+
     private func reasonRow(for reason: ReportReason) -> some View {
         Button {
             selectedReason = reason
@@ -141,7 +141,7 @@ struct ReportSheet: View {
         }
         .buttonStyle(PlainButtonStyle())
     }
-    
+
     private var detailsSection: some View {
         Section {
             TextEditor(text: $details)
@@ -153,14 +153,14 @@ struct ReportSheet: View {
             Text("\(details.count)/500 characters")
         }
     }
-    
+
     private var blockSection: some View {
         Section {
             Toggle("Also block this user", isOn: $shouldBlockUser)
                 .disabled(isSubmitting)
         }
     }
-    
+
     @MainActor
     private func submitReport() async {
         guard let reason = selectedReason,
@@ -170,9 +170,9 @@ struct ReportSheet: View {
             SpotLogger.error("Report submission missing required data")
             return
         }
-        
+
         isSubmitting = true
-        
+
         do {
             // Submit report to Firestore
             let reportData: [String: Any] = [
@@ -185,18 +185,18 @@ struct ReportSheet: View {
                 "platform": "iOS",
                 "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
             ]
-            
+
             try await Firestore.firestore().collection("reports").addDocument(data: reportData)
-            
+
             // Block user if requested
             if shouldBlockUser {
                 try await authVM.blockUser(userId: ownerId)
                 SpotLogger.info("User blocked during report: \(ownerId)")
             }
-            
+
             SpotLogger.info("Report submitted: spotId=\(spotId), reason=\(reason.rawValue), blocked=\(shouldBlockUser)")
             showSuccessMessage = true
-            
+
         } catch {
             SpotLogger.error("Failed to submit report: \(error.localizedDescription)")
             isSubmitting = false

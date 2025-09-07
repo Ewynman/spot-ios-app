@@ -13,19 +13,19 @@ import FirebaseStorage
 class AuthService {
     static let shared = AuthService()
     private init() {}
-    
+
     // MARK: - Sign Up with Email-in-Use Handling
-    
+
     func signUp(email: String, password: String) async throws -> AuthResult {
         // Trim and lowercase email
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        
+
         do {
             let result = try await Auth.auth().createUser(withEmail: cleanEmail, password: password)
-            
+
             // Create user document
             try await createUserDocument(for: result.user)
-            
+
             return .success(result.user)
         } catch let error as NSError {
             if error.code == AuthErrorCode.emailAlreadyInUse.rawValue {
@@ -35,17 +35,17 @@ class AuthService {
             }
         }
     }
-    
+
     private func handleEmailInUse(email: String) async throws -> AuthResult {
         SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
         return .emailInUse(.passwordAccount)
     }
-    
+
     // MARK: - Sign In
-    
+
     func signIn(email: String, password: String) async throws -> AuthResult {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        
+
         do {
             let result = try await Auth.auth().signIn(withEmail: cleanEmail, password: password)
             return .success(result.user)
@@ -53,23 +53,23 @@ class AuthService {
             throw error
         }
     }
-    
+
     // MARK: - Password Reset
-    
+
     func resetPassword(email: String) async throws {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         try await Auth.auth().sendPasswordReset(withEmail: cleanEmail)
         SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=reset")
     }
-    
+
     // MARK: - Sign Out
-    
+
     func signOut() throws {
         try Auth.auth().signOut()
     }
-    
+
     // MARK: - User Document Creation
-    
+
     private func createUserDocument(for user: FirebaseAuth.User) async throws {
         let userData: [String: Any] = [
             "email": user.email ?? "",
@@ -83,7 +83,7 @@ class AuthService {
             "likedSpots": [],
             "bookmarkedSpots": []
         ]
-        
+
         try await Firestore.firestore()
             .collection("users")
             .document(user.uid)
@@ -205,7 +205,7 @@ class AuthService {
                 // Fetch user doc for possible profile image URL
                 db.collection("users").document(uid).getDocument { userSnap, _ in
                     let profileURL = userSnap?.data()? ["profileImageURL"] as? String
-                    
+
                     // Delete user's spots (docs + images) best effort
                     db.collection("spots").whereField("userId", isEqualTo: uid).getDocuments { snapshot, _ in
                         let group = DispatchGroup()
@@ -237,23 +237,23 @@ class AuthService {
             }
         }
     }
-    
+
     // MARK: - Debug Functions (DEBUG only)
-    
+
     #if DEBUG
     /// Delete Auth user by email (DEBUG only)
     func deleteAuthUserByEmail(_ email: String) async throws {
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).requested email=\(email)")
-        
+
         // This would call a Cloud Function in production
         // For now, just log the request
         SpotLogger.warning("AuthService: deleteAuthUserByEmail called - implement Cloud Function")
-        
+
         // In production, this would be:
         // let functions = Functions.functions()
         // let data = ["email": email]
         // let result = try await functions.httpsCallable("deleteAuthUserByEmail").call(data)
-        
+
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).result=ok")
     }
     #endif
@@ -270,7 +270,7 @@ enum EmailInUseType {
     case passwordAccount
     case federatedAccount(String)
     case inconsistentState
-    
+
     var message: String {
         switch self {
         case .passwordAccount:
@@ -282,7 +282,7 @@ enum EmailInUseType {
             return "There was an issue with this email. Please try again or use a different email."
         }
     }
-    
+
     var suggestedActions: [String] {
         switch self {
         case .passwordAccount:

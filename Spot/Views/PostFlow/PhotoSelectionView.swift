@@ -5,7 +5,7 @@ struct PhotoSelectionView: View {
     @Binding var selectedImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showCamera = false
-    
+
     var body: some View {
         VStack(spacing: 24) {
             // Header
@@ -13,14 +13,14 @@ struct PhotoSelectionView: View {
                 Text("Select Your Spot")
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Text("Choose a photo to share your spot")
                     .font(FontManager.primaryText())
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
-            
+
             // Image Preview or Selection Options
             if let image = selectedImage {
                 VStack(spacing: 16) {
@@ -33,7 +33,7 @@ struct PhotoSelectionView: View {
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Constants.Colors.primary, lineWidth: 2)
                         )
-                    
+
                     Button("Change Photo") {
                         selectedImage = nil
                     }
@@ -51,7 +51,7 @@ struct PhotoSelectionView: View {
                             Image(systemName: "photo.on.rectangle")
                                 .font(.system(size: 24))
                                 .foregroundColor(Constants.Colors.primary)
-                            
+
                             Text("Choose from Gallery")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
@@ -66,7 +66,7 @@ struct PhotoSelectionView: View {
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
-                    
+
                     // Divider
                     HStack {
                         Rectangle()
@@ -81,7 +81,7 @@ struct PhotoSelectionView: View {
                             .frame(height: 1)
                     }
                     .padding(.horizontal, 32)
-                    
+
                     // Camera Button
                     Button(action: {
                         showCamera = true
@@ -90,7 +90,7 @@ struct PhotoSelectionView: View {
                             Image(systemName: "camera")
                                 .font(.system(size: 24))
                                 .foregroundColor(Constants.Colors.primary)
-                            
+
                             Text("Take a Photo")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
@@ -109,7 +109,7 @@ struct PhotoSelectionView: View {
                 }
                 .padding(.horizontal, 32)
             }
-            
+
             Spacer()
         }
         .task(id: photoPickerItem) {
@@ -132,28 +132,28 @@ struct PhotoSelectionView: View {
 struct CameraView: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
     @Environment(\.dismiss) var dismiss
-    
+
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.delegate = context.coordinator
         picker.sourceType = .camera
         return picker
     }
-    
+
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let parent: CameraView
-        
+
         init(_ parent: CameraView) {
             self.parent = parent
         }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             if let image = info[.originalImage] as? UIImage {
                 SpotLogger.info("User captured photo with camera")
                 parent.selectedImage = image
@@ -162,7 +162,7 @@ struct CameraView: UIViewControllerRepresentable {
             }
             parent.dismiss()
         }
-        
+
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             SpotLogger.debug("User cancelled camera capture")
             parent.dismiss()
@@ -172,4 +172,4 @@ struct CameraView: UIViewControllerRepresentable {
 
 #Preview {
     PhotoSelectionView(selectedImage: .constant(nil))
-} 
+}

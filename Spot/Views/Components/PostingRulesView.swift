@@ -4,8 +4,8 @@ struct PostingRulesView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
     @State private var showConfirmSheet = false
-    @State private var toast: String? = nil
-    var onAgree: (() -> Void)? = nil
+    @State private var toast: String?
+    var onAgree: (() -> Void)?
 
     var body: some View {
         NavigationStack {
@@ -45,20 +45,18 @@ struct PostingRulesView: View {
 
                     // Actions
                     VStack(spacing: 12) {
-                        Button(action: {
-                            onAgree?()
-                        }) {
-                            Text("I Understand")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(Constants.Colors.buttonText)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Constants.Colors.primary)
-                                .cornerRadius(20)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        if !authVM.isEmailVerified {
+                        if authVM.isEmailVerified {
+                            Button(action: { onAgree?() }) {
+                                Text("I Understand")
+                                    .font(FontManager.buttonText())
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(20)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
                             Button(action: { showConfirmSheet = true }) {
                                 Text("Verify Email")
                                     .font(FontManager.buttonText())
@@ -123,5 +121,3 @@ struct PostingRulesView: View {
 #Preview {
     PostingRulesView()
 }
-
-

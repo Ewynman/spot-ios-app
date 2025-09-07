@@ -11,7 +11,7 @@ struct ProfileMapView: View {
     var markerOffset: CGFloat = 100
 
     @State private var cameraPosition: MapCameraPosition
-    @State private var selectedSpot: Spot? = nil
+    @State private var selectedSpot: Spot?
 
     @Environment(\.verticalSizeClass) private var vSize
 

@@ -5,14 +5,14 @@ struct HomeTourHost<Content: View>: View {
     @Binding var coachFrames: [CoachTarget: CGRect]
     let isFirstSessionAfterSignup: Bool
     let content: Content
-    
+
     init(manager: HomeTourManager, coachFrames: Binding<[CoachTarget: CGRect]>, isFirstSessionAfterSignup: Bool, @ViewBuilder content: () -> Content) {
         self.manager = manager
         self._coachFrames = coachFrames
         self.isFirstSessionAfterSignup = isFirstSessionAfterSignup
         self.content = content()
     }
-    
+
     var body: some View {
         ZStack {
             content
@@ -24,7 +24,7 @@ struct HomeTourHost<Content: View>: View {
         }
         .overlay(coachOverlay)
     }
-    
+
     @ViewBuilder
     private var coachOverlay: some View {
         if manager.isCoachPresented {
@@ -39,7 +39,7 @@ struct HomeTourHost<Content: View>: View {
             .accessibilityAddTraits(.isModal)
         }
     }
-    
+
     private func targetRect(for step: HomeTourManager.Step) -> CGRect? {
         switch step {
         case .username: return coachFrames[.username]
@@ -111,5 +111,3 @@ private struct WelcomeTourSheet: View {
         .presentationDragIndicator(.visible)
     }
 }
-
-

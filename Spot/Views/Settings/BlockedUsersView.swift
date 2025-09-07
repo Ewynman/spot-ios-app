@@ -15,7 +15,7 @@ struct BlockedUsersView: View {
     @State private var showUnblockConfirm = false
     @State private var userToUnblock: BlockedUserInfo?
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Custom Header
@@ -28,16 +28,16 @@ struct BlockedUsersView: View {
                         .foregroundColor(Constants.Colors.primary)
                         .buttonStyle(PlainButtonStyle())
                 }
-                
+
                 Spacer()
-                
+
                 Text("Blocked Users")
                     .font(FontManager.sectionHeader())
                     .fontWeight(.bold)
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Spacer()
-                
+
                 // Invisible spacer for balance
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .semibold))
@@ -48,7 +48,7 @@ struct BlockedUsersView: View {
             .padding(.top, 8)
             .padding(.bottom, 16)
             .buttonStyle(PlainButtonStyle())
-            
+
             // Content
             if isLoading {
                 Spacer()
@@ -81,30 +81,30 @@ struct BlockedUsersView: View {
             }
         }
     }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Spacer()
-            
+
             Image(systemName: "person.slash")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
-            
+
             Text("No Blocked Users")
                 .font(FontManager.sectionHeader())
                 .foregroundColor(Constants.Colors.primary)
-            
+
             Text("You haven't blocked anyone.")
                 .font(FontManager.primaryText())
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "F5F3EF"))
     }
-    
+
     private var blockedUsersList: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -118,7 +118,7 @@ struct BlockedUsersView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "F5F3EF"))
     }
-    
+
     private func blockedUserRow(_ user: BlockedUserInfo) -> some View {
         HStack(spacing: 12) {
             // Profile image
@@ -146,21 +146,21 @@ struct BlockedUsersView: View {
                             .foregroundColor(.gray)
                     )
             }
-            
+
             // Username
             VStack(alignment: .leading, spacing: 4) {
                 Text("@\(user.username)")
                     .font(FontManager.primaryText())
                     .fontWeight(.semibold)
                     .foregroundColor(Constants.Colors.primary)
-                
+
                 Text("Blocked")
                     .font(FontManager.primaryText())
                     .foregroundColor(.gray)
             }
-            
+
             Spacer()
-            
+
             // Unblock button
             Button {
                 userToUnblock = user
@@ -180,13 +180,13 @@ struct BlockedUsersView: View {
         .background(Constants.Colors.background)
         .cornerRadius(12)
     }
-    
+
     private func loadBlockedUsers() {
         isLoading = true
         Task {
             do {
                 var userDetails: [BlockedUserInfo] = []
-                
+
                 for userId in authVM.blockedUsers {
                     let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
                     if let data = userDoc.data() {
@@ -199,7 +199,7 @@ struct BlockedUsersView: View {
                         ))
                     }
                 }
-                
+
                 await MainActor.run {
                     self.blockedUserDetails = userDetails
                     self.isLoading = false
@@ -212,7 +212,7 @@ struct BlockedUsersView: View {
             }
         }
     }
-    
+
     @MainActor
     private func unblockUser(_ user: BlockedUserInfo) async {
         do {

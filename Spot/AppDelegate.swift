@@ -11,13 +11,13 @@ import FirebaseCore
 import FirebaseCrashlytics
 
 class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Firebase configured in SpotApp.init(); ensure Crashlytics is enabled
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
         Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
         return true
     }
-    
+
     // Handle Universal Links that launch the app
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb {
@@ -27,9 +27,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
         return false
     }
-    
+
     // Handle custom URL schemes that launch the app
-    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         SpotLogger.info("AppDelegate: Received custom scheme URL on app launch: \(url.absoluteString)")
         DeepLinkState.shared.handleDeepLink(url, origin: .customScheme, isColdStart: true)
         return true
