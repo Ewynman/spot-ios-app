@@ -27,18 +27,34 @@ struct FeedDiagnostics {
     static func logExclusion(reason: String, source: String, spot: Spot) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.warning("Feed exclusion - reason: \(reason), source: \(source), spotId: \(spot.id ?? "nil"), createdAt: \(spot.createdAt?.description ?? "nil"), likes: \(spot.likes ?? 0), username: \(spot.username ?? "nil")")
+        SpotLogger.warning("Feed exclusion - reason: \(reason), source: \(source)", details: [
+            "spotId": spot.id ?? "nil",
+            "createdAt": spot.createdAt?.description ?? "nil",
+            "likes": spot.likes ?? 0,
+            "username": spot.username ?? "nil"
+        ])
     }
 
     static func logFeedStats(recentCount: Int, trendingCount: Int, nilIdCount: Int, excludedByPersistentSeen: Int, excludedByBlendSeen: Int, excludedByExistingIds: Int) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.info("Feed stats - recent: \(recentCount), trending: \(trendingCount), nilId: \(nilIdCount), excludedByPersistentSeen: \(excludedByPersistentSeen), excludedByBlendSeen: \(excludedByBlendSeen), excludedByExistingIds: \(excludedByExistingIds)")
+        SpotLogger.info("Feed stats", details: [
+            "recent": recentCount,
+            "trending": trendingCount,
+            "nilId": nilIdCount,
+            "excludedByPersistentSeen": excludedByPersistentSeen,
+            "excludedByBlendSeen": excludedByBlendSeen,
+            "excludedByExistingIds": excludedByExistingIds
+        ])
     }
 
     static func logColdStart(seenSetSize: Int, isApplied: Bool) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.info("Feed cold start - seenSetSize: \(seenSetSize), isApplied: \(isApplied), disablePersistentDedupe: \(FeedFlags.disablePersistentDedupe)")
+        SpotLogger.info("Feed cold start", details: [
+            "seenSetSize": seenSetSize,
+            "isApplied": isApplied,
+            "disablePersistentDedupe": FeedFlags.disablePersistentDedupe
+        ])
     }
 }

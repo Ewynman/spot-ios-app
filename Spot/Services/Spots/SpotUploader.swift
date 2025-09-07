@@ -17,17 +17,17 @@ final class SpotUploader {
     private init() {}
 
     static func incrementUserVibeStat(userId: String, vibeTag: String) {
-        SpotLogger.debug("Incrementing vibe stat for user \(userId) - vibe: \(vibeTag)")
+        SpotLogger.debug("Increment vibe stat", details: ["userId": userId, "vibe": vibeTag])
         let userRef = Firestore.firestore().collection("users").document(userId)
 
         userRef.getDocument { snapshot, error in
             if let error = error {
-                SpotLogger.error("Failed to get user doc for vibe stats: \(error.localizedDescription)")
+                SpotLogger.error("Vibe stats: failed to get user doc", details: ["error": error.localizedDescription])
                 return
             }
 
             guard let data = snapshot?.data() else {
-                SpotLogger.error("No user data found for vibe stats")
+                SpotLogger.error("Vibe stats: no user data", details: ["userId": userId])
                 return
             }
 
@@ -42,9 +42,9 @@ final class SpotUploader {
                 "vibeStats": vibeStats
             ]) { error in
                 if let error = error {
-                    SpotLogger.error("Failed to update vibe stats: \(error.localizedDescription)")
+                    SpotLogger.error("Vibe stats update failed", details: ["userId": userId, "vibe": vibeTag, "error": error.localizedDescription])
                 } else {
-                    SpotLogger.info("Updated vibe stats for user \(userId) - \(vibeTag): \(vibeStats[vibeTag] ?? 1)")
+                    SpotLogger.info("Vibe stats updated", details: ["userId": userId, "vibe": vibeTag, "count": vibeStats[vibeTag] ?? 1])
                 }
             }
         }
@@ -58,14 +58,14 @@ final class SpotUploader {
 
         Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
             if let error = error {
-                SpotLogger.error("Failed to fetch user data: \(error.localizedDescription)")
+                SpotLogger.error("Fetch user data failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
                 return
             }
 
             guard let data = snapshot?.data(),
                   let username = data["username"] as? String else {
-                SpotLogger.error("Invalid user data format")
+                SpotLogger.error("Invalid user data format", details: ["uid": uid])
                 completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
                 return
             }
@@ -85,7 +85,7 @@ final class SpotUploader {
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
-            SpotLogger.error("User not authenticated for spot upload")
+            SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
         }
 
@@ -106,7 +106,7 @@ final class SpotUploader {
                     completion: completion
                 )
             case .failure(let error):
-                SpotLogger.error("Failed to get user data: \(error.localizedDescription)")
+                SpotLogger.error("Get user data failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
             }
         }
@@ -126,7 +126,7 @@ final class SpotUploader {
         // Compress the image to JPEG
         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
             completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."])))
-            SpotLogger.error("Image conversion failed for spot upload")
+            SpotLogger.error("Image conversion failed for spot upload", details: [:])
             return
         }
 
@@ -134,28 +134,28 @@ final class SpotUploader {
         let filename = "spot_\(postId).jpg"
         let storageRef = Storage.storage().reference().child("spots/\(filename)")
 
-        SpotLogger.info("Uploading spot image to Firebase Storage...")
+        SpotLogger.info("Uploading spot image to Firebase Storage", details: ["filename": filename])
         storageRef.putData(imageData, metadata: nil) { _, error in
             if let error = error {
-                SpotLogger.error("Failed to upload spot image: \(error.localizedDescription)")
+                SpotLogger.error("Upload spot image failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
                 return
             }
 
             storageRef.downloadURL { url, error in
                 if let error = error {
-                    SpotLogger.error("Failed to get download URL: \(error.localizedDescription)")
+                    SpotLogger.error("Get download URL failed", details: ["error": error.localizedDescription])
                     completion(.failure(error))
                     return
                 }
 
                 guard let imageUrl = url?.absoluteString else {
-                    SpotLogger.error("Download URL is nil after image upload")
+                    SpotLogger.error("Download URL nil after image upload", details: [:])
                     completion(.failure(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "URL not found."])))
                     return
                 }
 
-                SpotLogger.info("Image uploaded, generating thumbnail and reverse geocoding...")
+                SpotLogger.info("Image uploaded; generating thumbnail and reverse geocoding", details: ["postId": postId])
                 // Generate a simple client-side thumbnail URL alias (server/CDN can replace later)
                 let thumbURL = imageUrl // Placeholder: same URL for now
                 let geocoder = CLGeocoder()
@@ -204,14 +204,14 @@ final class SpotUploader {
                                 data["authorIsPrivate"] = isPrivate
                             }
                         } catch {
-                            SpotLogger.warning("Failed to denormalize authorIsPrivate: \(error.localizedDescription)")
+                            SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
                         Firestore.firestore().collection("spots").document(postId).setData(data) { error in
                             if let error = error {
-                                SpotLogger.error("Failed to create spot document: \(error.localizedDescription)")
+                                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
                                 completion(.failure(error))
                             } else {
-                                SpotLogger.info("Spot created successfully!")
+                                SpotLogger.info("Spot created", details: ["postId": postId])
                                 completion(.success(()))
                             }
                         }

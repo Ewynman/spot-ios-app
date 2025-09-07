@@ -57,7 +57,6 @@ struct SpotGridScreen: View {
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedSpot: Spot?
-    @State private var showSpotDetail = false
 
     private var viewModel: (any ObservableObject) {
         switch context {
@@ -100,13 +99,19 @@ struct SpotGridScreen: View {
             // Custom Header
             HStack {
                 Button {
-                    SpotLogger.info("SpotGridScreen: Back button tapped")
-                    dismiss()
+                    if selectedSpot != nil {
+                        SpotLogger.info("Header back clears inline spot", details: ["context": String(describing: context)])
+                        withAnimation { selectedSpot = nil }
+                    } else {
+                        SpotLogger.info("Back button tapped - dismiss", details: ["context": String(describing: context)])
+                        dismiss()
+                    }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(Constants.Colors.primary)
                 }
+                .buttonStyle(PlainButtonStyle())
 
                 Spacer()
 
@@ -125,6 +130,7 @@ struct SpotGridScreen: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 16)
+            .buttonStyle(PlainButtonStyle())
 
             // Content
             if isLoading && spots.isEmpty {
@@ -170,38 +176,40 @@ struct SpotGridScreen: View {
                 // Empty state
                 emptyStateView
             } else {
-                // Grid content
-                SpotsGridView(
-                    spots: spots,
-                    onSpotTapped: { spot in
-                        // Log spot tap
-                        switch context {
-                        case .likes:
-                            SpotLogger.info("Analytics: open_spot_from_likes spotId=\(spot.id ?? "nil")")
-                        case .bookmarks:
-                            SpotLogger.info("Analytics: open_spot_from_bookmarks spotId=\(spot.id ?? "nil")")
-                        }
-                        // Navigate to spot detail using sheet for now
-                        selectedSpot = spot
-                        showSpotDetail = true
-                    },
-                    columns: 3
-                )
-                .refreshable {
-                    await loadData()
+                if let selectedSpot {
+                    SpotCard(
+                        spot: selectedSpot,
+                        showUserInfo: false,
+                        userId: userId,
+                        onDelete: nil,
+                        source: "\(context)",
+                        backAction: { withAnimation { self.selectedSpot = nil } }
+                    )
+                    .transition(.opacity)
+                } else {
+                    // Grid content
+                    SpotsGridView(
+                        spots: spots,
+                        onSpotTapped: { spot in
+                            SpotLogger.info("Open spot from grid", details: [
+                                "context": String(describing: context),
+                                "spotId": spot.id ?? "nil"
+                            ])
+                            selectedSpot = spot
+                        },
+                        columns: 3
+                    )
+                    .refreshable {
+                        await loadData()
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: "F5F3EF"))
         .navigationBarBackButtonHidden(true)
-        .sheet(isPresented: $showSpotDetail) {
-            if let spot = selectedSpot {
-                SpotDetailView(spot: spot, isMapView: false, sourceContext: context)
-            }
-        }
         .onAppear {
-            SpotLogger.info("SpotGridScreen: onAppear for context: \(context)")
+            SpotLogger.info("SpotGridScreen onAppear", details: ["context": String(describing: context)])
 
             Task {
                 await loadData()
@@ -245,7 +253,7 @@ struct SpotGridScreen: View {
     }
 
     private func loadData() async {
-        SpotLogger.info("SpotGridScreen: Loading data for context: \(context)")
+        SpotLogger.info("SpotGridScreen load data", details: ["context": String(describing: context)])
 
         do {
             switch context {
@@ -254,7 +262,7 @@ struct SpotGridScreen: View {
             case .bookmarks:
                 await bookmarksViewModel.loadInitial()
             }
-            SpotLogger.info("SpotGridScreen: Data loaded successfully for context: \(context)")
+            SpotLogger.info("SpotGridScreen data loaded", details: ["context": String(describing: context)])
         }
     }
 }

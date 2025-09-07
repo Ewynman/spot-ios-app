@@ -7,18 +7,19 @@ final class SearchViewModel: ObservableObject {
     @Published var query: String = "" {
         didSet {
             let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            SpotLogger.debug("SearchViewModel query changed: \(q)")
+            SpotLogger.debug("Search query changed", details: ["query": q])
             debouncer.schedule { Task { await self.performSearch() } }
         }
     }
     @Published var segment: Segment = .users {
         didSet {
-            SpotLogger.info("Search segment switched to: \(segment.rawValue)")
+            SpotLogger.info("Search segment switched", details: ["segment": segment.rawValue])
             // Clear current results and any open grid when switching tabs
             users = []
             locations = []
             vibes = []
             gridTitle = nil
+            gridIsVibe = false
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
@@ -33,6 +34,7 @@ final class SearchViewModel: ObservableObject {
 
     // Grids
     @Published var gridTitle: String?
+    @Published var gridIsVibe: Bool = false
     @Published var gridSpots: [Spot] = []
     private var lastGridDoc: DocumentSnapshot?
     @Published var isLoadingGrid = false
@@ -53,17 +55,17 @@ final class SearchViewModel: ObservableObject {
         case .users:
             do {
                 users = try await service.searchUsers(prefix: q).items
-                SpotLogger.info("Search USERS results count: \(users.count)")
+                SpotLogger.info("Search users results", details: ["count": users.count])
             } catch { }
         case .locations:
             do {
                 locations = try await service.searchLocationSuggestions(prefix: q)
-                SpotLogger.info("Search LOCATIONS suggestions count: \(locations.count)")
+                SpotLogger.info("Search locations suggestions", details: ["count": locations.count])
             } catch { }
         case .vibes:
             do {
                 vibes = try await service.searchVibeSuggestions(prefix: q)
-                SpotLogger.info("Search VIBES suggestions count: \(vibes.count)")
+                SpotLogger.info("Search vibes suggestions", details: ["count": vibes.count])
             } catch { }
         }
     }
@@ -71,6 +73,7 @@ final class SearchViewModel: ObservableObject {
     // MARK: Grid flows
     func openLocation(_ name: String) async {
         gridTitle = name
+        gridIsVibe = false
         // Clear suggestions so only the grid is visible
         users = []
         locations = []
@@ -78,19 +81,20 @@ final class SearchViewModel: ObservableObject {
         gridSpots = []
         lastGridDoc = nil
         hasMoreGrid = true
-        SpotLogger.debug("Open location grid: \(name)")
+        SpotLogger.debug("Open location grid", details: ["name": name])
         await loadMoreGrid()
     }
 
     func openVibe(_ tag: String) async {
-        gridTitle = "#\(tag)"
+        gridTitle = tag
+        gridIsVibe = true
         users = []
         locations = []
         vibes = []
         gridSpots = []
         lastGridDoc = nil
         hasMoreGrid = true
-        SpotLogger.debug("Open vibe grid: #\(tag)")
+        SpotLogger.debug("Open vibe grid", details: ["tag": tag])
         await loadMoreGrid(isVibe: true)
     }
 
@@ -99,7 +103,7 @@ final class SearchViewModel: ObservableObject {
         isLoadingGrid = true
         defer { isLoadingGrid = false }
         do {
-            let lower = isVibe ? title.replacingOccurrences(of: "#", with: "").lowercased() : title.lowercased()
+            let lower = title.lowercased()
             var accumulated: [Spot] = []
             var attempts = 0
             var nextCursor = lastGridDoc
@@ -120,10 +124,14 @@ final class SearchViewModel: ObservableObject {
             gridSpots.append(contentsOf: accumulated)
             lastGridDoc = nextCursor
             hasMoreGrid = !(accumulated.isEmpty && nextCursor == nil)
-            SpotLogger.info("Grid loaded page — count: \(accumulated.count), total: \(gridSpots.count), hasMore: \(hasMoreGrid)")
+            SpotLogger.info("Grid loaded page", details: [
+                "pageCount": accumulated.count,
+                "total": gridSpots.count,
+                "hasMore": hasMoreGrid
+            ])
         } catch {
             hasMoreGrid = false
-            SpotLogger.error("Grid load failed: \(error.localizedDescription)")
+            SpotLogger.error("Grid load failed", details: ["error": error.localizedDescription])
         }
     }
 }

@@ -70,7 +70,9 @@ class FeedViewModel: ObservableObject {
                     self.isLoading = false
                 }
             } catch {
-                SpotLogger.error("Failed to refresh feed: \(error.localizedDescription)")
+                SpotLogger.error("Feed refresh failed", details: [
+                    "error": error.localizedDescription
+                ])
                 await MainActor.run {
                     self.isLoading = false
                 }
@@ -79,15 +81,15 @@ class FeedViewModel: ObservableObject {
     }
 
     func loadMapSpots(forceRefresh: Bool = false) {
-        SpotLogger.debug("Loading spots for map")
+        SpotLogger.debug("Load map spots", details: ["forceRefresh": forceRefresh])
         SpotService.shared.fetchSpotsForMap(forceRefresh: forceRefresh) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let spots):
-                    SpotLogger.info("Loaded \(spots.count) spots for map")
+                    SpotLogger.info("Loaded spots for map", details: ["count": spots.count])
                     self.mapSpots = spots
                 case .failure(let error):
-                    SpotLogger.error("Failed to load map spots: \(error.localizedDescription)")
+                    SpotLogger.error("Failed to load map spots", details: ["error": error.localizedDescription])
                 }
             }
         }
@@ -97,7 +99,7 @@ class FeedViewModel: ObservableObject {
     @MainActor
     func delete(spot: Spot) async {
         guard let id = spot.id else {
-            SpotLogger.error("Delete requested for spot without id")
+            SpotLogger.error("Delete requested for spot without id", details: [:])
             return
         }
         if deletingSpotIds.contains(id) { return }
@@ -110,14 +112,14 @@ class FeedViewModel: ObservableObject {
         mapSpots.removeAll { $0.id == id }
 
         do {
-            SpotLogger.info("Deleting spot id=\(id)")
+            SpotLogger.info("Deleting spot", details: ["spotId": id])
             // Run deletion off main
             try await SpotService.shared.deleteSpot(spot)
             deletingSpotIds.remove(id)
             // Force refresh map spots after successful deletion
             loadMapSpots(forceRefresh: true)
         } catch {
-            SpotLogger.error("Delete failed for id=\(id): \(error.localizedDescription)")
+            SpotLogger.error("Delete failed", details: ["spotId": id, "error": error.localizedDescription])
             // Rollback
             spots = prevSpots
             mapSpots = prevMap
@@ -321,17 +323,7 @@ struct FeedContentView: View {
     let onDeleteSpot: (Spot) -> Void
     @State private var firstItemRecorded = false
 
-    var validSpots: [Spot] {
-        spots.filter { spot in
-            // For feed, only require imageURL to be present
-            // Username and coordinates are optional for feed display
-            let isValid = !(spot.imageURL ?? "").isEmpty
-            if !isValid {
-                FeedDiagnostics.logExclusion(reason: "missing_imageURL", source: "FeedContentView.validSpots", spot: spot)
-            }
-            return isValid
-        }
-    }
+    var validSpots: [Spot] { spots }
 
     var validMapSpots: [Spot] {
         mapSpots.filter { spot in
@@ -362,17 +354,27 @@ struct FeedContentView: View {
                     }
 
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(validSpots.enumerated()), id: \.offset) { idx, spot in
-                            SpotCard(spot: spot, showUserInfo: true, userId: userId, onDelete: { onDeleteSpot(spot) }, source: "Feed")
-                                .onAppear {
-                                    if !firstItemRecorded {
-                                        let t = PerfMetrics.shared.measure("t_first_item") ?? 0
-                                        PerfMetrics.shared.recordOnce("t_first_item", value: t)
-                                        firstItemRecorded = true
-                                    }
-                                    let progress = Double(idx + 1) / Double(max(validSpots.count, 1))
-                                    if progress >= 0.7 { onScrolledToBottom() }
+                        ForEach(validSpots.indices, id: \.self) { idx in
+                            let spot = validSpots[idx]
+                            Group {
+                                if (spot.imageURL ?? "").isEmpty {
+                                    SkeletonSpotCard()
+                                } else {
+                                    SpotCard(spot: spot, showUserInfo: true, userId: userId, onDelete: { onDeleteSpot(spot) }, source: "Feed")
                                 }
+                            }
+                            .onAppear {
+                                if (spot.imageURL ?? "").isEmpty {
+                                    SpotLogger.error("Feed missing imageURL for spot id=\(spot.id ?? "nil") — rendering placeholder")
+                                }
+                                if !firstItemRecorded {
+                                    let t = PerfMetrics.shared.measure("t_first_item") ?? 0
+                                    PerfMetrics.shared.recordOnce("t_first_item", value: t)
+                                    firstItemRecorded = true
+                                }
+                                let progress = Double(idx + 1) / Double(max(validSpots.count, 1))
+                                if progress >= 0.7 { onScrolledToBottom() }
+                            }
                         }
                         if isLoading {
                             ProgressView().padding()

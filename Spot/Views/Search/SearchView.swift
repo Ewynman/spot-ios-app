@@ -4,6 +4,7 @@ struct SearchView: View {
     @StateObject private var vm = SearchViewModel()
     @State private var path: [String] = []
     @FocusState private var focused: Bool
+    @State private var selectedGridSpot: Spot?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -63,6 +64,12 @@ struct SearchView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 16)
                                 }
+                                if vm.users.isEmpty && !vm.query.isEmpty {
+                                    Text("No users found")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                        .padding(.horizontal, 16)
+                                }
                             }
                         }
 
@@ -79,6 +86,12 @@ struct SearchView: View {
                                     .buttonStyle(PlainButtonStyle())
                                     .padding(.horizontal, 16)
                                 }
+                                if vm.locations.isEmpty && !vm.query.isEmpty {
+                                    Text("No locations found")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                        .padding(.horizontal, 16)
+                                }
                             }
                         }
 
@@ -93,19 +106,55 @@ struct SearchView: View {
                                     .buttonStyle(PlainButtonStyle())
                                     .padding(.horizontal, 16)
                                 }
+                                if vm.vibes.isEmpty && !vm.query.isEmpty {
+                                    Text("No vibes found")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                        .padding(.horizontal, 16)
+                                }
                             }
                         }
 
                         // Grid when a location or vibe chosen
                         if let title = vm.gridTitle {
                             Divider().padding(.horizontal, 16)
-                            HStack { Text(title.capitalized).font(FontManager.sectionHeader()); Spacer() }
-                                .foregroundColor(Constants.Colors.primary)
-                                .padding(.horizontal, 16)
-                            SpotsGridView(spots: vm.gridSpots, onSpotTapped: { _ in }, onLoadMore: {
-                                Task { await vm.loadMoreGrid(isVibe: title.hasPrefix("#")) }
-                            })
-                            .frame(maxHeight: .infinity)
+                            HStack {
+                                if vm.gridIsVibe {
+                                    VibeChip(text: title.capitalized)
+                                } else {
+                                    Text(title.capitalized).font(FontManager.sectionHeader())
+                                }
+                                Spacer()
+                            }
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(.horizontal, 16)
+
+                            if let selectedGridSpot {
+                                SpotCard(
+                                    spot: selectedGridSpot,
+                                    showUserInfo: false,
+                                    userId: nil,
+                                    onDelete: nil,
+                                    source: "SearchGrid",
+                                    backAction: { withAnimation { self.selectedGridSpot = nil } }
+                                )
+                                .transition(.opacity)
+                            } else {
+                                if vm.gridSpots.isEmpty && !vm.isLoadingGrid && !vm.hasMoreGrid {
+                                    Text("No results found")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                        .padding(.vertical, 32)
+                                } else {
+                                    SpotsGridView(spots: vm.gridSpots, onSpotTapped: { spot in
+                                        selectedGridSpot = spot
+                                    }, onLoadMore: {
+                                        Task { await vm.loadMoreGrid(isVibe: vm.gridIsVibe) }
+                                    })
+                                    .frame(maxHeight: .infinity)
+                                }
+                            }
                         }
                     }
                 }

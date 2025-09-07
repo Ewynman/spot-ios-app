@@ -228,25 +228,14 @@ struct ProfileView: View {
 
                             if selectedTab == "Spots" {
                                 if let selectedSpot {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("< Back to all spots")
-                                            .font(FontManager.primaryText())
-                                            .foregroundColor(Constants.Colors.primary)
-                                            .padding(.leading, 12)
-                                            .padding(.bottom, 4)
-                                            .onTapGesture {
-                                                withAnimation { self.selectedSpot = nil }
-                                            }
-
-                                        SpotCard(
-                                            spot: selectedSpot,
-                                            showUserInfo: false,
-                                            userId: userId,
-                                            onDelete: { pendingDeleteSpot = selectedSpot; showDeleteConfirm = true },
-                                            source: "ProfileInline",
-                                            backAction: { withAnimation { self.selectedSpot = nil } }
-                                        )
-                                    }
+                                    SpotCard(
+                                        spot: selectedSpot,
+                                        showUserInfo: false,
+                                        userId: userId,
+                                        onDelete: { pendingDeleteSpot = selectedSpot; showDeleteConfirm = true },
+                                        source: "ProfileInline",
+                                        backAction: { withAnimation { self.selectedSpot = nil } }
+                                    )
                                     .transition(.opacity)
                                     .zIndex(1)
                                 } else {
@@ -269,6 +258,7 @@ struct ProfileView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 // Custom dropdown overlay
                 if showMenu {
@@ -382,9 +372,6 @@ struct ProfileView: View {
             .onDisappear { followReqListener?.remove(); followReqListener = nil }
             .navigationDestination(isPresented: $showSettingsNav) {
                 SettingsView()
-            }
-            .navigationDestination(item: $selectedSpot) { spot in
-                SpotDetailView(spot: spot, isMapView: false)
             }
             .navigationDestination(isPresented: $showLikesNav) {
                 SpotGridScreen(context: .likes, userId: userId)

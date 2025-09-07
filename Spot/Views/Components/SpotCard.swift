@@ -144,6 +144,12 @@ struct SpotCard: View {
                                         if let tFirst = PerfMetrics.shared.measure("t_first_item") {
                                             PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
                                         }
+                                        SpotLogger.info("Spot image loaded", details: [
+                                            "spotId": spot.id ?? "nil",
+                                            "source": source,
+                                            "hasThumb": true,
+                                            "url": full
+                                        ])
                                     }
                             } placeholder: {
                                 // Keep showing the thumbnail
@@ -159,20 +165,34 @@ struct SpotCard: View {
                        .frame(maxWidth: .infinity, maxHeight: 400)
                        .clipped()
                        .cornerRadius(12)
+                        .onAppear {
+                            SpotLogger.info("Spot image loaded", details: [
+                                "spotId": spot.id ?? "nil",
+                                "source": source,
+                                "hasThumb": false,
+                                "url": urlString
+                            ])
+                        }
                 } placeholder: {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
                         .frame(maxWidth: .infinity, maxHeight: 400)
                 }
             } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Constants.Colors.background)
+                Image("image_placeholder")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: 400)
-                    .overlay(
-                        Image(systemName: "photo")
-                            .font(.system(size: 40))
-                            .foregroundColor(Constants.Colors.primary)
-                    )
+                    .clipped()
+                    .cornerRadius(12)
+                    .onAppear {
+                        SpotLogger.error("Image placeholder used", details: [
+                            "spotId": spot.id ?? "nil",
+                            "source": source,
+                            "hasThumb": false,
+                            "url": spot.imageURL ?? "nil"
+                        ])
+                    }
             }
 
             // MARK: — Interaction Bar
@@ -222,7 +242,7 @@ struct SpotCard: View {
                     let _ = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
                     // Three-dot menu for all spots
                     Button {
-                        SpotLogger.debug("Menu tapped for spot id=\(spot.id ?? "nil") [\(source)]")
+                        SpotLogger.debug("Menu tapped", details: ["spotId": spot.id ?? "nil", "source": source])
                         showCustomMenu = true
                     } label: {
                         Text("⋮")
@@ -280,9 +300,15 @@ struct SpotCard: View {
             let currentUserId = userId ?? authVM.userId ?? ""
             let ownerId = spot.userId ?? ""
             let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
-            SpotLogger.debug("SpotCard appear [\(source)]: id=\(spot.id ?? "nil"), owner=\(ownerId.isEmpty ? "nil" : ownerId), current=\(currentUserId.isEmpty ? "nil" : currentUserId), isOwner=\(isOwner)")
+            SpotLogger.debug("SpotCard appear", details: [
+                "source": source,
+                "spotId": spot.id ?? "nil",
+                "ownerId": ownerId.isEmpty ? "nil" : ownerId,
+                "currentUserId": currentUserId.isEmpty ? "nil" : currentUserId,
+                "isOwner": isOwner
+            ])
             if currentUserId.isEmpty || ownerId.isEmpty {
-                SpotLogger.warning("SpotCard owner-gate inputs missing [\(source)] id=\(spot.id ?? "nil")")
+                SpotLogger.warning("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.id ?? "nil"])
             }
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
@@ -340,7 +366,7 @@ struct SpotCard: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
-                SpotLogger.debug("Share tapped for spot id=\(spot.id ?? "nil") [\(source)]")
+                SpotLogger.debug("Share tapped", details: ["spotId": spot.id ?? "nil", "source": source])
                 showShareSheet = true
             } label: {
                 HStack {
@@ -358,7 +384,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Report tapped for spot id=\(spot.id ?? "nil") [\(source)]")
+                    SpotLogger.debug("Report tapped", details: ["spotId": spot.id ?? "nil", "source": source])
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -379,9 +405,9 @@ struct SpotCard: View {
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)
-                                SpotLogger.info("User blocked from spot menu: \(targetUserId)")
+                                SpotLogger.info("User blocked from spot menu", details: ["targetUserId": targetUserId])
                             } catch {
-                                SpotLogger.error("Failed to block user: \(error.localizedDescription)")
+                                SpotLogger.error("Failed to block user", details: ["error": error.localizedDescription])
                             }
                         }
                     }
@@ -402,7 +428,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Delete tapped for spot id=\(spot.id ?? "nil") [\(source)]")
+                    SpotLogger.debug("Delete tapped", details: ["spotId": spot.id ?? "nil", "source": source])
                     showDeleteConfirm = true
                 } label: {
                     HStack {

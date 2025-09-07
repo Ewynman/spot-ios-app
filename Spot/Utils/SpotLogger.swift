@@ -6,11 +6,11 @@ enum LogLevel: String, CaseIterable, Comparable {
     case info = "INFO"
     case warning = "WARNING"
     case error = "ERROR"
-    case firebase = "FIREBASE"
+    case notice = "NOTICE"
 
     // For filtering: debug < info < warning < error < firebase
     static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
-        let order: [LogLevel] = [.debug, .info, .warning, .error, .firebase]
+        let order: [LogLevel] = [.debug, .info, .warning, .error, .notice]
         return order.firstIndex(of: lhs)! < order.firstIndex(of: rhs)!
     }
 }
@@ -28,23 +28,44 @@ final class SpotLogger {
 
     // MARK: - Public Logging Methods
     static func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.debug, message: message, file: file, function: function, line: line)
+        log(.debug, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
     }
 
     static func info(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.info, message: message, file: file, function: function, line: line)
+        log(.info, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
     }
 
     static func warning(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.warning, message: message, file: file, function: function, line: line)
+        log(.warning, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
     }
 
     static func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.error, message: message, file: file, function: function, line: line)
+        log(.error, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
     }
 
-    static func firebase(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.firebase, message: message, file: file, function: function, line: line)
+    static func notice(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(.notice, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
+    }
+
+    // MARK: - Key/Value Structured Variants (all levels)
+    static func debug(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.debug, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    }
+
+    static func info(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.info, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    }
+
+    static func warning(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.warning, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    }
+
+    static func error(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.error, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    }
+
+    static func notice(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.notice, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
     }
 
     // MARK: - Private Logging Implementation
@@ -66,7 +87,7 @@ final class SpotLogger {
             logger.warning("\(logMessage, privacy: .public)")
         case .error:
             logger.error("\(logMessage, privacy: .public)")
-        case .firebase:
+        case .notice:
             logger.notice("\(logMessage, privacy: .public)")
         }
 
@@ -74,6 +95,59 @@ final class SpotLogger {
         #if DEBUG
         print(logMessage)
         #endif
+    }
+
+    // Structured logging helper (generic)
+    static func structured(_ level: LogLevel, _ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        guard level >= minimumLevel else { return }
+        log(level, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    }
+
+    // MARK: - Compose message with JSON details
+    private static func composeMessage(title: String, details: [String: Any]) -> String {
+        // Pretty multi-line details block
+        let lines = details
+            .map { key, value in
+                let v: String
+                if let date = value as? Date {
+                    v = date.description
+                } else if let arr = value as? [Any] {
+                    v = arr.map { String(describing: $0) }.joined(separator: ", ")
+                } else {
+                    v = String(describing: value)
+                }
+                return "     \(key): \(v)"
+            }
+            .sorted()
+            .joined(separator: "\n")
+        return "\(title)\n[\n\(lines)\n]"
+    }
+
+    // MARK: - Convenience: Logs with Spot payload
+    static func info(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.info, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
+    }
+    static func warning(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.warning, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
+    }
+    static func error(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.error, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
+    }
+    static func debug(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(.debug, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
+    }
+
+    private static func merge(_ base: [String: Any], with spot: Spot) -> [String: Any] {
+        var d = base
+        d["spotId"] = spot.id ?? "nil"
+        d["userId"] = spot.userId ?? "nil"
+        d["username"] = spot.username ?? "nil"
+        d["likes"] = spot.likes ?? 0
+        d["createdAt"] = spot.createdAt ?? Date.distantPast
+        d["imageURL"] = spot.imageURL ?? "nil"
+        d["thumbnailURL"] = spot.thumbnailURL ?? "nil"
+        d["locationName"] = spot.locationName ?? "nil"
+        return d
     }
 }
 

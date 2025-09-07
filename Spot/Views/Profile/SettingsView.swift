@@ -262,6 +262,7 @@ struct SettingsView: View {
                     profileImageURL = data["profileImageURL"] as? String
                 }
             } catch {
+                SpotLogger.error("Settings.LoadProfile.failed", details: ["userId": userId, "error": error.localizedDescription])
                 await MainActor.run { errorMessage = error.localizedDescription }
             }
         }
@@ -314,7 +315,7 @@ struct SettingsView: View {
         case .invalidChars: isSaving = false; errorMessage = "Username has invalid characters"; return
         case .reserved: isSaving = false; errorMessage = "That username is reserved"; return
         case .blocked:
-            SpotLogger.warning("Username.Blocked raw=\(username) norm=\(validator.normalized(username)) reason=blocked")
+            SpotLogger.warning("Username.Blocked", details: ["raw": username, "norm": validator.normalized(username)])
             isSaving = false; errorMessage = "That username isn’t allowed"; return
         }
 
@@ -348,6 +349,7 @@ struct SettingsView: View {
                             // Fallback: show a lightweight toast to prompt user to check inbox
                             successMessage = "Verification email sent. Check your inbox."
                         } catch {
+                            SpotLogger.error("Settings.VerifyBeforeUpdateEmail.failed", details: ["newEmail": newEmail, "error": error.localizedDescription])
                             firstError = firstError ?? error
                         }
                     }
@@ -375,8 +377,14 @@ struct SettingsView: View {
         group.notify(queue: .main) {
             isSaving = false
             if let err = firstError {
+                SpotLogger.error("Settings.Save.failed", details: ["error": err.localizedDescription])
                 showToast(message: err.localizedDescription, isError: true)
             } else {
+                SpotLogger.info("Settings.Save.success", details: [
+                    "usernameChanged": username != originalUsername,
+                    "emailChanged": email != Auth.auth().currentUser?.email ?? "",
+                    "isPrivate": isPrivate
+                ])
                 showToast(message: "Settings updated", isError: false)
             }
         }
@@ -399,7 +407,7 @@ struct SettingsView: View {
     }
 
     private func uploadProfilePhoto(_ image: UIImage) {
-        SpotLogger.info("Settings.ProfilePhoto.Upload.start")
+        SpotLogger.info("Settings.ProfilePhoto.Upload.start", details: [:])
         isUploadingPhoto = true
         errorMessage = nil
         successMessage = nil
@@ -411,25 +419,25 @@ struct SettingsView: View {
                     guard let uid = Auth.auth().currentUser?.uid else {
                         self.isUploadingPhoto = false
                         self.showToast(message: "No user session", isError: true)
-                        SpotLogger.error("Settings.ProfilePhoto.Upload.noUser")
+                        SpotLogger.error("Settings.ProfilePhoto.Upload.noUser", details: [:])
                         return
                     }
                     Firestore.firestore().collection("users").document(uid).updateData(["profileImageURL": imageURL]) { err in
                         self.isUploadingPhoto = false
                         if let err = err {
                             self.showToast(message: "Failed to update profile picture: \(err.localizedDescription)", isError: true)
-                            SpotLogger.error("Settings.ProfilePhoto.UpdateFirestore.failed: \(err.localizedDescription)")
+                            SpotLogger.error("Settings.ProfilePhoto.UpdateFirestore.failed", details: ["error": err.localizedDescription])
                         } else {
                             self.profileImageURL = imageURL
                             self.selectedProfileImage = nil
                             self.showToast(message: "Profile photo updated", isError: false)
-                            SpotLogger.info("Settings.ProfilePhoto.Updated ok")
+                            SpotLogger.info("Settings.ProfilePhoto.Updated", details: [:])
                         }
                     }
                 case .failure(let error):
                     self.isUploadingPhoto = false
                     self.showToast(message: "Failed to upload photo: \(error.localizedDescription)", isError: true)
-                    SpotLogger.error("Settings.ProfilePhoto.Upload.failed: \(error.localizedDescription)")
+                    SpotLogger.error("Settings.ProfilePhoto.Upload.failed", details: ["error": error.localizedDescription])
                 }
             }
         }
