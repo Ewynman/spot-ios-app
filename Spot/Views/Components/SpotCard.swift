@@ -357,7 +357,7 @@ struct SpotCard: View {
                     let currentUserId = userId ?? authVM.userId ?? ""
                     let ownerId = spot.userId ?? ""
                     // isOwneer set to _ to supress warnings
-                    let _ = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
+                    _ = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
                     // Three-dot menu for all spots
                     Button {
                         SpotLogger.debug("Menu tapped", details: ["spotId": spot.id ?? "nil", "source": source])

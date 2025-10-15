@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 /// Simple on-device ranker and blender.
 /// - Pool A: recent (time decay)
@@ -8,29 +9,50 @@ final class FeedRanker {
     static let shared = FeedRanker()
     private init() {}
 
-    private let recentWeight: Double = 0.6
-    private let trendingWeight: Double = 0.4
+    // MVP weights confirmed by user
+    private let wVibe: Double = 0.45
+    private let wFresh: Double = 0.25
+    private let wAffinity: Double = 0.20
+    private let wDistance: Double = 0.10
+    private let tauHours: Double = 72.0
+    private let nearKm: Double = 25.0
 
-    func rankRecent(_ spots: [Spot]) -> [Spot] {
-        return spots.sorted { (l, r) in
-            (l.createdAt ?? Date.distantPast) > (r.createdAt ?? Date.distantPast)
-        }
+    struct Context {
+        let followeeIds: Set<String>
+        let userVibeStats: [String: Int]
+        let userLocation: CLLocation?
+        let seenSpotIds: Set<String>
     }
 
-    func rankTrending(_ spots: [Spot]) -> [Spot] {
-        return spots.sorted { (l, r) in
-            let lt = Double(l.likes ?? 0) + (l.createdAt?.timeIntervalSince1970 ?? 0) * 0.000001
-            let rt = Double(r.likes ?? 0) + (r.createdAt?.timeIntervalSince1970 ?? 0) * 0.000001
-            return lt > rt
+    func score(_ spot: Spot, ctx: Context) -> Double {
+        // vibe
+        let total = max(1, ctx.userVibeStats.values.reduce(0, +))
+        let vibeCount = ctx.userVibeStats[spot.vibeTag ?? ""] ?? 0
+        let vibe = Double(vibeCount) / Double(total)
+
+        // freshness exp decay
+        let ageH = max(0.0, -(spot.createdAt ?? .distantPast).timeIntervalSinceNow / 3600.0)
+        let fresh = exp(-ageH / tauHours)
+
+        // affinity (MVP): 1 if followee, else 0
+        let affinity = ctx.followeeIds.contains(spot.userId ?? "") ? 1.0 : 0.0
+
+        // distance (MVP): normalize to [0,1]; 1 if within nearKm; else decays
+        var distScore = 0.0
+        if let userLoc = ctx.userLocation, let lat = spot.latitude, let lon = spot.longitude {
+            let dKm = userLoc.distance(from: CLLocation(latitude: lat, longitude: lon)) / 1000.0
+            if dKm <= nearKm { distScore = 1.0 } else { distScore = max(0.0, nearKm / dKm) }
         }
+
+        return wVibe*vibe + wFresh*fresh + wAffinity*affinity + wDistance*distScore
     }
 
-    func blend(recent: [Spot], trending: [Spot], pageSize: Int) -> [Spot] {
-        let rCount = Int((Double(pageSize) * recentWeight).rounded())
-        let tCount = pageSize - rCount
+    func blend(followees: [Spot], global: [Spot], pageSize: Int, creatorCap: Int = 2) -> [Spot] {
+        let fTarget = pageSize / 2
+        let gTarget = pageSize - fTarget
         var picked: [Spot] = []
-        var seen = Set<String>()
-        var excludedByBlendSeen = 0
+        var seenKeys = Set<String>()
+        var perCreator: [String: Int] = [:]
 
         func push(_ s: Spot) {
             // Build a robust key so we don't drop items if id is temporarily nil
@@ -40,25 +62,27 @@ final class FeedRanker {
                 let ts = s.createdAt?.timeIntervalSince1970 ?? 0
                 return "u:\(uid)#t:\(ts)"
             }()
-            guard !seen.contains(key) else {
-                excludedByBlendSeen += 1
+            guard !seenKeys.contains(key) else {
                 FeedDiagnostics.logExclusion(reason: "blend_seen", source: "FeedRanker.blend", spot: s)
                 return
             }
+            // creator cap
+            let author = s.userId ?? "_"
+            if (perCreator[author] ?? 0) >= creatorCap { return }
             picked.append(s)
-            seen.insert(key)
+            seenKeys.insert(key)
+            perCreator[author] = (perCreator[author] ?? 0) + 1
         }
 
-        for s in recent.prefix(rCount) { push(s) }
-        for s in trending.prefix(tCount) { push(s) }
+        for s in followees.prefix(fTarget) { push(s) }
+        for s in global.prefix(gTarget) { push(s) }
 
         // Backfill if underfilled
         if picked.count < pageSize {
-            for s in recent where picked.count < pageSize { push(s) }
-            for s in trending where picked.count < pageSize { push(s) }
+            for s in followees where picked.count < pageSize { push(s) }
+            for s in global where picked.count < pageSize { push(s) }
         }
 
-        SpotLogger.debug("FeedRanker blend: recent=\(recent.count), trending=\(trending.count), picked=\(picked.count), excludedByBlendSeen=\(excludedByBlendSeen)")
         return picked
     }
 }

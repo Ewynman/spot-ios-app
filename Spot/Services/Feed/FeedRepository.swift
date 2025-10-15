@@ -1,19 +1,22 @@
 import Foundation
+import _LocationEssentials
 import FirebaseFirestore
+import FirebaseAuth
 
 final class FeedRepository: ObservableObject {
     static let shared = FeedRepository()
     private init() {}
 
     @Published private(set) var spots: [Spot] = []
-    private var recentCursor: DocumentSnapshot?
-    private var trendingCursor: DocumentSnapshot?
+    private var globalCursor: DocumentSnapshot?
+    private var followeeChunkCursors: [Int: DocumentSnapshot?] = [:]
     private var isColdStart = true
 
     private let candidate = FeedCandidateService.shared
     private let ranker = FeedRanker.shared
     private let pageSize = FeedFlags.pageSize
     private let privacy = AuthorPrivacyCache.shared
+    private var seenSpotIds: Set<String> = []
 
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
@@ -22,49 +25,37 @@ final class FeedRepository: ObservableObject {
         FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
 
         do {
-            var accRecent: [Spot] = []
-            var accTrending: [Spot] = []
-            var rc: DocumentSnapshot?
-            var tc: DocumentSnapshot?
-            var attempts = 0
-
-            while accRecent.count + accTrending.count < pageSize && attempts < 5 {
-                attempts += 1
-                let lastRc = rc
-                let lastTc = tc
-                async let recent = candidate.fetchRecent(last: lastRc)
-                async let trending = candidate.fetchTrending(last: lastTc)
-                let (r, t) = try await (recent, trending)
-                rc = r.last; tc = t.last
-
-                // Warm and filter this batch
-                await privacy.warm(authorIds: Set((r.items + t.items).compactMap { $0.userId }))
-                let gatedRecent = await privacy.filter(spots: r.items)
-                let gatedTrending = await privacy.filter(spots: t.items)
-                accRecent.append(contentsOf: gatedRecent)
-                accTrending.append(contentsOf: gatedTrending)
-
-                // Stop if both sources exhausted
-                if (r.items.isEmpty && t.items.isEmpty) || (rc == nil && tc == nil) { break }
+            // Load social lists and current user context
+            let (followeeIds, _) = await withCheckedContinuation { cont in
+                UserSpotService.shared.getSocialLists(for: nil) { f, r in cont.resume(returning: (f, r)) }
             }
+            let followeesSet = Set(followeeIds)
 
-            recentCursor = rc
-            trendingCursor = tc
+            // Pull candidates in parallel
+            async let globalPage = candidate.fetchRecent(last: nil)
+            async let followeesPage = candidate.fetchFolloweesRecent(followeeIds: followeeIds, lastByChunk: [:])
+            let (g, f) = try await (globalPage, followeesPage)
+            globalCursor = g.last
+            followeeChunkCursors = f.lastByChunk
 
-            let nilIdRecent = accRecent.filter { $0.id == nil }.count
-            let nilIdTrending = accTrending.filter { $0.id == nil }.count
+            // Privacy warm + filter
+            await privacy.warm(authorIds: Set((g.items + f.items).compactMap { $0.userId }))
+            let gatedGlobal = await privacy.filter(spots: g.items)
+            let gatedFollowees = await privacy.filter(spots: f.items)
 
-            let blended = ranker.blend(recent: ranker.rankRecent(accRecent), trending: ranker.rankTrending(accTrending), pageSize: pageSize)
-
-            FeedDiagnostics.logFeedStats(
-                recentCount: accRecent.count,
-                trendingCount: accTrending.count,
-                nilIdCount: nilIdRecent + nilIdTrending,
-                excludedByPersistentSeen: 0,
-                excludedByBlendSeen: 0,
-                excludedByExistingIds: 0
+            // Rank within buckets
+            let ctx = FeedRanker.Context(
+                followeeIds: followeesSet,
+                userVibeStats: currentUserVibeStats(),
+                userLocation: currentUserLocation(),
+                seenSpotIds: seenSpotIds
             )
-            SpotLogger.info("Feed loadInitial: recent=\(accRecent.count) (nil id=\(nilIdRecent)), trending=\(accTrending.count) (nil id=\(nilIdTrending)), blended=\(blended.count)")
+            let rankedFollowees = gatedFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedGlobal = gatedGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+
+            let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
+
+            SpotLogger.info("Feed loadInitial: followees=\(rankedFollowees.count), global=\(rankedGlobal.count), blended=\(blended.count)")
             await MainActor.run { self.spots = blended }
             isColdStart = false
         } catch {
@@ -74,54 +65,60 @@ final class FeedRepository: ObservableObject {
 
     func loadMore() async {
         do {
-            var pageRecent: [Spot] = []
-            var pageTrending: [Spot] = []
-            var rc = recentCursor
-            var tc = trendingCursor
-            var attempts = 0
-
-            while pageRecent.count + pageTrending.count < pageSize && attempts < 5 {
-                attempts += 1
-                let lastRc = rc
-                let lastTc = tc
-                async let r = candidate.fetchRecent(last: lastRc)
-                async let t = candidate.fetchTrending(last: lastTc)
-                let (nr, nt) = try await (r, t)
-                rc = nr.last
-                tc = nt.last
-                await privacy.warm(authorIds: Set((nr.items + nt.items).compactMap { $0.userId }))
-                pageRecent.append(contentsOf: await privacy.filter(spots: nr.items))
-                pageTrending.append(contentsOf: await privacy.filter(spots: nt.items))
-                if (nr.items.isEmpty && nt.items.isEmpty) || (rc == nil && tc == nil) { break }
+            let (followeeIds, _) = await withCheckedContinuation { cont in
+                UserSpotService.shared.getSocialLists(for: nil) { f, r in cont.resume(returning: (f, r)) }
             }
+            let followeesSet = Set(followeeIds)
 
-            recentCursor = rc
-            trendingCursor = tc
-            let blended = ranker.blend(recent: ranker.rankRecent(pageRecent), trending: ranker.rankTrending(pageTrending), pageSize: pageSize)
+            async let g = candidate.fetchRecent(last: globalCursor)
+            async let f = candidate.fetchFolloweesRecent(followeeIds: followeeIds, lastByChunk: followeeChunkCursors)
+            let (ng, nf) = try await (g, f)
+            globalCursor = ng.last
+            followeeChunkCursors = nf.lastByChunk
 
-            // Prevent duplicates already in feed when appending
+            await privacy.warm(authorIds: Set((ng.items + nf.items).compactMap { $0.userId }))
+            let gatedGlobal = await privacy.filter(spots: ng.items)
+            let gatedFollowees = await privacy.filter(spots: nf.items)
+
+            let ctx = FeedRanker.Context(
+                followeeIds: followeesSet,
+                userVibeStats: currentUserVibeStats(),
+                userLocation: currentUserLocation(),
+                seenSpotIds: seenSpotIds
+            )
+            let rankedFollowees = gatedFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedGlobal = gatedGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
+
+            // Dedup against existing
             let existingIds = Set(self.spots.compactMap { $0.id })
-            let excludedByExistingIds = blended.filter { spot in
-                if let id = spot.id { return existingIds.contains(id) }
-                return false
-            }.count
-
             let newUnique = blended.filter { spot in
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
-
-            // Log exclusion diagnostics
-            for spot in blended {
-                if let id = spot.id, existingIds.contains(id) {
-                    FeedDiagnostics.logExclusion(reason: "existing_id", source: "FeedRepository.loadMore", spot: spot)
-                }
-            }
-
-            SpotLogger.info("Feed loadMore: newRecent=\(pageRecent.count), newTrending=\(pageTrending.count), blended=\(blended.count), excludedByExistingIds=\(excludedByExistingIds), appending=\(newUnique.count)")
+            SpotLogger.info("Feed loadMore: followees=\(rankedFollowees.count), global=\(rankedGlobal.count), appending=\(newUnique.count)")
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch {
             SpotLogger.error("Feed loadMore failed: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Context helpers
+    private func currentUserVibeStats() -> [String: Int] {
+        guard let uid = AuthViewModel().userId ?? Auth.auth().currentUser?.uid else { return [:] }
+        let sema = DispatchSemaphore(value: 0)
+        var result: [String: Int] = [:]
+        Firestore.firestore().collection("users").document(uid).getDocument { snap, _ in
+            if let map = snap?.data()? ["vibeStats"] as? [String: Any] {
+                var out: [String: Int] = [:]
+                for (k, v) in map { if let i = v as? Int { out[k] = i } }
+                result = out
+            }
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + 1.0)
+        return result
+    }
+
+    private func currentUserLocation() -> CLLocation? { return LocationManager.shared.userLocation }
 }
