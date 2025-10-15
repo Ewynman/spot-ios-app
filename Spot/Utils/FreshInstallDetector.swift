@@ -21,6 +21,8 @@ class FreshInstallDetector {
         if isFirstRun {
             // Mark as not first run
             userDefaults.set(true, forKey: Constants.UserDefaultsKeys.firstRun)
+            // Ensure we prompt permissions only on next successful login
+            userDefaults.set(true, forKey: Constants.UserDefaultsKeys.promptPermsOnNextLogin)
 
             // Check if Firebase Auth has a persisted user
             if Auth.auth().currentUser != nil {
@@ -43,6 +45,16 @@ class FreshInstallDetector {
         }
 
         return false
+    }
+
+    /// Returns true once if we should prompt for permissions at next login; resets the flag.
+    @MainActor func consumePromptPermissionsOnNextLoginFlag() -> Bool {
+        let userDefaults = UserDefaults.standard
+        let shouldPrompt = userDefaults.bool(forKey: Constants.UserDefaultsKeys.promptPermsOnNextLogin)
+        if shouldPrompt {
+            userDefaults.set(false, forKey: Constants.UserDefaultsKeys.promptPermsOnNextLogin)
+        }
+        return shouldPrompt
     }
 
     @MainActor private func clearAllCaches() {

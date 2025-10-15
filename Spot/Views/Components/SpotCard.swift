@@ -22,6 +22,8 @@ struct SpotCard: View {
     var onDelete: (() -> Void)?
     var source: String = "Unknown"
     var backAction: (() -> Void)?
+    var onImageFailure: ((Spot) -> Void)?
+    var onImageRetry: ((Spot) -> Void)?
     @State private var showDeleteConfirm: Bool = false
     @State private var showShareSheet: Bool = false
     @State private var showReportSheet: Bool = false
@@ -34,14 +36,19 @@ struct SpotCard: View {
     @State private var isLoadingSave = false
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
+    @State private var thumbnailFailed: Bool = false
+    @State private var reportedImageFailure: Bool = false
+    @State private var retryToken: UUID = UUID()
 
-    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil) {
+    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil, onImageFailure: ((Spot) -> Void)? = nil, onImageRetry: ((Spot) -> Void)? = nil) {
         self.spot = spot
         self.showUserInfo = showUserInfo
         self.userId = userId
         self.onDelete = onDelete
         self.source = source
         self.backAction = backAction
+        self.onImageFailure = onImageFailure
+        self.onImageRetry = onImageRetry
     }
 
     var body: some View {
@@ -120,63 +127,174 @@ struct SpotCard: View {
 
             // MARK: — Spot Image
             if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
-                AsyncImage(url: turl) { th in
-                    th.resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: 400)
-                        .clipped()
-                        .cornerRadius(12)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity, maxHeight: 400)
+                // Base: thumbnail with failure fallback to asset placeholder
+                AsyncImage(url: turl, transaction: Transaction(animation: .default)) { phase in
+                    switch phase {
+                    case .empty:
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Constants.Colors.background)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                    case .success(let image):
+                        image.resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                            .clipped()
+                            .cornerRadius(12)
+                    case .failure:
+                        Image("image_placeholder")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                            .clipped()
+                            .cornerRadius(12)
+                            .onAppear {
+                                let host = URL(string: thumb)?.host ?? "unknown"
+                                SpotLogger.error("Image.Thumb.Failure", details: [
+                                    "spotId": spot.id ?? "nil",
+                                    "source": source,
+                                    "thumbHost": host,
+                                    "thumbUrl": thumb
+                                ])
+                                thumbnailFailed = true
+                                if !reportedImageFailure {
+                                    reportedImageFailure = true
+                                    onImageFailure?(spot)
+                                }
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                Button {
+                                    retryToken = UUID(); onImageRetry?(spot)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Retry")
+                                    }
+                                    .font(FontManager.primaryText())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.9))
+                                    .cornerRadius(10)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(8)
+                            }
+                    @unknown default:
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Constants.Colors.background)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                    }
                 }
+                // Overlay: try swap-in full image; on failure, keep thumbnail/placeholder
                 .overlay(
                     Group {
                         if let full = spot.imageURL, let furl = URL(string: full) {
-                            AsyncImage(url: furl) { img in
-                                img.resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: .infinity, maxHeight: 400)
-                                    .clipped()
-                                    .cornerRadius(12)
-                                    .onAppear {
-                                        if let tFirst = PerfMetrics.shared.measure("t_first_item") {
-                                            PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
+                            AsyncImage(url: furl, transaction: Transaction(animation: .default)) { phase in
+                                switch phase {
+                                case .empty:
+                                    Color.clear
+                                case .success(let image):
+                                    image.resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(maxWidth: .infinity, maxHeight: 400)
+                                        .clipped()
+                                        .cornerRadius(12)
+                                        .onAppear {
+                                            if let tFirst = PerfMetrics.shared.measure("t_first_item") {
+                                                PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
+                                            }
+                                            SpotLogger.info("Spot image loaded", details: [
+                                                "spotId": spot.id ?? "nil",
+                                                "source": source,
+                                                "hasThumb": true,
+                                                "url": full
+                                            ])
                                         }
-                                        SpotLogger.info("Spot image loaded", details: [
+                                case .failure:
+                                    // Keep base thumbnail/placeholder
+                                    Color.clear.onAppear {
+                                        let host = URL(string: full)?.host ?? "unknown"
+                                        SpotLogger.error("Image.Full.Failure", details: [
                                             "spotId": spot.id ?? "nil",
                                             "source": source,
-                                            "hasThumb": true,
-                                            "url": full
+                                            "fullHost": host,
+                                            "fullUrl": full
                                         ])
+                                        if !reportedImageFailure {
+                                            reportedImageFailure = true
+                                            onImageFailure?(spot)
+                                        }
                                     }
-                            } placeholder: {
-                                // Keep showing the thumbnail
-                                Color.clear
+                                @unknown default:
+                                    Color.clear
+                                }
                             }
                         }
                     }
                 )
             } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
-                AsyncImage(url: url) { img in
-                    img.resizable()
-                       .aspectRatio(contentMode: .fit)
-                       .frame(maxWidth: .infinity, maxHeight: 400)
-                       .clipped()
-                       .cornerRadius(12)
-                        .onAppear {
-                            SpotLogger.info("Spot image loaded", details: [
-                                "spotId": spot.id ?? "nil",
-                                "source": source,
-                                "hasThumb": false,
-                                "url": urlString
-                            ])
-                        }
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity, maxHeight: 400)
+                // No thumbnail: load full with a proper failure fallback
+                AsyncImage(url: url, transaction: Transaction(animation: .default)) { phase in
+                    switch phase {
+                    case .empty:
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Constants.Colors.background)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                    case .success(let image):
+                        image.resizable()
+                           .aspectRatio(contentMode: .fit)
+                           .frame(maxWidth: .infinity, maxHeight: 400)
+                           .clipped()
+                           .cornerRadius(12)
+                            .onAppear {
+                                SpotLogger.info("Spot image loaded", details: [
+                                    "spotId": spot.id ?? "nil",
+                                    "source": source,
+                                    "hasThumb": false,
+                                    "url": urlString
+                                ])
+                            }
+                    case .failure:
+                        Image("image_placeholder")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                            .clipped()
+                            .cornerRadius(12)
+                            .onAppear {
+                                let host = url.host ?? "unknown"
+                                SpotLogger.error("Image.Full.Failure", details: [
+                                    "spotId": spot.id ?? "nil",
+                                    "source": source,
+                                    "fullHost": host,
+                                    "fullUrl": urlString
+                                ])
+                                if !reportedImageFailure {
+                                    reportedImageFailure = true
+                                    onImageFailure?(spot)
+                                }
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                Button {
+                                    retryToken = UUID(); onImageRetry?(spot)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Retry")
+                                    }
+                                    .font(FontManager.primaryText())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.9))
+                                    .cornerRadius(10)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(8)
+                            }
+                    @unknown default:
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Constants.Colors.background)
+                            .frame(maxWidth: .infinity, maxHeight: 400)
+                    }
                 }
             } else {
                 Image("image_placeholder")

@@ -189,7 +189,7 @@ struct HomepageView: View {
                                     }
                                     .padding(.horizontal, 16)
                                 }
-                                .padding(.top, 24)
+                                .padding(.top, 8)
 
                                 // Feed Content
                                 FeedContentView(
@@ -250,12 +250,12 @@ struct HomepageView: View {
                     }
                 })
             }
-//            .overlay(alignment: .topLeading) { DebugPerfOverlay() }
             .navigationDestination(isPresented: $showUploadView) {
                 PostFlowView(onPostSuccess: {
                     feedVM.refreshFeed()
                 })
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .onAppear {
             // Load data in background without blocking UI
@@ -322,6 +322,7 @@ struct FeedContentView: View {
     let userId: String?
     let onDeleteSpot: (Spot) -> Void
     @State private var firstItemRecorded = false
+    @State private var failedImageSpotIds: Set<String> = []
 
     var validSpots: [Spot] { spots }
 
@@ -336,7 +337,7 @@ struct FeedContentView: View {
         Group {
             if selectedTab == "Map" {
                 MapView(spots: validMapSpots)
-                    .edgesIgnoringSafeArea(.all)
+                    .ignoresSafeArea(edges: .all)
             } else if isLoading && spots.isEmpty {
                 // Skeletons while initial load
                 ScrollView {
@@ -350,6 +351,7 @@ struct FeedContentView: View {
             } else if !validSpots.isEmpty {
                 ScrollView {
                     RefreshControl(coordinateSpace: .named("RefreshControl")) {
+                        failedImageSpotIds.removeAll()
                         onRefresh()
                     }
 
@@ -360,7 +362,20 @@ struct FeedContentView: View {
                                 if (spot.imageURL ?? "").isEmpty {
                                     SkeletonSpotCard()
                                 } else {
-                                    SpotCard(spot: spot, showUserInfo: true, userId: userId, onDelete: { onDeleteSpot(spot) }, source: "Feed")
+                                    SpotCard(
+                                        spot: spot,
+                                        showUserInfo: true,
+                                        userId: userId,
+                                        onDelete: { onDeleteSpot(spot) },
+                                        source: "Feed",
+                                        onImageFailure: { failed in
+                                            if let failedId = failed.id { failedImageSpotIds.insert(failedId) }
+                                        },
+                                        onImageRetry: { retrySpot in
+                                            // Remove from failed set to allow re-attempt render
+                                            if let rid = retrySpot.id { failedImageSpotIds.remove(rid) }
+                                        }
+                                    )
                                 }
                             }
                             .onAppear {
@@ -390,6 +405,10 @@ struct FeedContentView: View {
                             .frame(height: 1)
                         }
                     }
+                }
+                .refreshable {
+                    failedImageSpotIds.removeAll()
+                    onRefresh()
                 }
                 .coordinateSpace(name: "RefreshControl")
                 .background(Color(hex: "F5F3EF"))

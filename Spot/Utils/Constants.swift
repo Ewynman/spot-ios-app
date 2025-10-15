@@ -23,6 +23,7 @@ enum Constants {
         static let locationPermissionRequested = "locationPermissionRequested"
         static let lastKnownLocationStatus = "lastKnownLocationStatus"
         static let lastKnownNotificationStatus = "lastKnownNotificationStatus"
+        static let promptPermsOnNextLogin = "promptPermsOnNextLogin"
     }
 
     enum Analytics {

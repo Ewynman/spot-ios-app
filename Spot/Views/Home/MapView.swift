@@ -11,6 +11,7 @@ struct MapView: View {
     // iOS 17 camera replacement for coordinateRegion
     @State private var cameraPosition: MapCameraPosition
     @State private var selectedSpot: Spot?
+    @State private var hasPerformedInitialFit: Bool = false
 
     @Environment(\.verticalSizeClass) private var vSize
 
@@ -40,16 +41,18 @@ struct MapView: View {
             .background(Constants.Colors.background.ignoresSafeArea())
             .onAppear {
                 locationManager.startUpdatingLocation()
-                updateCameraToUser()
+                performInitialFitIfNeeded()
             }
             .onDisappear { locationManager.stopUpdatingLocation() }
             .onChange(of: locationManager.userLocation) { _, _ in
-                if selectedSpot == nil { updateCameraToUser() }
+                // Only follow user if there are no map spots; otherwise preserve the fit-to-pins.
+                if selectedSpot == nil && !hasValidSpots { updateCameraToUser() }
+            }
+            .onChange(of: spots) { _, _ in
+                // When spots load asynchronously, perform initial fit once.
+                performInitialFitIfNeeded()
             }
         }
-        // If embedded in a NavigationStack, make the nav bar match the app background.
-        .toolbarBackground(Constants.Colors.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     // MARK: - Inset content
@@ -115,6 +118,20 @@ struct MapView: View {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
             cameraPosition = .region(.init(center: center, span: .init(latitudeDelta: latDelta, longitudeDelta: lonDelta)))
         }
+    }
+
+    private var hasValidSpots: Bool {
+        return spots.contains { $0.latitude != nil && $0.longitude != nil }
+    }
+
+    private func performInitialFitIfNeeded() {
+        guard !hasPerformedInitialFit else { return }
+        if hasValidSpots {
+            zoomToFitAllPins()
+        } else {
+            updateCameraToUser()
+        }
+        hasPerformedInitialFit = true
     }
 }
 

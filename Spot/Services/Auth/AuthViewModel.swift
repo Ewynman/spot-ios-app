@@ -42,6 +42,11 @@ class AuthViewModel: ObservableObject {
                     self?.isEmailVerified = user.isEmailVerified
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
+                    // On first login after a fresh install, trigger permission prompts once.
+                    if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
+                        SpotLogger.info("Perms.AutoPrompt reason=freshInstallLogin")
+                        PermissionManager.shared.requestPermissionsIfNeeded()
+                    }
                 }
             } else {
                 DispatchQueue.main.async {

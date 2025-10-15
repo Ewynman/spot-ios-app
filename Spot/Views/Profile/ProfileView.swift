@@ -252,10 +252,6 @@ struct ProfileView: View {
                                 .zIndex(0)
                             }
                         }
-
-                        if fromNavigationPush {
-                            BottomNavigationView(selectedTab: .constant("Home"))
-                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -48,11 +48,6 @@ struct SpotApp: App {
 
                             // Process any pending deep links after app is ready
                             deepLinkState.processPendingDeepLinks()
-
-                            // Request permissions if needed (after login)
-                            if authViewModel.isAuthenticated {
-                                PermissionManager.shared.requestPermissionsIfNeeded()
-                            }
                         }
                 }
             }
