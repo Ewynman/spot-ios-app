@@ -172,8 +172,15 @@ class AuthService {
             completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])) )
             return
         }
-        user.updateEmail(to: newEmail) { error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        // Per Firebase Auth deprecation guidance, request verification before updating email
+        user.sendEmailVerification(beforeUpdatingEmail: newEmail) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                // An email verification has been sent to the new address. The email will be updated after verification.
+                SpotLogger.info("AuthService.updateEmail: verification email sent to new address")
+                completion(.success(()))
+            }
         }
     }
 

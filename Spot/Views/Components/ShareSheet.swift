@@ -2,7 +2,7 @@
 //  ShareSheet.swift
 //  Spot
 //
-//  Created by Assistant on 8/14/25.
+//  Created by Wynman, Edward on 8/14/25.
 //
 
 import SwiftUI

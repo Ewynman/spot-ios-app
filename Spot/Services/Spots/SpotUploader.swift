@@ -206,14 +206,13 @@ final class SpotUploader {
                         } catch {
                             SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
-                        Firestore.firestore().collection("spots").document(postId).setData(data) { error in
-                            if let error = error {
-                                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
-                                completion(.failure(error))
-                            } else {
-                                SpotLogger.info("Spot created", details: ["postId": postId])
-                                completion(.success(()))
-                            }
+                        do {
+                            try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                            SpotLogger.info("Spot created", details: ["postId": postId])
+                            completion(.success(()))
+                        } catch {
+                            SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
+                            completion(.failure(error))
                         }
                     }
                 }
