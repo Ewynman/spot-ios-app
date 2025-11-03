@@ -13,6 +13,7 @@ struct ProfileData {
     let username: String
     let profileImageURL: String?
     let isPrivate: Bool
+    let isPro: Bool
     let isFollowing: Bool
     let hasRequested: Bool
     let canView: Bool
@@ -46,6 +47,7 @@ enum ProfileService {
         let username = data["username"] as? String ?? "User"
         let profileImageURL = data["profileImageURL"] as? String
         let targetIsPrivate = data["isPrivate"] as? Bool ?? false
+        let targetIsPro = data["isPro"] as? Bool ?? false
 
         let currentUserId = Auth.auth().currentUser?.uid
         var isFollowing = false
@@ -86,7 +88,13 @@ enum ProfileService {
                         validSpots.append(spot)
                     }
                 }
-                return validSpots
+                // Ensure newest-first descending order (createdAt desc; tie-break by id)
+                return validSpots.sorted { lhs, rhs in
+                    let l = lhs.createdAt ?? .distantPast
+                    let r = rhs.createdAt ?? .distantPast
+                    if l != r { return l > r }
+                    return (lhs.id ?? "") > (rhs.id ?? "")
+                }
             }
         }()
 
@@ -94,6 +102,7 @@ enum ProfileService {
             username: username,
             profileImageURL: profileImageURL,
             isPrivate: targetIsPrivate,
+            isPro: targetIsPro,
             isFollowing: isFollowing,
             hasRequested: hasRequested,
             canView: currentUserId == id ? true : canView,

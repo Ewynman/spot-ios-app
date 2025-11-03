@@ -10,6 +10,7 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @EnvironmentObject var deepLinkState: DeepLinkState
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         Group {
@@ -115,6 +116,9 @@ struct RootView: View {
                     // Process any pending deep links when user becomes authenticated
                     deepLinkState.processPendingDeepLinks()
                 }
+                .sheet(isPresented: $showPaywall) {
+                    PaywallView().environmentObject(authViewModel)
+                }
             } else {
                 WelcomeView()
             }
@@ -134,6 +138,9 @@ struct RootView: View {
 
             SpotLogger.info("RootView: Received Universal Link: \(url.absoluteString)")
             deepLinkState.handleDeepLink(url, origin: .universalLink, isColdStart: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showPaywall)) { _ in
+            showPaywall = true
         }
     }
 }

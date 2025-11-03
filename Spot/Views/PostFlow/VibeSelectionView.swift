@@ -2,6 +2,9 @@ import SwiftUI
 
 struct VibeSelectionView: View {
     @Binding var selectedVibe: String
+    @EnvironmentObject var authVM: AuthViewModel
+    @State private var customVibe: String = ""
+    @State private var validationMessage: String?
 
     private let vibeTags = [
         "Chill Spot",
@@ -57,9 +60,70 @@ struct VibeSelectionView: View {
                     }
                 }
                 .padding(.horizontal, 32)
+                // Custom vibe (Pro)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Custom vibe tag")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                        Spacer()
+                        Text("\(customVibe.count)/30")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.horizontal, 32)
+
+                    HStack(spacing: 8) {
+                        TextField("e.g. Golden Hour", text: $customVibe)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .padding(12)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
+
+                        Button(action: useCustomVibe) {
+                            Text("Use")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Constants.Colors.primary)
+                                .cornerRadius(10)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.horizontal, 32)
+
+                    if let msg = validationMessage {
+                        Text(msg)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 32)
+                    }
+                }
             }
 
             Spacer()
+        }
+    }
+
+    private func useCustomVibe() {
+        guard authVM.isPro else {
+            NotificationCenter.default.post(name: .showPaywall, object: nil)
+            return
+        }
+        let validator = VibeTagValidator()
+        switch validator.validate(customVibe) {
+        case .ok(let tag):
+            validationMessage = nil
+            selectedVibe = tag
+        case .tooShort:
+            validationMessage = "Please use at least 2 characters."
+        case .tooLong:
+            validationMessage = "Please keep it under 30 characters."
+        case .blocked:
+            validationMessage = "That tag isn’t allowed."
         }
     }
 }

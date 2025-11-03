@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import FirebaseFirestore
 import FirebaseAuth
+import UIKit
 
 struct LocationSelectionView: View {
     @Binding var selectedLocation: LocationData?
@@ -504,7 +505,7 @@ struct LocationMapView: View {
     @State private var geocodeWorkItem: DispatchWorkItem?
     private let geocoder = CLGeocoder()
     @State private var isGeocoding = false
-    @State private var allowConfirmDespiteGeocoding = false
+    private let geocodeDebouncer = Debouncer(interval: 0.85)
 
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
@@ -524,20 +525,28 @@ struct LocationMapView: View {
                 Map(position: $position) {
                     // Blue dot (appears when permission granted)
                     UserAnnotation()
-
-                    // Your custom “green_marker” pin
-                    Annotation("", coordinate: draggedLocation.coordinate, anchor: .bottom) {
-                        Image("green_marker")
-                            .resizable()
-                            .frame(width: 40, height: 40)
-                    }
                 }
-                // Get notified when the user pans/zooms and update the selection
-                .onMapCameraChange(frequency: .onEnd) { context in
+                // Debounced center updates while the map moves continuously
+                .onMapCameraChange(frequency: .continuous) { context in
                     let center = context.region.center
-                    updateDraggedLocation(to: center)
+                    // Move selection immediately (for UI), then reverse-geocode after debounce
+                    draggedLocation = LocationData(
+                        coordinate: center,
+                        placeName: draggedLocation.placeName,
+                        address: draggedLocation.address,
+                        isCustomName: draggedLocation.isCustomName
+                    )
+                    geocodeDebouncer.schedule { self.updateDraggedLocation(to: center) }
                 }
                 .preferredColorScheme(.light)
+                // Center marker overlay (keeps marker fixed; map moves under it)
+                .overlay(alignment: .center) {
+                    Image("green_marker")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+                        .offset(y: -20)
+                        .allowsHitTesting(false)
+                }
 
                 // Top “current name” chip
                 VStack {
@@ -572,7 +581,7 @@ struct LocationMapView: View {
                     .cornerRadius(20)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 32)
-                    .disabled(isGeocoding && !allowConfirmDespiteGeocoding)
+                    // Always allow confirm; we'll upsert name later if geocode still running
 
                 }
                 // Handy built-in controls
@@ -594,59 +603,36 @@ struct LocationMapView: View {
                         .buttonStyle(PlainButtonStyle())
                 }
             }
+            .onAppear {
+                // Ensure keyboard is dismissed to avoid input accessory constraint noise
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
         }
     }
 
     // MARK: - Reverse geocode the new center (debounced)
     private func updateDraggedLocation(to newCenter: CLLocationCoordinate2D) {
-        draggedLocation = LocationData(
-            coordinate: newCenter,
-            placeName: draggedLocation.placeName,
-            address: draggedLocation.address,
-            isCustomName: draggedLocation.isCustomName
-        )
-
-        geocodeWorkItem?.cancel()
+        geocodeWorkItem?.cancel(); geocoder.cancelGeocode()
         isGeocoding = true
-        allowConfirmDespiteGeocoding = false
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-            if self.isGeocoding {
-                self.allowConfirmDespiteGeocoding = true
-                SpotLogger.warning("Reverse geocode timeout reached; allowing confirm.")
-            }
-        }
-
         let work = DispatchWorkItem { [newCenter] in
             let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
-            self.geocoder.cancelGeocode()
             self.geocoder.reverseGeocodeLocation(loc) { placemarks, error in
                 DispatchQueue.main.async {
-                    if let error = error as NSError? {
-                        SpotLogger.warning("Reverse geocode failed: \(error.localizedDescription)")
-                        self.isGeocoding = false
+                    defer { self.isGeocoding = false }
+                    if let ns = error as NSError? {
+                        // Ignore cancellation and transient errors
+                        if ns.code == CLError.Code.network.rawValue || ns.code == CLError.Code.geocodeFoundNoResult.rawValue { }
+                        SpotLogger.warning("Reverse geocode failed: \(ns.localizedDescription)")
                         return
                     }
-                    guard let placemark = placemarks?.first else {
-                        self.isGeocoding = false
-                        return
-                    }
+                    guard let placemark = placemarks?.first else { return }
                     let name = placemark.name?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let city = placemark.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let state = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let country = placemark.country?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
                     let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
-
-                    // Prefer POI/venue name; fall back to City, State; last resort keep prior
-                    let prettyName: String
-                    if let name, !name.isEmpty {
-                        prettyName = name
-                    } else if !cityState.isEmpty {
-                        prettyName = cityState
-                    } else {
-                        prettyName = self.draggedLocation.placeName
-                    }
+                    let prettyName = (name?.isEmpty == false ? name! : (cityState.isEmpty ? self.draggedLocation.placeName : cityState))
                     self.draggedLocation = LocationData(
                         coordinate: newCenter,
                         placeName: self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName,
@@ -654,13 +640,12 @@ struct LocationMapView: View {
                         isCustomName: self.draggedLocation.isCustomName
                     )
                     self.currentLocationName = prettyName
-                    self.isGeocoding = false
-                    self.allowConfirmDespiteGeocoding = false
                 }
             }
         }
         geocodeWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        // Debounced reverse geocode after user pauses
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: work)
     }
 
     // MARK: - Upsert custom place before returning

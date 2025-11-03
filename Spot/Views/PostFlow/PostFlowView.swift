@@ -6,7 +6,7 @@ import CoreLocation
 struct PostFlowView: View {
     @Environment(\.dismiss) var dismiss
     @State private var currentStep = 1
-    @State private var selectedImage: UIImage?
+    @State private var selectedImages: [UIImage] = []
     @State private var selectedLocation: LocationData?
     @State private var selectedVibe: String = ""
     @State private var isUploading = false
@@ -15,6 +15,7 @@ struct PostFlowView: View {
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var toastIsError = false
+    @State private var showSuccessBanner = false
 
     var onPostSuccess: (() -> Void)?
 
@@ -51,7 +52,7 @@ struct PostFlowView: View {
                     Group {
                         switch currentStep {
                         case 1:
-                            PhotoSelectionView(selectedImage: $selectedImage)
+                            PhotoSelectionView(selectedImages: $selectedImages)
                         case 2:
                             LocationSelectionView(selectedLocation: $selectedLocation)
                         case 3:
@@ -87,6 +88,10 @@ struct PostFlowView: View {
                         ToastView(message: toastMessage, isError: toastIsError)
                             .transition(.move(edge: .top))
                     }
+                    if showSuccessBanner {
+                        SuccessToastView(message: "Spot posted!")
+                            .transition(.move(edge: .top))
+                    }
                 }
                 .padding(.top, 8)
             }
@@ -105,7 +110,7 @@ struct PostFlowView: View {
     private var canProceedToNextStep: Bool {
         switch currentStep {
         case 1:
-            return selectedImage != nil
+            return !selectedImages.isEmpty
         case 2:
             return selectedLocation != nil
         case 3:
@@ -137,10 +142,9 @@ struct PostFlowView: View {
         if isPosting { return }
         isPosting = true
         SpotLogger.info("User completed post flow")
-        SpotLogger.debug("Post data - Image: \(selectedImage != nil), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
+        SpotLogger.debug("Post data - Images: \(selectedImages.count), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
 
-        guard let image = selectedImage,
-              let location = selectedLocation,
+        guard let location = selectedLocation,
               !selectedVibe.isEmpty,
               !location.placeName.isEmpty,
               location.coordinate.latitude != 0,
@@ -152,8 +156,36 @@ struct PostFlowView: View {
 
         isUploading = true
 
+        let imagesToUpload = selectedImages
+        if imagesToUpload.count <= 1, let image = imagesToUpload.first {
+            SpotUploader.shared.uploadSpot(
+                image: image,
+                vibeTag: selectedVibe,
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                placeName: location.placeName
+            ) { result in
+                DispatchQueue.main.async {
+                    isUploading = false
+                    switch result {
+                    case .success:
+                        if let userId = Auth.auth().currentUser?.uid {
+                            SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
+                        }
+                        Task { await self.awaitModerationAndFinish() }
+                    case .failure(let error):
+                        showToastWith(message: error.localizedDescription, isError: true)
+                        SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
+                        isPosting = false
+                    }
+                }
+            }
+            return
+        }
+
+        // Multi-image upload
         SpotUploader.shared.uploadSpot(
-            image: image,
+            images: imagesToUpload,
             vibeTag: selectedVibe,
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
@@ -166,7 +198,6 @@ struct PostFlowView: View {
                     if let userId = Auth.auth().currentUser?.uid {
                         SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
                     }
-                    // Gate by moderation: wait up to ~20s for approved, else reject/timeout
                     Task { await self.awaitModerationAndFinish() }
                 case .failure(let error):
                     showToastWith(message: error.localizedDescription, isError: true)
@@ -217,10 +248,13 @@ struct PostFlowView: View {
             if ok {
                 SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
                 await MainActor.run {
-                    self.showToastWith(message: "Spot posted!", isError: false)
+                    self.showSuccessBanner = true
                     self.onPostSuccess?()
                     self.isPosting = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.dismiss() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        withAnimation { self.showSuccessBanner = false }
+                        self.dismiss()
+                    }
                 }
                 return true
             } else {

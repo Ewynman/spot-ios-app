@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 import PhotosUI
 import FirebaseFirestore
 import FirebaseAuth
@@ -26,6 +27,7 @@ struct SignupView: View {
     @State private var showConfirmEmail = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authVM: AuthViewModel
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -128,7 +130,7 @@ struct SignupView: View {
                     }
                     .padding(.horizontal, 32)
 
-                    HStack(alignment: .center) {
+                    HStack(alignment: .center, spacing: 6) {
                         Button(action: {
                             agreedToTerms.toggle()
                         }) {
@@ -139,14 +141,41 @@ struct SignupView: View {
 
                         Text("I agree to the ")
                             .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary) +
-                        Text("Terms Of Service")
-                            .font(FontManager.primaryText())
-                            .fontWeight(.semibold)
                             .foregroundColor(Constants.Colors.primary)
+
+                        Button(action: { if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) } }) {
+                            Text("Terms & Conditions")
+                                .font(FontManager.primaryText())
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.primary)
+                                .underline()
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Text("and")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+
+                        Button(action: { if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) } }) {
+                            Text("Privacy Policy")
+                                .font(FontManager.primaryText())
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.primary)
+                                .underline()
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 32)
+
+                    // Compare Free vs Pro
+                    Button(action: { showPaywall = true }) {
+                        Text("Compare Free vs Pro")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .underline()
+                    }
+                    .buttonStyle(PlainButtonStyle())
 
                     Button(action: {
                         guard agreedToTerms else {
@@ -242,6 +271,9 @@ struct SignupView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView().environmentObject(authVM)
+        }
     }
 
     private func validateAndSignUp() {

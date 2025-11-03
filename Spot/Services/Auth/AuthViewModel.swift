@@ -18,8 +18,10 @@ class AuthViewModel: ObservableObject {
     @Published var likedSpots: [String] = []
     @Published var bookmarkedSpots: [String] = []
     @Published var blockedUsers: [String] = []
+    @Published var isPro: Bool = false
 
     private var handle: AuthStateDidChangeListenerHandle?
+    private var userDocListener: ListenerRegistration?
 
     init() {
         listenToAuthState()
@@ -40,14 +42,24 @@ class AuthViewModel: ObservableObject {
                     self?.isAuthenticated = true
                     self?.isLoading = false
                     self?.isEmailVerified = user.isEmailVerified
+                    self?.isPro = false
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
+                    self?.refreshUserFlags()
                     // On first login after a fresh install, trigger permission prompts once.
                     if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
                         SpotLogger.info("Perms.AutoPrompt reason=freshInstallLogin")
                         PermissionManager.shared.requestPermissionsIfNeeded()
                     }
                 }
+                // Live observe user flags (e.g., isPro) without restart
+                self?.userDocListener?.remove()
+                self?.userDocListener = Firestore.firestore().collection("users").document(user.uid)
+                    .addSnapshotListener { [weak self] snapshot, _ in
+                        guard let data = snapshot?.data() else { return }
+                        let pro = data["isPro"] as? Bool ?? false
+                        DispatchQueue.main.async { self?.isPro = pro }
+                    }
             } else {
                 DispatchQueue.main.async {
                     SpotLogger.debug("Auth state changed - no user")
@@ -58,7 +70,10 @@ class AuthViewModel: ObservableObject {
                     self?.likedSpots = []
                     self?.bookmarkedSpots = []
                     self?.blockedUsers = []
+                    self?.isPro = false
                 }
+                self?.userDocListener?.remove()
+                self?.userDocListener = nil
             }
         }
     }
@@ -139,6 +154,31 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    // MARK: - User flags (Pro)
+    func refreshUserFlags() {
+        guard let userId = userId else { return }
+        Task {
+            do {
+                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                let pro = userDoc.data()?["isPro"] as? Bool ?? false
+                await MainActor.run { self.isPro = pro }
+            } catch {
+                SpotLogger.error("Failed to refresh user flags: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func setProActive(_ active: Bool) async {
+        guard let userId = userId else { return }
+        do {
+            try await Firestore.firestore().collection("users").document(userId).setData(["isPro": active], merge: true)
+            await MainActor.run { self.isPro = active }
+            SpotLogger.info("Pro status updated", details: ["active": active])
+        } catch {
+            SpotLogger.error("Failed to set pro status: \(error.localizedDescription)")
+        }
+    }
+
     func likeSpot(_ spotId: String) {
         UserSpotService.shared.likeSpot(spotId: spotId) { [weak self] result in
             DispatchQueue.main.async {
@@ -160,6 +200,12 @@ class AuthViewModel: ObservableObject {
         }
     }
     func bookmarkSpot(_ spotId: String) {
+        // Free users capped at 50 bookmarks
+        if !isPro && bookmarkedSpots.count >= 50 {
+            SpotLogger.info("Bookmark cap reached", details: ["cap": 50])
+            NotificationCenter.default.post(name: .showPaywall, object: nil)
+            return
+        }
         UserSpotService.shared.bookmarkSpot(spotId: spotId) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success = result {

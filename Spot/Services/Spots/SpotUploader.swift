@@ -112,6 +112,170 @@ final class SpotUploader {
         }
     }
 
+    func uploadSpot(
+        images: [UIImage],
+        vibeTag: String,
+        latitude: Double,
+        longitude: Double,
+        placeName: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            SpotLogger.error("User not authenticated for spot upload", details: [:])
+            return
+        }
+
+        // First get current user data
+        getCurrentUserData { [weak self] result in
+            switch result {
+            case .success(let userData):
+                let (username, profileImageURL) = userData
+                self?.performMultiSpotUpload(
+                    images: images,
+                    vibeTag: vibeTag,
+                    latitude: latitude,
+                    longitude: longitude,
+                    placeName: placeName,
+                    userId: userId,
+                    username: username,
+                    userProfileImageURL: profileImageURL,
+                    completion: completion
+                )
+            case .failure(let error):
+                SpotLogger.error("Get user data failed", details: ["error": error.localizedDescription])
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: - Update spot (replace metadata, optionally images)
+    func updateSpot(
+        spotId: String,
+        images: [UIImage]?,
+        vibeTag: String,
+        latitude: Double,
+        longitude: Double,
+        placeName: String
+    ) async throws {
+        let db = Firestore.firestore()
+
+        var updates: [String: Any] = [
+            "vibeTag": vibeTag,
+            "vibeTag_lower": vibeTag.lowercased(),
+            "latitude": latitude,
+            "longitude": longitude,
+            "locationName": placeName,
+            "locationName_lower": placeName.lowercased(),
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+
+        if let images, !images.isEmpty {
+            let limited = Array(images.prefix(5))
+            var urls: [String] = []
+            for (idx, image) in limited.enumerated() {
+                guard let data = image.jpegData(compressionQuality: 0.7) else { continue }
+                let filename = "spot_\(spotId)_upd_\(idx).jpg"
+                let storageRef = Storage.storage().reference().child("spots/\(filename)")
+                _ = try await storageRef.putDataAsync(data)
+                let url = try await storageRef.downloadURL()
+                urls.append(url.absoluteString)
+            }
+            if let first = urls.first {
+                updates["imageURL"] = first
+                updates["thumbnailURL"] = first
+            }
+            updates["imageURLs"] = urls
+        }
+
+        try await db.collection("spots").document(spotId).setData(updates, merge: true)
+        SpotLogger.info("Spot updated", details: ["spotId": spotId])
+    }
+
+    private func performMultiSpotUpload(
+        images: [UIImage],
+        vibeTag: String,
+        latitude: Double,
+        longitude: Double,
+        placeName: String,
+        userId: String,
+        username: String,
+        userProfileImageURL: String?,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let limited = Array(images.prefix(5))
+        let postId = UUID().uuidString
+        let storage = Storage.storage()
+
+        // Upload images sequentially to avoid memory spikes
+        Task {
+            var urls: [String] = []
+            for (idx, image) in limited.enumerated() {
+                guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+                    completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."]))); return
+                }
+                let filename = "spot_\(postId)_\(idx).jpg"
+                let storageRef = storage.reference().child("spots/\(filename)")
+                do {
+                    _ = try await storageRef.putDataAsync(imageData)
+                    let url = try await storageRef.downloadURL()
+                    urls.append(url.absoluteString)
+                } catch {
+                    SpotLogger.error("Multi upload error", details: ["error": error.localizedDescription])
+                    completion(.failure(error))
+                    return
+                }
+            }
+
+            // Reverse geocode to finalize location name
+            let geocoder = CLGeocoder()
+            let loc = CLLocation(latitude: latitude, longitude: longitude)
+            var finalLocationName = placeName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if finalLocationName.isEmpty {
+                if let pm = try? await geocoder.reverseGeocodeLocation(loc).first {
+                    if let name = pm.name, !name.isEmpty { finalLocationName = name } else if let city = pm.locality, let state = pm.administrativeArea { finalLocationName = "\(city), \(state)" }
+                }
+            }
+
+            var data: [String: Any] = [
+                "postId": postId,
+                "userId": userId,
+                "username": username,
+                "userProfileImageURL": userProfileImageURL ?? "",
+                "imageURL": urls.first ?? "",
+                "thumbnailURL": urls.first ?? "",
+                "imageURLs": urls,
+                "caption": "",
+                "vibeTag": vibeTag,
+                "vibeTag_lower": vibeTag.lowercased(),
+                "latitude": latitude,
+                "longitude": longitude,
+                "locationName": finalLocationName,
+                "locationName_lower": finalLocationName.lowercased(),
+                "likes": 0,
+                "saves": 0,
+                "createdAt": FieldValue.serverTimestamp()
+            ]
+
+            // Denormalize author's privacy
+            do {
+                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool { data["authorIsPrivate"] = isPrivate }
+            } catch {
+                SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
+            }
+
+            do {
+                try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
+                completion(.success(()))
+            } catch {
+                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
+                completion(.failure(error))
+            }
+        }
+    }
+
     private func performSpotUpload(
         image: UIImage,
         vibeTag: String,

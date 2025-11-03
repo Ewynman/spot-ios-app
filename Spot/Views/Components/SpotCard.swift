@@ -27,6 +27,8 @@ struct SpotCard: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var showShareSheet: Bool = false
     @State private var showReportSheet: Bool = false
+    @State private var showCollectionPicker: Bool = false
+    @State private var showEditSheet: Bool = false
     @State private var showCustomMenu: Bool = false
     @State private var menuButtonFrame: CGRect = .zero
     @EnvironmentObject var authVM: AuthViewModel
@@ -53,354 +55,9 @@ struct SpotCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // MARK: — Header: Username (optional) + Location
-            HStack {
-                if let backAction {
-                    Button {
-                        backAction()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(Constants.Colors.primary)
-                            Text("Back to all spots")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.primary)
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                } else if showUserInfo, let userId = spot.userId {
-                    NavigationLink {
-                        ProfileView(userId: userId, fromNavigationPush: true)
-                            .navigationBarBackButtonHidden(true)
-                    } label: {
-                        HStack(spacing: 8) {
-                            // Profile Image
-                            if let urlString = spot.userProfileImageURL,
-                               let url = URL(string: urlString) {
-                                AsyncImage(url: url) { img in
-                                    img.resizable()
-                                       .scaledToFill()
-                                       .frame(width: 32, height: 32)
-                                       .clipShape(Circle())
-                                } placeholder: {
-                                    Circle()
-                                        .fill(Constants.Colors.background)
-                                        .frame(width: 32, height: 32)
-                                        .overlay(
-                                            Image(systemName: "person.fill")
-                                                .font(.system(size: 16))
-                                                .foregroundColor(Constants.Colors.primary)
-                                        )
-                                }
-                            } else {
-                                Circle()
-                                    .fill(Constants.Colors.background)
-                                    .frame(width: 32, height: 32)
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(Constants.Colors.primary)
-                                    )
-                            }
-
-                            Text(spot.username ?? "")
-                                .font(FontManager.primaryText())
-                                .fontWeight(.semibold)
-                                .foregroundColor(Constants.Colors.primary)
-                                .measure(target: .username)
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-
-                Spacer()
-
-                if let location = spot.locationName, !location.isEmpty {
-                    Text(location)
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                        .measure(target: .location)
-                }
-            }
-            .padding(.horizontal, 12)
-
-            // MARK: — Spot Image
-            if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
-                // Base: thumbnail with failure fallback to asset placeholder
-                AsyncImage(url: turl, transaction: Transaction(animation: .default)) { phase in
-                    switch phase {
-                    case .empty:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Constants.Colors.background)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                    case .success(let image):
-                        image.resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                            .clipped()
-                            .cornerRadius(12)
-                    case .failure:
-                        Image("image_placeholder")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                            .clipped()
-                            .cornerRadius(12)
-                            .onAppear {
-                                let host = URL(string: thumb)?.host ?? "unknown"
-                                SpotLogger.error("Image.Thumb.Failure", details: [
-                                    "spotId": spot.id ?? "nil",
-                                    "source": source,
-                                    "thumbHost": host,
-                                    "thumbUrl": thumb
-                                ])
-                                thumbnailFailed = true
-                                if !reportedImageFailure {
-                                    reportedImageFailure = true
-                                    onImageFailure?(spot)
-                                }
-                            }
-                            .overlay(alignment: .bottomTrailing) {
-                                Button {
-                                    retryToken = UUID(); onImageRetry?(spot)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "arrow.clockwise")
-                                        Text("Retry")
-                                    }
-                                    .font(FontManager.primaryText())
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.white.opacity(0.9))
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .padding(8)
-                            }
-                    @unknown default:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Constants.Colors.background)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                    }
-                }
-                // Overlay: try swap-in full image; on failure, keep thumbnail/placeholder
-                .overlay(
-                    Group {
-                        if let full = spot.imageURL, let furl = URL(string: full) {
-                            AsyncImage(url: furl, transaction: Transaction(animation: .default)) { phase in
-                                switch phase {
-                                case .empty:
-                                    Color.clear
-                                case .success(let image):
-                                    image.resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(maxWidth: .infinity, maxHeight: 400)
-                                        .clipped()
-                                        .cornerRadius(12)
-                                        .onAppear {
-                                            if let tFirst = PerfMetrics.shared.measure("t_first_item") {
-                                                PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
-                                            }
-                                            SpotLogger.info("Spot image loaded", details: [
-                                                "spotId": spot.id ?? "nil",
-                                                "source": source,
-                                                "hasThumb": true,
-                                                "url": full
-                                            ])
-                                        }
-                                case .failure:
-                                    // Keep base thumbnail/placeholder
-                                    Color.clear.onAppear {
-                                        let host = URL(string: full)?.host ?? "unknown"
-                                        SpotLogger.error("Image.Full.Failure", details: [
-                                            "spotId": spot.id ?? "nil",
-                                            "source": source,
-                                            "fullHost": host,
-                                            "fullUrl": full
-                                        ])
-                                        if !reportedImageFailure {
-                                            reportedImageFailure = true
-                                            onImageFailure?(spot)
-                                        }
-                                    }
-                                @unknown default:
-                                    Color.clear
-                                }
-                            }
-                        }
-                    }
-                )
-            } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
-                // No thumbnail: load full with a proper failure fallback
-                AsyncImage(url: url, transaction: Transaction(animation: .default)) { phase in
-                    switch phase {
-                    case .empty:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Constants.Colors.background)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                    case .success(let image):
-                        image.resizable()
-                           .aspectRatio(contentMode: .fit)
-                           .frame(maxWidth: .infinity, maxHeight: 400)
-                           .clipped()
-                           .cornerRadius(12)
-                            .onAppear {
-                                SpotLogger.info("Spot image loaded", details: [
-                                    "spotId": spot.id ?? "nil",
-                                    "source": source,
-                                    "hasThumb": false,
-                                    "url": urlString
-                                ])
-                            }
-                    case .failure:
-                        Image("image_placeholder")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                            .clipped()
-                            .cornerRadius(12)
-                            .onAppear {
-                                let host = url.host ?? "unknown"
-                                SpotLogger.error("Image.Full.Failure", details: [
-                                    "spotId": spot.id ?? "nil",
-                                    "source": source,
-                                    "fullHost": host,
-                                    "fullUrl": urlString
-                                ])
-                                if !reportedImageFailure {
-                                    reportedImageFailure = true
-                                    onImageFailure?(spot)
-                                }
-                            }
-                            .overlay(alignment: .bottomTrailing) {
-                                Button {
-                                    retryToken = UUID(); onImageRetry?(spot)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "arrow.clockwise")
-                                        Text("Retry")
-                                    }
-                                    .font(FontManager.primaryText())
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.white.opacity(0.9))
-                                    .cornerRadius(10)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .padding(8)
-                            }
-                    @unknown default:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Constants.Colors.background)
-                            .frame(maxWidth: .infinity, maxHeight: 400)
-                    }
-                }
-            } else {
-                Image("image_placeholder")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: 400)
-                    .clipped()
-                    .cornerRadius(12)
-                    .onAppear {
-                        SpotLogger.error("Image placeholder used", details: [
-                            "spotId": spot.id ?? "nil",
-                            "source": source,
-                            "hasThumb": false,
-                            "url": spot.imageURL ?? "nil"
-                        ])
-                    }
-            }
-
-            // MARK: — Interaction Bar
-            // let _ is to be userId done to supress warnings
-            HStack {
-                HStack(spacing: 16) {
-                    Button {
-                        guard !isLoadingLike, let spotId = spot.id, authVM.userId != nil else { return }
-                        isLiked.toggle()
-                        isLoadingLike = true
-                        if isLiked {
-                            authVM.likeSpot(spotId)
-                            isLoadingLike = false
-                        } else {
-                            authVM.unlikeSpot(spotId)
-                            isLoadingLike = false
-                        }
-                    } label: {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 22))
-                            .foregroundColor(isLiked ? .red : .gray)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button {
-                        guard !isLoadingSave, let spotId = spot.id, authVM.userId != nil else { return }
-                        isSaved.toggle()
-                        isLoadingSave = true
-                        if isSaved {
-                            authVM.bookmarkSpot(spotId)
-                            isLoadingSave = false
-                        } else {
-                            authVM.unbookmarkSpot(spotId)
-                            isLoadingSave = false
-                        }
-                    } label: {
-                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 22))
-                            .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    // Owner-only overflow menu, placed next to bookmark
-                    let currentUserId = userId ?? authVM.userId ?? ""
-                    let ownerId = spot.userId ?? ""
-                    // isOwneer set to _ to supress warnings
-                    _ = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
-                    // Three-dot menu for all spots
-                    Button {
-                        SpotLogger.debug("Menu tapped", details: ["spotId": spot.id ?? "nil", "source": source])
-                        showCustomMenu = true
-                    } label: {
-                        Text("⋮")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(width: 24, height: 24, alignment: .center)
-                            .contentShape(Rectangle())
-                            .accessibilityLabel("More actions")
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(key: MenuButtonFrameKey.self, value: geo.frame(in: .global))
-                                }
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-
-                Spacer()
-
-                if let vibe = spot.vibeTag, !vibe.isEmpty {
-                    Text(vibe)
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(Constants.Colors.accent)
-                        .cornerRadius(12)
-                        .measure(target: .vibeTag)
-                }
-
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-            .overlay(
-                GeometryReader { geo in
-                    let likeArea = CGRect(x: 16, y: 0, width: 80, height: geo.size.height)
-                    Color.clear.preference(key: CoachFramesPrefKey.self, value: [.likeSave: geo.frame(in: .global).intersection(CGRect(origin: geo.frame(in: .global).origin, size: likeArea.size))])
-                }
-            )
-
+            header
+            spotImage
+            interactionBar
             if showError {
                 Text(errorMessage)
                     .font(FontManager.primaryText())
@@ -450,6 +107,365 @@ struct SpotCard: View {
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(spot: spot)
         }
+        .sheet(isPresented: $showCollectionPicker) {
+            CollectionPickerSheet(spotId: spot.id ?? "") { showCollectionPicker = false }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            EditSpotView(spot: spot) { _ in }
+                .environmentObject(authVM)
+        }
+    }
+
+    // MARK: - Split sections to help type-checker
+    @ViewBuilder private var header: some View {
+        HStack {
+            if let backAction {
+                Button { backAction() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Constants.Colors.primary)
+                        Text("Back to all spots")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else if showUserInfo, let userId = spot.userId {
+                NavigationLink {
+                    ProfileView(userId: userId, fromNavigationPush: true)
+                        .navigationBarBackButtonHidden(true)
+                } label: {
+                    HStack(spacing: 8) {
+                        if let urlString = spot.userProfileImageURL,
+                           let url = URL(string: urlString) {
+                            AsyncImage(url: url) { img in
+                                img.resizable()
+                                   .scaledToFill()
+                                   .frame(width: 32, height: 32)
+                                   .clipShape(Circle())
+                            } placeholder: {
+                                Circle()
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(Constants.Colors.primary)
+                                    )
+                            }
+                        } else {
+                            Circle()
+                                .fill(Constants.Colors.background)
+                                .frame(width: 32, height: 32)
+                                .overlay(
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Constants.Colors.primary)
+                                )
+                        }
+
+                        Text(spot.username ?? "")
+                            .font(FontManager.primaryText())
+                            .fontWeight(.semibold)
+                            .foregroundColor(Constants.Colors.primary)
+                            .measure(target: .username)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            Spacer()
+
+            if let location = spot.locationName, !location.isEmpty {
+                Text(location)
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+                    .measure(target: .location)
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+
+    @ViewBuilder private var spotImage: some View {
+        if let urls = spot.imageURLs, !urls.isEmpty {
+            SpotImageGallery(urls: urls, fallback: spot.imageURL)
+        } else if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
+            AsyncImage(url: turl, transaction: Transaction(animation: .default)) { phase in
+                switch phase {
+                case .empty:
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Constants.Colors.background)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 320)
+                case .success(let image):
+                    image.resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 320)
+                        .clipped()
+                        .cornerRadius(12)
+                case .failure:
+                    Image("image_placeholder")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 320)
+                        .clipped()
+                        .cornerRadius(12)
+                        .onAppear {
+                            let host = URL(string: thumb)?.host ?? "unknown"
+                            SpotLogger.error("Image.Thumb.Failure", details: [
+                                "spotId": spot.id ?? "nil",
+                                "source": source,
+                                "thumbHost": host,
+                                "thumbUrl": thumb
+                            ])
+                            thumbnailFailed = true
+                            if !reportedImageFailure {
+                                reportedImageFailure = true
+                                onImageFailure?(spot)
+                            }
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            Button {
+                                retryToken = UUID(); onImageRetry?(spot)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Retry")
+                                }
+                                .font(FontManager.primaryText())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.9))
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(8)
+                        }
+                @unknown default:
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Constants.Colors.background)
+                        .frame(maxWidth: .infinity, maxHeight: 400)
+                }
+            }
+            .id(retryToken)
+            .overlay(fullImageOverlay)
+        } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
+            AsyncImage(url: url, transaction: Transaction(animation: .default)) { phase in
+                switch phase {
+                case .empty:
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Constants.Colors.background)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 320)
+                case .success(let image):
+                    image.resizable()
+                       .scaledToFill()
+                       .frame(maxWidth: .infinity)
+                       .frame(height: 320)
+                       .clipped()
+                       .cornerRadius(12)
+                        .onAppear {
+                            SpotLogger.info("Spot image loaded", details: [
+                                "spotId": spot.id ?? "nil",
+                                "source": source,
+                                "hasThumb": false,
+                                "url": urlString
+                            ])
+                        }
+                case .failure:
+                    Image("image_placeholder")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 320)
+                        .clipped()
+                        .cornerRadius(12)
+                        .onAppear {
+                            let host = url.host ?? "unknown"
+                            SpotLogger.error("Image.Full.Failure", details: [
+                                "spotId": spot.id ?? "nil",
+                                "source": source,
+                                "fullHost": host,
+                                "fullUrl": urlString
+                            ])
+                            if !reportedImageFailure {
+                                reportedImageFailure = true
+                                onImageFailure?(spot)
+                            }
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            Button { retryToken = UUID(); onImageRetry?(spot) } label: {
+                                HStack(spacing: 6) { Image(systemName: "arrow.clockwise"); Text("Retry") }
+                                    .font(FontManager.primaryText())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.9))
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(8)
+                        }
+                @unknown default:
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Constants.Colors.background)
+                        .frame(maxWidth: .infinity, maxHeight: 400)
+                }
+            }
+            .id(retryToken)
+        } else {
+            Image("image_placeholder")
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 320)
+                .clipped()
+                .cornerRadius(12)
+                .onAppear {
+                    SpotLogger.error("Image placeholder used", details: [
+                        "spotId": spot.id ?? "nil",
+                        "source": source,
+                        "hasThumb": false,
+                        "url": spot.imageURL ?? "nil"
+                    ])
+                }
+        }
+    }
+
+    private var fullImageOverlay: some View {
+        Group {
+            if let full = spot.imageURL, let furl = URL(string: full), spot.imageURLs?.isEmpty ?? true {
+                AsyncImage(url: furl, transaction: Transaction(animation: .default)) { phase in
+                    switch phase {
+                    case .empty:
+                        Color.clear
+                    case .success(let image):
+                        image.resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 320)
+                            .clipped()
+                            .cornerRadius(12)
+                            .onAppear {
+                                if let tFirst = PerfMetrics.shared.measure("t_first_item") {
+                                    PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
+                                }
+                                SpotLogger.info("Spot image loaded", details: [
+                                    "spotId": spot.id ?? "nil",
+                                    "source": source,
+                                    "hasThumb": true,
+                                    "url": full
+                                ])
+                            }
+                    case .failure:
+                        Color.clear.onAppear {
+                            let host = URL(string: full)?.host ?? "unknown"
+                            SpotLogger.error("Image.Full.Failure", details: [
+                                "spotId": spot.id ?? "nil",
+                                "source": source,
+                                "fullHost": host,
+                                "fullUrl": full
+                            ])
+                            if !reportedImageFailure {
+                                reportedImageFailure = true
+                                onImageFailure?(spot)
+                            }
+                        }
+                    @unknown default:
+                        Color.clear
+                    }
+                }
+                .id(retryToken)
+            }
+        }
+    }
+
+    private var interactionBar: some View {
+        // let _ is to be userId done to supress warnings
+        HStack {
+            HStack(spacing: 16) {
+                Button {
+                    guard !isLoadingLike, let spotId = spot.id, authVM.userId != nil else { return }
+                    isLiked.toggle()
+                    isLoadingLike = true
+                    if isLiked {
+                        authVM.likeSpot(spotId)
+                        isLoadingLike = false
+                    } else {
+                        authVM.unlikeSpot(spotId)
+                        isLoadingLike = false
+                    }
+                } label: {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 22))
+                        .foregroundColor(isLiked ? .red : .gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button {
+                    guard !isLoadingSave, let spotId = spot.id, authVM.userId != nil else { return }
+                    if !isSaved, !authVM.isPro, authVM.bookmarkedSpots.count >= 50 {
+                        NotificationCenter.default.post(name: .showPaywall, object: nil)
+                        return
+                    }
+                    isSaved.toggle()
+                    isLoadingSave = true
+                    if isSaved {
+                        authVM.bookmarkSpot(spotId)
+                        isLoadingSave = false
+                    } else {
+                        authVM.unbookmarkSpot(spotId)
+                        isLoadingSave = false
+                    }
+                } label: {
+                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 22))
+                        .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button {
+                    SpotLogger.debug("Menu tapped", details: ["spotId": spot.id ?? "nil", "source": source])
+                    showCustomMenu = true
+                } label: {
+                    Text("⋮")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Constants.Colors.primary)
+                        .frame(width: 24, height: 24, alignment: .center)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("More actions")
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(key: MenuButtonFrameKey.self, value: geo.frame(in: .global))
+                            }
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            Spacer()
+
+            if let vibe = spot.vibeTag, !vibe.isEmpty {
+                Text(vibe)
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(Constants.Colors.accent)
+                    .cornerRadius(12)
+                    .measure(target: .vibeTag)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .overlay(
+            GeometryReader { geo in
+                let likeArea = CGRect(x: 16, y: 0, width: 80, height: geo.size.height)
+                Color.clear.preference(key: CoachFramesPrefKey.self, value: [.likeSave: geo.frame(in: .global).intersection(CGRect(origin: geo.frame(in: .global).origin, size: likeArea.size))])
+            }
+        )
     }
 
     // MARK: - Custom Menu
@@ -490,6 +506,22 @@ struct SpotCard: View {
                 HStack {
                     Image(systemName: "square.and.arrow.up")
                     Text("Share")
+                        .font(FontManager.primaryText())
+                }
+                .foregroundColor(Constants.Colors.primary)
+                .padding(12)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Divider()
+
+            Button {
+                showCustomMenu = false
+                if authVM.isPro { showCollectionPicker = true } else { NotificationCenter.default.post(name: .showPaywall, object: nil) }
+            } label: {
+                HStack {
+                    Image(systemName: "folder.badge.plus")
+                    Text("Add to Collection")
                         .font(FontManager.primaryText())
                 }
                 .foregroundColor(Constants.Colors.primary)
@@ -546,6 +578,20 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
+                    if authVM.isPro { showEditSheet = true } else { NotificationCenter.default.post(name: .showPaywall, object: nil) }
+                } label: {
+                    HStack {
+                        Image(systemName: "pencil")
+                        Text("Edit")
+                            .font(FontManager.primaryText())
+                    }
+                    .foregroundColor(Constants.Colors.primary)
+                    .padding(12)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button {
+                    showCustomMenu = false
                     SpotLogger.debug("Delete tapped", details: ["spotId": spot.id ?? "nil", "source": source])
                     showDeleteConfirm = true
                 } label: {
@@ -567,5 +613,103 @@ struct SpotCard: View {
                 .stroke(Constants.Colors.primary, lineWidth: 1)
         )
         .frame(width: 150)
+    }
+
+    // MARK: - Collection Picker Sheet
+    private struct CollectionPickerSheet: View {
+        let spotId: String
+        var onDone: () -> Void
+        @State private var collections: [BookmarkCollection] = []
+        @State private var newName: String = ""
+        @State private var isLoading: Bool = true
+
+        var body: some View {
+            NavigationStack {
+                VStack(spacing: 12) {
+                    if isLoading {
+                        ProgressView().padding(.top, 16)
+                    } else {
+                        List {
+                            ForEach(collections) { c in
+                                Button {
+                                    Task { await add(to: c.id) }
+                                } label: {
+                                    HStack {
+                                        Text(c.name)
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                        Spacer()
+                                        Text("\(c.spotIds.count)")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .listStyle(.plain)
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("New collection", text: $newName)
+                            .padding(10)
+                            .background(Color.white)
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Constants.Colors.primary, lineWidth: 1))
+                        Button {
+                            Task { await create() }
+                        } label: {
+                            Text("Create")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Constants.Colors.primary)
+                                .cornerRadius(10)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    .padding(.horizontal, 16)
+
+                    Spacer()
+                }
+                .padding(.top, 8)
+                .background(Constants.Colors.background)
+                .navigationTitle("Add to Collection")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Close") { onDone() }
+                            .foregroundColor(Constants.Colors.primary)
+                    }
+                }
+                .onAppear { Task { await load() } }
+            }
+        }
+
+        private func load() async {
+            isLoading = true
+            do { collections = try await BookmarksCollectionsService.shared.listCollections() } catch { collections = [] }
+            isLoading = false
+        }
+
+        private func create() async {
+            let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            do {
+                _ = try await BookmarksCollectionsService.shared.createCollection(name: name)
+                newName = ""
+                await load()
+            } catch { }
+        }
+
+        private func add(to collectionId: String) async {
+            guard !spotId.isEmpty else { return }
+            do {
+                try await BookmarksCollectionsService.shared.addSpot(spotId, to: collectionId)
+                onDone()
+            } catch { }
+        }
     }
 }

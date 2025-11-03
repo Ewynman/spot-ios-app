@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var selectedProfileImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var isUploadingPhoto: Bool = false
+    @State private var showCollectionsNav: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -186,6 +187,43 @@ struct SettingsView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
 
+                    // Pro: Collections management
+                    if authVM.isPro {
+                        Button {
+                            showCollectionsNav = true
+                        } label: {
+                            Text("Bookmark Collections (Pro)")
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.white)
+                                .cornerRadius(20)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(Constants.Colors.primary, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    Button {
+                        Task { try? await SubscriptionManager.shared.manageSubscriptions() }
+                    } label: {
+                        Text("Manage Subscription")
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle(isOn: $confirmDelete) {
                             Text("I understand this will permanently delete my account")
@@ -225,6 +263,43 @@ struct SettingsView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.top, 8)
+
+                    // Legal
+                    sectionHeader("Legal")
+
+                    Button {
+                        if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text("Terms & Conditions")
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text("Privacy Policy")
+                            .font(FontManager.buttonText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(16)
             }
@@ -232,6 +307,9 @@ struct SettingsView: View {
         .background(Color(hex: "F5F3EF").ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
         .onAppear(perform: load)
+        .navigationDestination(isPresented: $showCollectionsNav) {
+            CollectionsView()
+        }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let error = errorMessage {

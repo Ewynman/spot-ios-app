@@ -23,7 +23,7 @@ class FeedViewModel: ObservableObject {
             await repo.loadInitial()
             await MainActor.run {
                 self.spots = repo.spots
-                self.hasMore = repo.spots.count >= FeedFlags.pageSize
+                self.hasMore = repo.moreAvailable
                 self.isLoading = false
             }
         }
@@ -42,10 +42,8 @@ class FeedViewModel: ObservableObject {
             await repo.loadMore()
             await MainActor.run {
                 let new = repo.spots
-                let appended = max(0, new.count - beforeCount)
                 self.spots = new
-                // hasMore: optimistic true if we appended at least ~page size/2; will disable when cursors exhaust
-                self.hasMore = appended > 0
+                self.hasMore = repo.moreAvailable
                 self.isLoading = false
             }
         }

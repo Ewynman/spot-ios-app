@@ -46,6 +46,10 @@ class UserSpotService {
             if let error = error {
                 completion(.failure(error))
             } else {
+                // Increment saves counter on the spot doc (best-effort)
+                self.db.collection("spots").document(spotId).updateData([
+                    "saves": FieldValue.increment(Int64(1))
+                ]) { _ in }
                 completion(.success(()))
             }
         }
@@ -60,6 +64,10 @@ class UserSpotService {
             if let error = error {
                 completion(.failure(error))
             } else {
+                // Decrement saves counter on the spot doc (best-effort)
+                self.db.collection("spots").document(spotId).updateData([
+                    "saves": FieldValue.increment(Int64(-1))
+                ]) { _ in }
                 completion(.success(()))
             }
         }

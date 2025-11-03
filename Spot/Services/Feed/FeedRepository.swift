@@ -18,6 +18,12 @@ final class FeedRepository: ObservableObject {
     private let privacy = AuthorPrivacyCache.shared
     private var seenSpotIds: Set<String> = []
 
+    var moreAvailable: Bool {
+        if globalCursor != nil { return true }
+        for v in followeeChunkCursors.values { if v != nil { return true } }
+        return false
+    }
+
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
 

@@ -16,6 +16,7 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var userProfileImageURL: String?
     var imageURL: String?
     var thumbnailURL: String?
+    var imageURLs: [String]?
     var vibeTag: String?
     var latitude: Double?
     var longitude: Double?
@@ -27,9 +28,49 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     // Optional denormalized snapshot to enable quick pre-filtering.
     var authorIsPrivate: Bool?
 
+    // Explicit initializer to preserve source compatibility for existing call sites
+    init(
+        id: String? = nil,
+        userId: String? = nil,
+        username: String? = nil,
+        userProfileImageURL: String? = nil,
+        imageURL: String? = nil,
+        thumbnailURL: String? = nil,
+        vibeTag: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        locationName: String? = nil,
+        likes: Int? = nil,
+        isLiked: Bool? = nil,
+        isSaved: Bool? = nil,
+        createdAt: Date? = nil,
+        authorIsPrivate: Bool? = nil,
+        imageURLs: [String]? = nil
+    ) {
+        self.id = id
+        self.userId = userId
+        self.username = username
+        self.userProfileImageURL = userProfileImageURL
+        self.imageURL = imageURL
+        self.thumbnailURL = thumbnailURL
+        self.imageURLs = imageURLs
+        self.vibeTag = vibeTag
+        self.latitude = latitude
+        self.longitude = longitude
+        self.locationName = locationName
+        self.likes = likes
+        self.isLiked = isLiked
+        self.isSaved = isSaved
+        self.createdAt = createdAt
+        self.authorIsPrivate = authorIsPrivate
+    }
+
     static func fromDocument(_ document: QueryDocumentSnapshot) async throws -> Spot? {
         do {
             var spot = try document.data(as: Spot.self)
+            if spot.id == nil {
+                spot.id = document.documentID
+            }
 
             // Preserve authored locationName (e.g., venue/building) if present.
             // Only fallback to reverse-geocoded City, State when locationName is empty.

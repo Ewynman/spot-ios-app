@@ -94,7 +94,13 @@ class ProfileViewModel: ObservableObject {
                             validSpots.append(spot)
                         }
                     }
-                    return validSpots
+                    // Ensure newest-first descending order (createdAt desc; tie-break by id)
+                    return validSpots.sorted { lhs, rhs in
+                        let l = lhs.createdAt ?? .distantPast
+                        let r = rhs.createdAt ?? .distantPast
+                        if l != r { return l > r }
+                        return (lhs.id ?? "") > (rhs.id ?? "")
+                    }
                 }
 
                 await MainActor.run {

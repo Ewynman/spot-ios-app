@@ -25,6 +25,7 @@ struct ProfileView: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var deletingSpotIds: Set<String> = []
     @State private var isPrivateProfile: Bool = false
+    @State private var isProProfile: Bool = false
     @State private var isFollowingUser: Bool = false
     @State private var hasRequestedFollow: Bool = false
     @State private var canViewContent: Bool = true
@@ -120,9 +121,20 @@ struct ProfileView: View {
                                         .foregroundColor(.gray)
                                 }
 
-                                Text(username ?? "")
-                                    .font(FontManager.sectionHeader())
-                                    .foregroundColor(.black)
+                                HStack(spacing: 8) {
+                                    Text(username ?? "")
+                                        .font(FontManager.sectionHeader())
+                                        .foregroundColor(.black)
+                                    if isProProfile {
+                                        Text("Pro")
+                                            .font(.caption)
+                                            .foregroundColor(Constants.Colors.buttonText)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Constants.Colors.primary)
+                                            .cornerRadius(10)
+                                    }
+                                }
 
                                 Text("\(spots.count) spots shared")
                                     .font(FontManager.primaryText())
@@ -264,6 +276,24 @@ struct ProfileView: View {
                         .onTapGesture { withAnimation { showMenu = false } }
 
                     VStack(alignment: .leading, spacing: 0) {
+                        if userId == nil || userId == authVM.userId, !isProProfile {
+                            Button {
+                                withAnimation { showMenu = false }
+                                SpotLogger.info("Open paywall from profile menu")
+                                NotificationCenter.default.post(name: .showPaywall, object: nil)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "star.fill")
+                                    Text("Go Pro")
+                                        .font(FontManager.primaryText())
+                                }
+                                .foregroundColor(Constants.Colors.primary)
+                                .padding(12)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Divider()
+                        }
                         Button {
                             withAnimation { showMenu = false }
                             showLikesNav = true
@@ -410,6 +440,7 @@ struct ProfileView: View {
                     profileImageURL = data.profileImageURL
                     spots = data.spots
                     isPrivateProfile = data.isPrivate
+                    isProProfile = data.isPro
                     isFollowingUser = data.isFollowing
                     hasRequestedFollow = data.hasRequested
                     canViewContent = data.canView
