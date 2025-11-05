@@ -10,6 +10,7 @@ struct User: Identifiable, Codable {
     var vibeStats: [String: Int]?
     var createdAt: Date?
     var blockedUsers: [String]?
+    var customVibeTags: [String]?
 
     // Preview data
     static let previewUser = User(
@@ -24,6 +25,7 @@ struct User: Identifiable, Codable {
             "Photo Op": 2
         ],
         createdAt: Date(),
-        blockedUsers: []
+        blockedUsers: [],
+        customVibeTags: ["Fishing", "Golden Hour"]
     )
 }

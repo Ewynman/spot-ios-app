@@ -44,6 +44,14 @@ struct SpotsGridView: View {
     }
 }
 
+#Preview {
+    let spots = [
+        Spot(id: "1", userId: "u1", username: "a", imageURL: "https://picsum.photos/seed/p1/600/600", vibeTag: "Park", latitude: 0, longitude: 0, locationName: "NYC", createdAt: Date()),
+        Spot(id: "2", userId: "u1", username: "a", imageURL: "https://picsum.photos/seed/p2/600/600", vibeTag: "Cafe", latitude: 0, longitude: 0, locationName: "LA", createdAt: Date())
+    ]
+    return SpotsGridView(spots: spots, onSpotTapped: { _ in })
+}
+
 struct SpotGridItem: View {
     let spot: Spot
     let columns: Int

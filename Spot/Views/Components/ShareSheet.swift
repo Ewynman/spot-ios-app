@@ -87,6 +87,21 @@ struct ShareSheet: View {
     }
 }
 
+#Preview {
+    let sample = Spot(
+        id: "s1",
+        userId: "u1",
+        username: "eddie",
+        imageURL: "https://picsum.photos/seed/share/800/600",
+        vibeTag: "Sunset",
+        latitude: 37.7749,
+        longitude: -122.4194,
+        locationName: "San Francisco",
+        createdAt: Date()
+    )
+    return ShareSheet(spot: sample)
+}
+
 // Custom NSItemProvider for rich link previews
 class SpotShareItem: NSObject, UIActivityItemSource {
     private let url: String

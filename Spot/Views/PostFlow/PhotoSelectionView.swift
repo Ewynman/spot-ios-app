@@ -228,6 +228,21 @@ struct PhotoSelectionView: View {
     }
 }
 
+#Preview {
+    StatefulImagesWrapper { binding in
+        let auth = AuthViewModel()
+        auth.isPro = true
+        return PhotoSelectionView(selectedImages: binding)
+            .environmentObject(auth)
+    }
+}
+
+private struct StatefulImagesWrapper<Content: View>: View {
+    @State var images: [UIImage] = []
+    let content: (Binding<[UIImage]>) -> Content
+    var body: some View { content($images) }
+}
+
 // MARK: - Helpers
 private extension PhotoSelectionView {
     func moveImage(from: Int, to: Int) {

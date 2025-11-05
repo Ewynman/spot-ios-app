@@ -39,6 +39,26 @@ struct BottomNavigationView: View {
     }
 }
 
+#Preview {
+    StatefulPreviewWrapper("Home") { selection in
+        VStack {
+            Spacer()
+            BottomNavigationView(selectedTab: selection)
+        }
+    }
+}
+
+// Helper to preview @Binding
+struct StatefulPreviewWrapper<Value, Content: View>: View {
+    @State var value: Value
+    let content: (Binding<Value>) -> Content
+    init(_ initialValue: Value, content: @escaping (Binding<Value>) -> Content) {
+        _value = State(initialValue: initialValue)
+        self.content = content
+    }
+    var body: some View { content($value) }
+}
+
 struct BottomNavItem: View {
     let icon: String
     let title: String

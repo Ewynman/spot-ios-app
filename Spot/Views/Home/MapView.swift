@@ -135,6 +135,14 @@ struct MapView: View {
     }
 }
 
+#Preview {
+    let spots = [
+        Spot(id: "1", userId: "u1", username: "eddie", imageURL: "https://picsum.photos/seed/3/800/600", vibeTag: "Park", latitude: 40.7128, longitude: -74.0060, locationName: "NYC", createdAt: Date())
+    ]
+    let auth = AuthViewModel()
+    return MapView(spots: spots).environmentObject(auth)
+}
+
 // MARK: - Extracted Map (keeps body simple and compiler happy)
 private struct SpotMap: View {
     @Binding var position: MapCameraPosition

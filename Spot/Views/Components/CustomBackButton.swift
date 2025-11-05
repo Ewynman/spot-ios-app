@@ -19,3 +19,9 @@ struct CustomBackButton: View {
         .buttonStyle(.plain)
     }
 }
+
+#Preview {
+    CustomBackButton(action: {})
+        .padding()
+        .background(Color(hex: "F5F3EF"))
+}

@@ -92,3 +92,8 @@ struct ConfirmNewEmailView: View {
         }
     }
 }
+
+#Preview {
+    let auth = AuthViewModel()
+    return ConfirmNewEmailView(newEmail: "new@example.com").environmentObject(auth)
+}

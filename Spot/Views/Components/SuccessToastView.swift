@@ -17,3 +17,10 @@ struct SuccessToastView: View {
         .shadow(radius: 4)
     }
 }
+
+#Preview {
+    ZStack {
+        Color(hex: "F5F3EF").ignoresSafeArea()
+        SuccessToastView(message: "Saved")
+    }
+}

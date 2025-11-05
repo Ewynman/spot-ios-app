@@ -128,3 +128,8 @@ struct ConfirmEmailView: View {
         dismiss()
     }
 }
+
+#Preview {
+    let auth = AuthViewModel()
+    return ConfirmEmailView().environmentObject(auth)
+}

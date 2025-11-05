@@ -38,6 +38,24 @@ enum ReportReason: String, CaseIterable {
     }
 }
 
+#Preview {
+    let sample = Spot(
+        id: "s1",
+        userId: "author1",
+        username: "author",
+        imageURL: "https://picsum.photos/seed/report/800/600",
+        vibeTag: "Scenic",
+        latitude: 47.6062,
+        longitude: -122.3321,
+        locationName: "Seattle",
+        createdAt: Date()
+    )
+    let auth = AuthViewModel()
+    auth.userId = "viewer1"
+    return ReportSheet(spot: sample)
+        .environmentObject(auth)
+}
+
 struct ReportSheet: View {
     let spot: Spot
     @Environment(\.dismiss) private var dismiss

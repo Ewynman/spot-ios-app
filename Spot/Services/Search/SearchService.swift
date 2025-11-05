@@ -31,4 +31,11 @@ final class SearchService {
         let filtered = await privacy.filter(spots: page.items)
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
     }
+
+    func fetchSpotsByVibes(_ vibeLowers: [String], last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+        let page = try await fs.fetchSpotsByVibes(vibeLowers, last: last)
+        let filtered = await privacy.filter(spots: page.items)
+        return SearchPage(items: filtered, lastDocument: page.lastDocument)
+    }
 }
+

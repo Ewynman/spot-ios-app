@@ -177,7 +177,14 @@ final class SpotUploader {
                 guard let data = image.jpegData(compressionQuality: 0.7) else { continue }
                 let filename = "spot_\(spotId)_upd_\(idx).jpg"
                 let storageRef = Storage.storage().reference().child("spots/\(filename)")
-                _ = try await storageRef.putDataAsync(data)
+                let metadata = StorageMetadata()
+                metadata.contentType = "image/jpeg"
+                metadata.customMetadata = [
+                    "spotId": spotId,
+                    "index": "\(idx)",
+                    "source": "ios"
+                ]
+                _ = try await storageRef.putDataAsync(data, metadata: metadata)
                 let url = try await storageRef.downloadURL()
                 urls.append(url.absoluteString)
             }
@@ -217,7 +224,15 @@ final class SpotUploader {
                 let filename = "spot_\(postId)_\(idx).jpg"
                 let storageRef = storage.reference().child("spots/\(filename)")
                 do {
-                    _ = try await storageRef.putDataAsync(imageData)
+                    let metadata = StorageMetadata()
+                    metadata.contentType = "image/jpeg"
+                    metadata.customMetadata = [
+                        "spotId": postId,
+                        "userId": userId,
+                        "index": "\(idx)",
+                        "source": "ios"
+                    ]
+                    _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
                     let url = try await storageRef.downloadURL()
                     urls.append(url.absoluteString)
                 } catch {
@@ -265,6 +280,9 @@ final class SpotUploader {
                 SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
             }
 
+            // Ensure the vibe tag exists globally (non-blocking)
+            Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
+
             do {
                 try await Firestore.firestore().collection("spots").document(postId).setData(data)
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
@@ -299,7 +317,15 @@ final class SpotUploader {
         let storageRef = Storage.storage().reference().child("spots/\(filename)")
 
         SpotLogger.info("Uploading spot image to Firebase Storage", details: ["filename": filename])
-        storageRef.putData(imageData, metadata: nil) { _, error in
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        metadata.customMetadata = [
+            "spotId": postId,
+            "userId": userId,
+            "index": "0",
+            "source": "ios"
+        ]
+        storageRef.putData(imageData, metadata: metadata) { _, error in
             if let error = error {
                 SpotLogger.error("Upload spot image failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
@@ -370,6 +396,8 @@ final class SpotUploader {
                         } catch {
                             SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
+                        // Ensure the vibe tag exists globally (non-blocking)
+                        do { _ = try await VibeTagService.shared.ensureTagExists(name: vibeTag) } catch {}
                         do {
                             try await Firestore.firestore().collection("spots").document(postId).setData(data)
                             SpotLogger.info("Spot created", details: ["postId": postId])

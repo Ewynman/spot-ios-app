@@ -19,6 +19,7 @@ class AuthViewModel: ObservableObject {
     @Published var bookmarkedSpots: [String] = []
     @Published var blockedUsers: [String] = []
     @Published var isPro: Bool = false
+    @Published var customVibeTags: [String] = []
 
     private var handle: AuthStateDidChangeListenerHandle?
     private var userDocListener: ListenerRegistration?
@@ -43,6 +44,7 @@ class AuthViewModel: ObservableObject {
                     self?.isLoading = false
                     self?.isEmailVerified = user.isEmailVerified
                     self?.isPro = false
+                    self?.customVibeTags = []
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
                     self?.refreshUserFlags()
@@ -58,7 +60,11 @@ class AuthViewModel: ObservableObject {
                     .addSnapshotListener { [weak self] snapshot, _ in
                         guard let data = snapshot?.data() else { return }
                         let pro = data["isPro"] as? Bool ?? false
-                        DispatchQueue.main.async { self?.isPro = pro }
+                        let vibes = data["customVibeTags"] as? [String] ?? []
+                        DispatchQueue.main.async {
+                            self?.isPro = pro
+                            self?.customVibeTags = vibes
+                        }
                     }
             } else {
                 DispatchQueue.main.async {
@@ -71,6 +77,7 @@ class AuthViewModel: ObservableObject {
                     self?.bookmarkedSpots = []
                     self?.blockedUsers = []
                     self?.isPro = false
+                    self?.customVibeTags = []
                 }
                 self?.userDocListener?.remove()
                 self?.userDocListener = nil
@@ -161,7 +168,11 @@ class AuthViewModel: ObservableObject {
             do {
                 let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
                 let pro = userDoc.data()?["isPro"] as? Bool ?? false
-                await MainActor.run { self.isPro = pro }
+                let vibes = userDoc.data()?["customVibeTags"] as? [String] ?? []
+                await MainActor.run {
+                    self.isPro = pro
+                    self.customVibeTags = vibes
+                }
             } catch {
                 SpotLogger.error("Failed to refresh user flags: \(error.localizedDescription)")
             }

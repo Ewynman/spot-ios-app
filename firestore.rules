@@ -2,6 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Users: profile document owned by user
+    match /users/{userId} {
+      allow read: if true; // public profile fields are readable
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // User collections (bookmark collections, etc.) - owner only
+    match /users/{userId}/collections/{collectionId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Helper: check if {viewer} follows {owner}
     function isFollower(viewer, owner) {
       // The app maintains an array field users/{viewer}.following: [ownerId]
@@ -19,17 +30,21 @@ service cloud.firestore {
         let data = resource.data;
         let owner = data.authorId != null ? data.authorId : data.userId; // backward compatibility
         let isPrivate = data.authorIsPrivate == true;
-        // Always allow owner
-        if (request.auth != null && request.auth.uid == owner) {
-          return true;
-        }
-        // Public author
-        if (!isPrivate) {
-          return true;
-        }
-        // Private author: allowed only if viewer follows owner
-        return request.auth != null && isFollower(request.auth.uid, owner);
+        return (request.auth != null && request.auth.uid == owner) ||
+               (!isPrivate) ||
+               (request.auth != null && isFollower(request.auth.uid, owner));
       }
+    }
+
+    // Global vibe tags: anyone can read; authenticated users may create
+    match /vibeTags/{tagId} {
+      allow read: if true;
+      // We only support create from clients; server may update if needed
+      allow create: if request.auth != null &&
+        request.resource.data.keys().hasAll(["name", "name_lower"]) &&
+        request.resource.data.name is string &&
+        request.resource.data.name_lower is string;
+      allow update, delete: if false;
     }
 
     // Places: user-created canonical locations for selection/suggestions
@@ -60,5 +75,3 @@ service cloud.firestore {
     }
   }
 }
-
-

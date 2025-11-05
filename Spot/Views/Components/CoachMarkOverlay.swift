@@ -167,3 +167,14 @@ struct CoachDemoOverlay: View {
     // No-op retained for compatibility if needed
     private func highlight(_ target: HomeTourManager.Step) -> Color { step == target ? Constants.Colors.primary : Color.gray.opacity(0.3) }
 }
+
+#Preview {
+    CoachMarkOverlay(
+        targetRect: CGRect(x: 100, y: 200, width: 160, height: 120),
+        title: "Welcome",
+        subtitle: "Tap next to continue the tour.",
+        isLast: false,
+        onNext: {},
+        onSkip: {}
+    )
+}

@@ -227,6 +227,13 @@ struct BlockedUsersView: View {
     }
 }
 
+#Preview {
+    let auth = AuthViewModel()
+    auth.blockedUsers = ["u2", "u3"]
+    return BlockedUsersView()
+        .environmentObject(auth)
+}
+
 struct BlockedUserInfo: Identifiable {
     let id: String
     let username: String

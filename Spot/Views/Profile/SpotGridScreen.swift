@@ -48,6 +48,18 @@ enum SpotGridContext {
     }
 }
 
+#Preview {
+    let auth = AuthViewModel()
+    let sampleSpots = [
+        Spot(id: "1", userId: "u1", username: "eddie", imageURL: "https://picsum.photos/seed/g1/800/600", vibeTag: "View", latitude: 37.0, longitude: -122.0, locationName: "SF", createdAt: Date()),
+        Spot(id: "2", userId: "u1", username: "eddie", imageURL: "https://picsum.photos/seed/g2/800/600", vibeTag: "Cafe", latitude: 34.0, longitude: -118.0, locationName: "LA", createdAt: Date())
+    ]
+    let vm = BookmarksViewModel()
+    vm.spots = sampleSpots
+    return SpotGridScreen(context: .bookmarks, userId: "u1")
+        .environmentObject(auth)
+}
+
 struct SpotGridScreen: View {
     let context: SpotGridContext
     let userId: String?

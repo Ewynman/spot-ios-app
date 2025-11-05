@@ -198,3 +198,21 @@ struct EditSpotView: View {
         }
     }
 }
+
+#Preview {
+    let sample = Spot(
+        id: "s1",
+        userId: "u1",
+        username: "eddie",
+        imageURL: "https://picsum.photos/seed/spot1/800/600",
+        vibeTag: "Chill",
+        latitude: 34.0522,
+        longitude: -118.2437,
+        locationName: "Los Angeles, CA",
+        createdAt: Date()
+    )
+    let auth = AuthViewModel()
+    auth.isPro = true
+    return EditSpotView(spot: sample) { _ in }
+        .environmentObject(auth)
+}

@@ -48,3 +48,15 @@ struct SpotImageGallery: View {
         .frame(height: 320)
     }
 }
+
+#Preview {
+    SpotImageGallery(
+        urls: [
+            "https://picsum.photos/seed/a/800/600",
+            "https://picsum.photos/seed/b/800/600"
+        ],
+        fallback: nil
+    )
+    .padding()
+    .background(Color(hex: "F5F3EF"))
+}

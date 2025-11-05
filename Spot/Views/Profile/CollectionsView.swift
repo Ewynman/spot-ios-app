@@ -90,3 +90,7 @@ struct CollectionsView: View {
         } catch { }
     }
 }
+
+#Preview {
+    CollectionsView()
+}

@@ -44,6 +44,33 @@ struct VibeSelectionView: View {
 
             // Vibe Tags Grid
             ScrollView {
+                // User custom vibe tags (Pro)
+                if authVM.isPro, !authVM.customVibeTags.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your tags")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(.horizontal, 32)
+
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 12) {
+                            ForEach(authVM.customVibeTags, id: \.self) { vibe in
+                                VibeTagButton(
+                                    vibe: vibe,
+                                    isSelected: selectedVibe == vibe,
+                                    onTap: {
+                                        SpotLogger.info("User selected vibe: \(vibe)")
+                                        selectedVibe = vibe
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                    }
+                }
+
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
                     GridItem(.flexible())
@@ -77,6 +104,7 @@ struct VibeSelectionView: View {
                         TextField("e.g. Golden Hour", text: $customVibe)
                             .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
+                            .foregroundColor(Constants.Colors.primary)
                             .padding(12)
                             .background(Color.white)
                             .cornerRadius(12)
@@ -118,6 +146,16 @@ struct VibeSelectionView: View {
         case .ok(let tag):
             validationMessage = nil
             selectedVibe = tag
+            // Persist globally and on the user profile for reuse
+            Task {
+                await VibeTagService.shared.ensureExistsAndAttachToUser(name: tag, userId: authVM.userId)
+                // Optimistic local update so it shows under "Your tags" immediately
+                await MainActor.run {
+                    if !authVM.customVibeTags.contains(tag) {
+                        authVM.customVibeTags.append(tag)
+                    }
+                }
+            }
         case .tooShort:
             validationMessage = "Please use at least 2 characters."
         case .tooLong:

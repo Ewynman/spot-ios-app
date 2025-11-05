@@ -163,6 +163,14 @@ struct ProfileMapView: View {
     }
 }
 
+#Preview {
+    let spots = [
+        Spot(id: "1", userId: "u1", username: "eddie", imageURL: "https://picsum.photos/seed/1/800/600", vibeTag: "View", latitude: 37.7749, longitude: -122.4194, locationName: "San Francisco", createdAt: Date()),
+        Spot(id: "2", userId: "u2", username: "sam", imageURL: "https://picsum.photos/seed/2/800/600", vibeTag: "Coffee", latitude: 34.0522, longitude: -118.2437, locationName: "Los Angeles", createdAt: Date())
+    ]
+    return ProfileMapView(spots: spots)
+}
+
 // MARK: - Extracted Map (fast to type-check)
 private struct InnerProfileSpotMap: View {
     @Binding var position: MapCameraPosition

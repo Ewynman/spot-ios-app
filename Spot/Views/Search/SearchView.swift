@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct SearchView: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var vm = SearchViewModel()
     @State private var path: [String] = []
     @FocusState private var focused: Bool
     @State private var selectedGridSpot: Spot?
+    @State private var showFilters: Bool = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -45,6 +47,24 @@ struct SearchView: View {
                         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { vm.segment = seg } }
                     }
                     Spacer()
+                    if vm.segment == .vibes {
+                        Button {
+                            if authVM.isPro {
+                                showFilters = true
+                                Task { await vm.loadAllVibeTags() }
+                            } else {
+                                NotificationCenter.default.post(name: .showPaywall, object: nil)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                Text("Filter")
+                            }
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
                 .padding(.horizontal, 16)
 
@@ -162,6 +182,76 @@ struct SearchView: View {
             .navigationBarBackButtonHidden(true)
             .background(Color(hex: "F5F3EF"))
         }
+        .sheet(isPresented: $showFilters) {
+            filtersSheet
+        }
+    }
+}
+
+// MARK: - Filters Sheet
+extension SearchView {
+    @ViewBuilder
+    private var filtersSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Filter by vibes")
+                    .font(FontManager.sectionHeader())
+                    .foregroundColor(Constants.Colors.primary)
+                Spacer()
+                Button("Clear") { vm.selectedVibeFilters.removeAll() }
+                    .buttonStyle(PlainButtonStyle())
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+            }
+            .padding(.horizontal, 16)
+
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(vm.allVibeTags, id: \.self) { tag in
+                        let selected = vm.selectedVibeFilters.contains(tag)
+                        Button {
+                            if selected { vm.selectedVibeFilters.remove(tag) } else { vm.selectedVibeFilters.insert(tag) }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                Text(tag.capitalized)
+                            }
+                            .font(FontManager.primaryText())
+                            .foregroundColor(selected ? .white : Constants.Colors.primary)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(selected ? Constants.Colors.primary : Color.white)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Constants.Colors.primary, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
+            Button {
+                showFilters = false
+                Task { await vm.applySelectedVibeFilters() }
+            } label: {
+                Text("Apply")
+                    .font(FontManager.buttonText())
+                    .foregroundColor(Constants.Colors.buttonText)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Constants.Colors.primary)
+                    .cornerRadius(20)
+                    .padding(.horizontal, 16)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.bottom, 16)
+        }
+        .background(Color(hex: "F5F3EF"))
     }
 }
 
@@ -206,4 +296,11 @@ private struct SectionHeader: View {
             .foregroundColor(Constants.Colors.primary)
             .padding(.horizontal, 16)
     }
+}
+
+#Preview {
+    let auth = AuthViewModel()
+    auth.isPro = true
+    return SearchView()
+        .environmentObject(auth)
 }

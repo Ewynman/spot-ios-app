@@ -200,3 +200,7 @@ struct FollowRequestsView: View {
         }
     }
 }
+
+#Preview {
+    FollowRequestsView()
+}

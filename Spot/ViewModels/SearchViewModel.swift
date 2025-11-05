@@ -39,6 +39,10 @@ final class SearchViewModel: ObservableObject {
     private var lastGridDoc: DocumentSnapshot?
     @Published var isLoadingGrid = false
     @Published var hasMoreGrid = true
+    // Advanced filters (Pro)
+    @Published var allVibeTags: [String] = []
+    @Published var selectedVibeFilters: Set<String> = []
+    private var gridVibeFilters: [String]?
 
     private let debouncer = Debouncer(interval: 0.3)
     private let service = SearchService.shared
@@ -94,7 +98,23 @@ final class SearchViewModel: ObservableObject {
         gridSpots = []
         lastGridDoc = nil
         hasMoreGrid = true
+        gridVibeFilters = nil
         SpotLogger.debug("Open vibe grid", details: ["tag": tag])
+        await loadMoreGrid(isVibe: true)
+    }
+
+    func openVibeFilters(_ tags: [String]) async {
+        guard !tags.isEmpty else { return }
+        gridTitle = "Vibes"
+        gridIsVibe = true
+        users = []
+        locations = []
+        vibes = []
+        gridSpots = []
+        lastGridDoc = nil
+        hasMoreGrid = true
+        gridVibeFilters = tags
+        SpotLogger.debug("Open multi-vibe grid", details: ["count": tags.count])
         await loadMoreGrid(isVibe: true)
     }
 
@@ -110,7 +130,12 @@ final class SearchViewModel: ObservableObject {
             var set = Set(gridSpots.compactMap { $0.id })
             while accumulated.count < 24 && attempts < 5 {
                 attempts += 1
-                let page = try await (isVibe ? service.fetchSpotsByVibe(lower, last: nextCursor) : service.fetchSpotsByLocation(lower, last: nextCursor))
+                let page: SearchPage<Spot>
+                if isVibe, let filters = gridVibeFilters, !filters.isEmpty {
+                    page = try await service.fetchSpotsByVibes(filters.map { $0.lowercased() }, last: nextCursor)
+                } else {
+                    page = try await (isVibe ? service.fetchSpotsByVibe(lower, last: nextCursor) : service.fetchSpotsByLocation(lower, last: nextCursor))
+                }
                 nextCursor = page.lastDocument
                 let newUnique = page.items.filter { spot in
                     let id = spot.id ?? UUID().uuidString
@@ -133,5 +158,17 @@ final class SearchViewModel: ObservableObject {
             hasMoreGrid = false
             SpotLogger.error("Grid load failed", details: ["error": error.localizedDescription])
         }
+    }
+
+    // MARK: Vibe tags source for filters
+    func loadAllVibeTags() async {
+        let tags = await VibeTagService.shared.fetchAll().map { $0.name }
+        let unique = Array(Set(tags)).sorted { $0.lowercased() < $1.lowercased() }
+        allVibeTags = unique
+    }
+
+    func applySelectedVibeFilters() async {
+        let tags = Array(selectedVibeFilters)
+        await openVibeFilters(tags)
     }
 }

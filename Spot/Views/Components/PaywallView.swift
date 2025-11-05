@@ -111,6 +111,11 @@ struct PaywallView: View {
     }
 }
 
+#Preview {
+    let auth = AuthViewModel()
+    return PaywallView().environmentObject(auth)
+}
+
 private struct FeatureRow: View {
     let title: String
     var body: some View {

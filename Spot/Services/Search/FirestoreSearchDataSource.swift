@@ -244,6 +244,43 @@ final class FirestoreSearchDataSource {
             return SearchPage(items: Array(items.prefix(pageSize)), lastDocument: nil)
         }
     }
+
+    // MARK: Multiple vibes (Pro)
+    func fetchSpotsByVibes(_ vibeLowers: [String], last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+        let lowers = Array(Set(vibeLowers.map { $0.lowercased() }))
+        guard !lowers.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+
+        if lowers.count <= 10 {
+            var query: Query = db.collection("spots")
+                .whereField("vibeTag_lower", in: lowers)
+                .order(by: "createdAt", descending: true)
+                .limit(to: pageSize)
+            if let last { query = query.start(afterDocument: last) }
+            let snap = try await query.getDocuments()
+            let items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
+            return SearchPage(items: items, lastDocument: snap.documents.last)
+        }
+
+        // Fallback: too many tags for Firestore 'in'. Merge recent pages per tag client-side.
+        var merged: [Spot] = []
+        var ids = Set<String>()
+        for tag in lowers.prefix(20) { // cap to avoid too many queries
+            let page = try await fetchSpotsByVibe(tag, last: nil)
+            for s in page.items {
+                let id = s.id ?? ""
+                if !id.isEmpty && !ids.contains(id) {
+                    ids.insert(id)
+                    merged.append(s)
+                }
+            }
+        }
+        merged.sort { (a, b) in
+            let ad = a.createdAt ?? .distantPast
+            let bd = b.createdAt ?? .distantPast
+            return ad > bd
+        }
+        return SearchPage(items: Array(merged.prefix(pageSize)), lastDocument: nil)
+    }
 }
 
 // Firestore composite indexes required:

@@ -15,6 +15,36 @@ struct MenuButtonFrameKey: PreferenceKey {
     }
 }
 
+#Preview {
+    let sample = Spot(
+        id: "s1",
+        userId: "u1",
+        username: "eddie",
+        userProfileImageURL: nil,
+        imageURL: "https://picsum.photos/seed/spot1/800/600",
+        thumbnailURL: nil,
+        vibeTag: "Fishing",
+        latitude: 40.7128,
+        longitude: -74.0060,
+        locationName: "New York, NY",
+        likes: 0,
+        isLiked: false,
+        isSaved: false,
+        createdAt: Date(),
+        authorIsPrivate: false,
+        imageURLs: [
+            "https://picsum.photos/seed/spot1a/800/600",
+            "https://picsum.photos/seed/spot1b/800/600"
+        ]
+    )
+    let auth = AuthViewModel()
+    auth.isPro = true
+    return SpotCard(spot: sample, showUserInfo: true, userId: "u1", onDelete: {}, source: "Preview")
+        .environmentObject(auth)
+        .padding()
+        .background(Color(hex: "F5F3EF"))
+}
+
 struct SpotCard: View {
     let spot: Spot
     let showUserInfo: Bool    // show profile pic + username if true
@@ -415,6 +445,8 @@ struct SpotCard: View {
                     if isSaved {
                         authVM.bookmarkSpot(spotId)
                         isLoadingSave = false
+                        // Pro: immediately allow adding to a collection (Instagram-style)
+                        if authVM.isPro { showCollectionPicker = true }
                     } else {
                         authVM.unbookmarkSpot(spotId)
                         isLoadingSave = false

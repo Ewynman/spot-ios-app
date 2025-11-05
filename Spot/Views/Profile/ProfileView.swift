@@ -459,6 +459,13 @@ struct ProfileView: View {
     }
 }
 
+#Preview {
+    let auth = AuthViewModel()
+    auth.isPro = true
+    return ProfileView(userId: nil, fromNavigationPush: false)
+        .environmentObject(auth)
+}
+
 // MARK: - Deletion helpers
 extension ProfileView {
     @MainActor

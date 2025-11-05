@@ -19,9 +19,7 @@ struct SpotApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
-        FirebaseApp.configure()
-        // Optional: enable collection immediately for local builds
-        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
+        // Firebase initialization moved to AppDelegate for consistency
     }
 
     var body: some Scene {
@@ -30,7 +28,6 @@ struct SpotApp: App {
                 if showLaunchScreen {
                     LaunchView()
                         .onAppear {
-                            // Show launch screen for 6 seconds
                             DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
                                 withAnimation(.easeInOut(duration: 0.5)) {
                                     showLaunchScreen = false
@@ -43,15 +40,11 @@ struct SpotApp: App {
                         .environmentObject(deepLinkState)
                         .environmentObject(PermissionManager.shared)
                         .onAppear {
-                            // Handle fresh install detection
                             _ = FreshInstallDetector.shared.handleFreshInstall()
-
-                            // Process any pending deep links after app is ready
                             deepLinkState.processPendingDeepLinks()
                         }
                 }
             }
         }
-
     }
 }
