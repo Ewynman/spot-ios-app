@@ -58,6 +58,7 @@ final class SpotService {
         SpotLogger.debug("Fetch spots for map", details: ["orderBy": "createdAt", "desc": true])
         Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
+            .limit(to: 1000)
             .getDocuments { [weak self] snapshot, error in
                 if let error = error {
                     SpotLogger.error("fetchSpotsForMap error", details: ["error": error.localizedDescription])

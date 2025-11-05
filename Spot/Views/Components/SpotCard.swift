@@ -5,6 +5,7 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
 
 // MARK: - Preference Keys
 
@@ -208,13 +209,35 @@ struct SpotCard: View {
             Spacer()
 
             if let location = spot.locationName, !location.isEmpty {
-                Text(location)
+                Text(cityState(from: location))
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
                     .measure(target: .location)
             }
         }
         .padding(.horizontal, 12)
+    }
+
+    private func cityState(from raw: String) -> String {
+        let disallowed = Set(["united states", "usa", "us", "united states of america"])
+        let parts = raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { segment in
+                let lower = segment.lowercased()
+                if disallowed.contains(lower) { return false }
+                // Drop segments that contain digits (street numbers, zip codes)
+                return segment.rangeOfCharacter(from: CharacterSet.decimalDigits) == nil
+            }
+
+        if parts.count >= 2 {
+            return parts.suffix(2).joined(separator: ", ")
+        } else if let first = parts.first {
+            return first
+        } else {
+            return raw
+        }
     }
 
     @ViewBuilder private var spotImage: some View {
@@ -652,8 +675,12 @@ struct SpotCard: View {
         let spotId: String
         var onDone: () -> Void
         @State private var collections: [BookmarkCollection] = []
+        @State private var previews: [String: [String]] = [:]
         @State private var newName: String = ""
         @State private var isLoading: Bool = true
+        @State private var showCreateModal: Bool = false
+
+        private let grid = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
         var body: some View {
             NavigationStack {
@@ -661,35 +688,177 @@ struct SpotCard: View {
                     if isLoading {
                         ProgressView().padding(.top, 16)
                     } else {
-                        List {
-                            ForEach(collections) { c in
+                        ScrollView {
+                            LazyVGrid(columns: grid, spacing: 12) {
+                                // "+" tile to create a new collection
                                 Button {
-                                    Task { await add(to: c.id) }
+                                    showCreateModal = true
                                 } label: {
-                                    HStack {
-                                        Text(c.name)
-                                            .font(FontManager.primaryText())
-                                            .foregroundColor(Constants.Colors.primary)
-                                        Spacer()
-                                        Text("\(c.spotIds.count)")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                    }
+                                    NewCollectionTile()
                                 }
                                 .buttonStyle(PlainButtonStyle())
+
+                                ForEach(collections) { c in
+                                    Button {
+                                        Task { await add(to: c.id) }
+                                    } label: {
+                                        CollectionCardView(
+                                            title: c.name,
+                                            previewURLs: previews[c.id] ?? [],
+                                            count: c.spotIds.count
+                                        )
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 12)
                         }
-                        .listStyle(.plain)
                     }
 
+                    Spacer()
+                }
+                .padding(.top, 8)
+                .background(Constants.Colors.background)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Text("Add to Collection")
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
+                    }
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Done") { onDone() }
+                            .foregroundColor(Constants.Colors.primary)
+                    }
+                }
+                .onAppear { Task { await load() } }
+                .sheet(isPresented: $showCreateModal) {
+                    CreateCollectionModal(newName: $newName, onCreate: {
+                        Task { await create() }
+                    })
+                    .presentationDetents([.fraction(0.28)])
+                    .presentationDragIndicator(.visible)
+                }
+            }
+        }
+
+        private func load() async {
+            isLoading = true
+            do {
+                let cols = try await BookmarksCollectionsService.shared.listCollections()
+                collections = cols
+                await loadPreviews()
+            } catch {
+                collections = []
+            }
+            isLoading = false
+        }
+
+        private func loadPreviews() async {
+            await withTaskGroup(of: (String, [String]).self) { group in
+                for c in collections {
+                    let ids = Array(c.spotIds.prefix(4))
+                    group.addTask {
+                        let urls = await fetchSpotPreviewURLs(spotIds: ids)
+                        return (c.id, urls)
+                    }
+                }
+                for await (cid, urls) in group {
+                    previews[cid] = urls
+                }
+            }
+        }
+
+        private func fetchSpotPreviewURLs(spotIds: [String], limit: Int = 4) async -> [String] {
+            guard !spotIds.isEmpty else { return [] }
+            let spotsRef = Firestore.firestore().collection("spots")
+            var urls: [String] = []
+            await withTaskGroup(of: String?.self) { group in
+                for id in spotIds.prefix(limit) {
+                    group.addTask {
+                        do {
+                            let doc = try await spotsRef.document(id).getDocument()
+                            guard doc.exists else { return nil }
+                            let data = doc.data() ?? [:]
+                            if let thumb = data["thumbnailURL"] as? String, !thumb.isEmpty { return thumb }
+                            if let arr = data["imageURLs"] as? [String], let first = arr.first { return first }
+                            if let single = data["imageURL"] as? String { return single }
+                            return nil
+                        } catch {
+                            return nil
+                        }
+                    }
+                }
+                for await maybe in group {
+                    if let u = maybe { urls.append(u) }
+                }
+            }
+            return Array(urls.prefix(limit))
+        }
+
+        private func create() async {
+            let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            do {
+                _ = try await BookmarksCollectionsService.shared.createCollection(name: name)
+                newName = ""
+                showCreateModal = false
+                await load()
+            } catch { }
+        }
+
+        private func add(to collectionId: String) async {
+            guard !spotId.isEmpty else { return }
+            do {
+                try await BookmarksCollectionsService.shared.addSpot(spotId, to: collectionId)
+                onDone()
+            } catch { }
+        }
+
+        private struct NewCollectionTile: View {
+            private var itemWidth: CGFloat {
+                let screenWidth = UIScreen.main.bounds.width
+                let padding: CGFloat = 12 * 2
+                let spacing: CGFloat = 12 * 1
+                return (screenWidth - padding - spacing) / 2
+            }
+            var body: some View {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: itemWidth, height: itemWidth)
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(Constants.Colors.primary)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Constants.Colors.primary, lineWidth: 1)
+                )
+            }
+        }
+
+        private struct CreateCollectionModal: View {
+            @Binding var newName: String
+            var onCreate: () -> Void
+
+            var body: some View {
+                VStack(spacing: 12) {
+                    Text("New Collection")
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(.top, 8)
+
                     HStack(spacing: 8) {
-                        TextField("New collection", text: $newName)
+                        TextField("Collection Name", text: $newName)
                             .padding(10)
                             .background(Color.white)
                             .cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Constants.Colors.primary, lineWidth: 1))
                         Button {
-                            Task { await create() }
+                            onCreate()
                         } label: {
                             Text("Create")
                                 .font(FontManager.primaryText())
@@ -706,42 +875,8 @@ struct SpotCard: View {
 
                     Spacer()
                 }
-                .padding(.top, 8)
                 .background(Constants.Colors.background)
-                .navigationTitle("Add to Collection")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Close") { onDone() }
-                            .foregroundColor(Constants.Colors.primary)
-                    }
-                }
-                .onAppear { Task { await load() } }
             }
-        }
-
-        private func load() async {
-            isLoading = true
-            do { collections = try await BookmarksCollectionsService.shared.listCollections() } catch { collections = [] }
-            isLoading = false
-        }
-
-        private func create() async {
-            let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { return }
-            do {
-                _ = try await BookmarksCollectionsService.shared.createCollection(name: name)
-                newName = ""
-                await load()
-            } catch { }
-        }
-
-        private func add(to collectionId: String) async {
-            guard !spotId.isEmpty else { return }
-            do {
-                try await BookmarksCollectionsService.shared.addSpot(spotId, to: collectionId)
-                onDone()
-            } catch { }
         }
     }
 }

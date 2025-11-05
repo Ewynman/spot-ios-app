@@ -36,6 +36,7 @@ struct ProfileView: View {
     @State private var showFollowRequestsNav: Bool = false
     @State private var followRequestsCount: Int = 0
     @State private var followReqListener: ListenerRegistration?
+    @State private var isMapExpanded: Bool = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -102,6 +103,7 @@ struct ProfileView: View {
                     } else {
                         // MARK: — Profile Header + Tabs
                         VStack(spacing: 16) {
+                            if !(selectedTab == "Map" && isMapExpanded) {
                             VStack(spacing: 12) {
                                 if let url = profileImageURL {
                                     AsyncImage(url: URL(string: url)) { img in
@@ -237,6 +239,7 @@ struct ProfileView: View {
                                         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }
                                 }
                             }
+                            } // end header hide gate
 
                             if selectedTab == "Spots" {
                                 if let selectedSpot {
@@ -258,9 +261,11 @@ struct ProfileView: View {
                                 }
                             } else {
                                 // Map tab
-                                ProfileMapView(spots: spots) { tapped in
+                                ProfileMapView(spots: spots, onSpotTap: { tapped in
                                     selectedSpot = tapped
-                                }
+                                }, onCollapseChange: { expanded in
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { isMapExpanded = expanded }
+                                })
                                 .zIndex(0)
                             }
                         }
@@ -403,7 +408,12 @@ struct ProfileView: View {
                 SpotGridScreen(context: .likes, userId: userId)
             }
             .navigationDestination(isPresented: $showBookmarksNav) {
-                SpotGridScreen(context: .bookmarks, userId: userId)
+                if authVM.isPro {
+                    BookmarksCollectionsScreen()
+                        .environmentObject(authVM)
+                } else {
+                    SpotGridScreen(context: .bookmarks, userId: userId)
+                }
             }
             .navigationDestination(isPresented: $showFollowRequestsNav) {
                 FollowRequestsView()

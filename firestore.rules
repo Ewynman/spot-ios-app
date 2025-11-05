@@ -2,76 +2,62 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users: profile document owned by user
+    // ============================
+    // Users and their subcollections
+    // ============================
     match /users/{userId} {
-      allow read: if true; // public profile fields are readable
-      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
-    }
+      // Allow reading any user's public data
+      allow read: if true;
 
-    // User collections (bookmark collections, etc.) - owner only
-    match /users/{userId}/collections/{collectionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
+      // Allow user to modify their own profile document
+      allow write: if request.auth != null && request.auth.uid == userId;
 
-    // Helper: check if {viewer} follows {owner}
-    function isFollower(viewer, owner) {
-      // The app maintains an array field users/{viewer}.following: [ownerId]
-      // This helper returns true when viewer is following owner.
-      // If your graph stores followers as subcollection instead, mirror accordingly.
-      return exists(/databases/$(database)/documents/users/$(viewer)) &&
-             get(/databases/$(database)/documents/users/$(viewer)).data.following.hasAny([owner]);
-    }
-
-    match /spots/{spotId} {
-      allow read: if isSpotReadable();
-      allow list: if false; // rely on per-doc checks via queries
-
-      function isSpotReadable() {
-        let data = resource.data;
-        let owner = data.authorId != null ? data.authorId : data.userId; // backward compatibility
-        let isPrivate = data.authorIsPrivate == true;
-        return (request.auth != null && request.auth.uid == owner) ||
-               (!isPrivate) ||
-               (request.auth != null && isFollower(request.auth.uid, owner));
+      // Allow the same user to read/write any nested subcollection
+      match /{subpath=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
-    // Global vibe tags: anyone can read; authenticated users may create
-    match /vibeTags/{tagId} {
+    // ============================
+    // Spots collection
+    // ============================
+    match /spots/{spotId} {
+      // Anyone can read spots
       allow read: if true;
-      // We only support create from clients; server may update if needed
-      allow create: if request.auth != null &&
-        request.resource.data.keys().hasAll(["name", "name_lower"]) &&
-        request.resource.data.name is string &&
-        request.resource.data.name_lower is string;
+
+      // Create or update: user can only manage their own spots
+      allow create, update: if request.auth != null && request.resource.data.userId == request.auth.uid;
+
+      // Delete: only owner can delete
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      // Optional: if you have subcollections under each spot (e.g. comments)
+      match /{subpath=**} {
+        allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      }
+    }
+
+    // ============================
+    // Global Vibe Tags
+    // ============================
+    match /vibeTags/{tagId} {
+      // Anyone can read available tags
+      allow read: if true;
+      // Authenticated users can create new tags
+      allow create: if request.auth != null;
+      // No client updates/deletes for now
       allow update, delete: if false;
     }
 
-    // Places: user-created canonical locations for selection/suggestions
+    // ============================
+    // Places collection
+    // ============================
     match /places/{placeId} {
-      // Anyone can read place suggestions
+      // Anyone can read
       allow read: if true;
-      // Only authenticated users may create or update places
+
+      // Only authenticated users may create or update
       allow write: if request.auth != null;
-    }
-
-    // Follow Requests security
-    // - Only the target user may read/manage their followRequests
-    // - Requesters may create a request doc under the target's followRequests but cannot read the collection
-    match /users/{targetUid}/followRequests/{requesterUid} {
-      allow create: if request.auth != null && request.auth.uid == requesterUid;
-      allow read, update, delete: if request.auth != null && request.auth.uid == targetUid;
-    }
-
-    // Optional followers subcollection guard: only the target may write their own followers
-    match /users/{targetUid}/followers/{followerUid} {
-      allow read: if false; // followers list is not publicly readable in this app
-      allow write: if request.auth != null && request.auth.uid == targetUid;
-    }
-
-    // Default: keep existing rules for other collections
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

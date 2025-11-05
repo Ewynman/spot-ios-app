@@ -2,7 +2,7 @@ import Foundation
 import FirebaseFirestore
 import FirebaseAuth
 
-struct BookmarkCollection: Identifiable, Codable {
+struct BookmarkCollection: Identifiable, Codable, Hashable {
     var id: String
     var name: String
     var spotIds: [String]

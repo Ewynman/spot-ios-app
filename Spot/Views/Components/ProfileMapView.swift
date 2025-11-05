@@ -14,11 +14,14 @@ struct ProfileMapView: View {
     @State private var selectedSpot: Spot?
 
     @Environment(\.verticalSizeClass) private var vSize
+    private var onSpotTap: ((Spot) -> Void)?
+    private var onCollapseChange: ((Bool) -> Void)?
 
     // MARK: - Init
-    init(spots: [Spot], onSpotTap: ((Spot) -> Void)? = nil) {
+    init(spots: [Spot], onSpotTap: ((Spot) -> Void)? = nil, onCollapseChange: ((Bool) -> Void)? = nil) {
         self.spots = spots
-        _ = onSpotTap // silence unused param for now
+        self.onSpotTap = onSpotTap
+        self.onCollapseChange = onCollapseChange
 
         if let region = Self.regionToFit(spots) {
             _cameraPosition = State(initialValue: .region(region))
@@ -94,6 +97,8 @@ struct ProfileMapView: View {
     // MARK: - Actions
     private func select(_ spot: Spot, _ coordinate: CLLocationCoordinate2D, _ viewSize: CGSize) {
         selectedSpot = spot
+        onSpotTap?(spot)
+        onCollapseChange?(true)
 
         // Base zoom you already use
         let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -116,11 +121,13 @@ struct ProfileMapView: View {
     private func backToAll() {
         selectedSpot = nil
         zoomToFitAllPins()
+        onCollapseChange?(false)
     }
 
     private func closePanel() {
         selectedSpot = nil
         zoomToFitAllPins()
+        onCollapseChange?(false)
     }
 
     private var spotsSignature: String {
