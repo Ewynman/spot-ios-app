@@ -3,7 +3,7 @@ import SwiftUI
 struct CollectionCardView: View {
     let title: String
     let previewURLs: [String]
-    var count: Int? = nil
+    var count: Int?
 
     private var itemWidth: CGFloat {
         let screenWidth = UIScreen.main.bounds.width
@@ -130,5 +130,3 @@ struct CollectionCardView: View {
     .padding()
     .background(Constants.Colors.background)
 }
-
-

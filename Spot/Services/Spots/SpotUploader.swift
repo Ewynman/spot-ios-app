@@ -165,6 +165,7 @@ final class SpotUploader {
             "vibeTag_lower": vibeTag.lowercased(),
             "latitude": latitude,
             "longitude": longitude,
+            "geohash": GeoHash.encode(latitude: latitude, longitude: longitude, precision: 7),
             "locationName": placeName,
             "locationName_lower": placeName.lowercased(),
             "updatedAt": FieldValue.serverTimestamp()
@@ -252,6 +253,7 @@ final class SpotUploader {
                 }
             }
 
+            let geohash = GeoHash.encode(latitude: latitude, longitude: longitude, precision: 7)
             var data: [String: Any] = [
                 "postId": postId,
                 "userId": userId,
@@ -265,6 +267,7 @@ final class SpotUploader {
                 "vibeTag_lower": vibeTag.lowercased(),
                 "latitude": latitude,
                 "longitude": longitude,
+                "geohash": geohash,
                 "locationName": finalLocationName,
                 "locationName_lower": finalLocationName.lowercased(),
                 "likes": 0,
@@ -367,6 +370,7 @@ final class SpotUploader {
                         finalLocationName = cityState
                     }
 
+                    let geohash = GeoHash.encode(latitude: latitude, longitude: longitude, precision: 7)
                     var data: [String: Any] = [
                         "postId": postId,
                         "userId": userId,
@@ -379,6 +383,7 @@ final class SpotUploader {
                         "vibeTag_lower": vibeTag.lowercased(),
                         "latitude": latitude,
                         "longitude": longitude,
+                        "geohash": geohash,
                         "locationName": finalLocationName,
                         "locationName_lower": finalLocationName.lowercased(),
                         "likes": 0,

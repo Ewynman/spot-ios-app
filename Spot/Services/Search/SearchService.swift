@@ -38,4 +38,3 @@ final class SearchService {
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
     }
 }
-

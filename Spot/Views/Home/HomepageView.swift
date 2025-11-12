@@ -79,18 +79,9 @@ class FeedViewModel: ObservableObject {
     }
 
     func loadMapSpots(forceRefresh: Bool = false) {
-        SpotLogger.debug("Load map spots", details: ["forceRefresh": forceRefresh])
-        SpotService.shared.fetchSpotsForMap(forceRefresh: forceRefresh) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let spots):
-                    SpotLogger.info("Loaded spots for map", details: ["count": spots.count])
-                    self.mapSpots = spots
-                case .failure(let error):
-                    SpotLogger.error("Failed to load map spots", details: ["error": error.localizedDescription])
-                }
-            }
-        }
+        // No-op: Map now loads by viewport; keep an empty set here
+        SpotLogger.debug("Map spots warm disabled; viewport loader handles fetching", details: [:])
+        self.mapSpots = []
     }
 
     // MARK: - Delete

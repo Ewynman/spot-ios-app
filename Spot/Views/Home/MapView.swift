@@ -12,6 +12,8 @@ struct MapView: View {
     @State private var cameraPosition: MapCameraPosition
     @State private var selectedSpot: Spot?
     @State private var hasPerformedInitialFit: Bool = false
+    @State private var visibleSpots: [Spot] = []
+    @State private var regionLoadTask: Task<Void, Never>?
 
     @Environment(\.verticalSizeClass) private var vSize
 
@@ -24,7 +26,9 @@ struct MapView: View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 // Clustered map (UIKit-backed) for performance with many pins
-                ClusteredSpotMap(spots: spots) { spot, coord in
+                ClusteredSpotMap(spots: visibleSpots, onRegionChanged: { region in
+                    debounceLoad(for: region)
+                }) { spot, coord in
                     select(spot, coord)
                 }
             }
@@ -39,6 +43,8 @@ struct MapView: View {
             .onAppear {
                 locationManager.startUpdatingLocation()
                 performInitialFitIfNeeded()
+                // Trigger initial viewport load
+                debounceLoad(for: LocationManager.shared.getUserRegion())
             }
             .onDisappear { locationManager.stopUpdatingLocation() }
             .onChange(of: locationManager.userLocation) { _, _ in
@@ -80,7 +86,7 @@ struct MapView: View {
     private func closePanel() {
         SpotLogger.info("Map.Home.SheetClose")
         selectedSpot = nil
-        zoomToFitAllPins()
+        // no-op; cluster map maintains region
     }
 
     private func updateCameraToUser() {
@@ -96,11 +102,21 @@ struct MapView: View {
     private func performInitialFitIfNeeded() {
         guard !hasPerformedInitialFit else { return }
         if hasValidSpots {
-            // Clustered map handles initial fit on first update
+            // Wait for first regionChanged to request viewport data
         } else {
             updateCameraToUser()
         }
         hasPerformedInitialFit = true
+    }
+
+    private func debounceLoad(for region: MKCoordinateRegion) {
+        regionLoadTask?.cancel()
+        regionLoadTask = Task { [region] in
+            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
+            if Task.isCancelled { return }
+            let spots = await MapViewportLoader.shared.load(region: region)
+            await MainActor.run { self.visibleSpots = spots }
+        }
     }
 }
 
@@ -146,6 +162,7 @@ private struct SpotMap: View {
 // MARK: - UIKit-backed clustered map
 private struct ClusteredSpotMap: UIViewRepresentable {
     let spots: [Spot]
+    var onRegionChanged: ((MKCoordinateRegion) -> Void)?
     let onSelect: (Spot, CLLocationCoordinate2D) -> Void
 
     func makeUIView(context: Context) -> MKMapView {
@@ -181,6 +198,7 @@ private struct ClusteredSpotMap: UIViewRepresentable {
                 map.showAnnotations(anns, animated: false)
             }
         }
+        // Initial region notification removed to avoid SwiftUI state changes during updates
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -223,6 +241,10 @@ private struct ClusteredSpotMap: UIViewRepresentable {
             let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
             mapView.setRegion(MKCoordinateRegion(center: ann.coordinate, span: span), animated: true)
             parent.onSelect(ann.spot, ann.coordinate)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            parent.onRegionChanged?(mapView.region)
         }
     }
 }
