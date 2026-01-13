@@ -101,20 +101,20 @@ struct SpotCard: View {
         .background(Constants.Colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
-            isLiked = authVM.likedSpots.contains(spot.id ?? "")
-            isSaved = authVM.bookmarkedSpots.contains(spot.id ?? "")
+            isLiked = authVM.likedSpots.contains(spot.safeId)
+            isSaved = authVM.bookmarkedSpots.contains(spot.safeId)
             let currentUserId = userId ?? authVM.userId ?? ""
             let ownerId = spot.userId ?? ""
             let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
             SpotLogger.debug("SpotCard appear", details: [
                 "source": source,
-                "spotId": spot.id ?? "nil",
+                "spotId": spot.safeId,
                 "ownerId": ownerId.isEmpty ? "nil" : ownerId,
                 "currentUserId": currentUserId.isEmpty ? "nil" : currentUserId,
                 "isOwner": isOwner
             ])
             if currentUserId.isEmpty || ownerId.isEmpty {
-                SpotLogger.warning("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.id ?? "nil"])
+                SpotLogger.warning("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.safeId])
             }
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
@@ -139,7 +139,7 @@ struct SpotCard: View {
             ReportSheet(spot: spot)
         }
         .sheet(isPresented: $showCollectionPicker) {
-            CollectionPickerSheet(spotId: spot.id ?? "") { showCollectionPicker = false }
+            CollectionPickerSheet(spotId: spot.safeId) { showCollectionPicker = false }
         }
         .sheet(isPresented: $showEditSheet) {
             EditSpotView(spot: spot) { _ in }
@@ -244,7 +244,7 @@ struct SpotCard: View {
         if let urls = spot.imageURLs, !urls.isEmpty {
             SpotImageGallery(urls: urls, fallback: spot.imageURL)
         } else if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
-            AsyncImage(url: turl, transaction: Transaction(animation: .default)) { phase in
+            RemoteImage(url: turl, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
@@ -258,7 +258,7 @@ struct SpotCard: View {
                         .frame(height: 320)
                         .clipped()
                         .cornerRadius(12)
-                case .failure:
+                case .failure(let failure):
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
@@ -269,10 +269,16 @@ struct SpotCard: View {
                         .onAppear {
                             let host = URL(string: thumb)?.host ?? "unknown"
                             SpotLogger.error("Image.Thumb.Failure", details: [
-                                "spotId": spot.id ?? "nil",
+                                "spotId": spot.safeId,
                                 "source": source,
                                 "thumbHost": host,
-                                "thumbUrl": thumb
+                                "thumbUrl": thumb,
+                                "statusCode": failure.statusCode as Any,
+                                "errorDomain": failure.nsError.domain,
+                                "errorCode": failure.nsError.code,
+                                "error": failure.underlying.localizedDescription,
+                                "mimeType": failure.mimeType as Any,
+                                "bodyPreview": failure.bodyPreview as Any
                             ])
                             thumbnailFailed = true
                             if !reportedImageFailure {
@@ -306,7 +312,7 @@ struct SpotCard: View {
             .id(retryToken)
             .overlay(fullImageOverlay)
         } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
-            AsyncImage(url: url, transaction: Transaction(animation: .default)) { phase in
+            RemoteImage(url: url, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
@@ -322,13 +328,13 @@ struct SpotCard: View {
                        .cornerRadius(12)
                         .onAppear {
                             SpotLogger.info("Spot image loaded", details: [
-                                "spotId": spot.id ?? "nil",
+                                "spotId": spot.safeId,
                                 "source": source,
                                 "hasThumb": false,
                                 "url": urlString
                             ])
                         }
-                case .failure:
+                case .failure(let failure):
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
@@ -339,10 +345,16 @@ struct SpotCard: View {
                         .onAppear {
                             let host = url.host ?? "unknown"
                             SpotLogger.error("Image.Full.Failure", details: [
-                                "spotId": spot.id ?? "nil",
+                                "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
-                                "fullUrl": urlString
+                                "fullUrl": urlString,
+                                "statusCode": failure.statusCode as Any,
+                                "errorDomain": failure.nsError.domain,
+                                "errorCode": failure.nsError.code,
+                                "error": failure.underlying.localizedDescription,
+                                "mimeType": failure.mimeType as Any,
+                                "bodyPreview": failure.bodyPreview as Any
                             ])
                             if !reportedImageFailure {
                                 reportedImageFailure = true
@@ -378,7 +390,7 @@ struct SpotCard: View {
                 .cornerRadius(12)
                 .onAppear {
                     SpotLogger.error("Image placeholder used", details: [
-                        "spotId": spot.id ?? "nil",
+                        "spotId": spot.safeId,
                         "source": source,
                         "hasThumb": false,
                         "url": spot.imageURL ?? "nil"
@@ -390,7 +402,7 @@ struct SpotCard: View {
     private var fullImageOverlay: some View {
         Group {
             if let full = spot.imageURL, let furl = URL(string: full), spot.imageURLs?.isEmpty ?? true {
-                AsyncImage(url: furl, transaction: Transaction(animation: .default)) { phase in
+                RemoteImage(url: furl, transaction: Transaction(animation: .default)) { phase in
                     switch phase {
                     case .empty:
                         Color.clear
@@ -406,20 +418,26 @@ struct SpotCard: View {
                                     PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
                                 }
                                 SpotLogger.info("Spot image loaded", details: [
-                                    "spotId": spot.id ?? "nil",
+                                    "spotId": spot.safeId,
                                     "source": source,
                                     "hasThumb": true,
                                     "url": full
                                 ])
                             }
-                    case .failure:
+                    case .failure(let failure):
                         Color.clear.onAppear {
                             let host = URL(string: full)?.host ?? "unknown"
                             SpotLogger.error("Image.Full.Failure", details: [
-                                "spotId": spot.id ?? "nil",
+                                "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
-                                "fullUrl": full
+                                "fullUrl": full,
+                                "statusCode": failure.statusCode as Any,
+                                "errorDomain": failure.nsError.domain,
+                                "errorCode": failure.nsError.code,
+                                "error": failure.underlying.localizedDescription,
+                                "mimeType": failure.mimeType as Any,
+                                "bodyPreview": failure.bodyPreview as Any
                             ])
                             if !reportedImageFailure {
                                 reportedImageFailure = true
@@ -482,7 +500,7 @@ struct SpotCard: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button {
-                    SpotLogger.debug("Menu tapped", details: ["spotId": spot.id ?? "nil", "source": source])
+                    SpotLogger.debug("Menu tapped", details: ["spotId": spot.safeId, "source": source])
                     showCustomMenu = true
                 } label: {
                     Text("⋮")
@@ -555,7 +573,7 @@ struct SpotCard: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
-                SpotLogger.debug("Share tapped", details: ["spotId": spot.id ?? "nil", "source": source])
+                SpotLogger.debug("Share tapped", details: ["spotId": spot.safeId, "source": source])
                 showShareSheet = true
             } label: {
                 HStack {
@@ -589,7 +607,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Report tapped", details: ["spotId": spot.id ?? "nil", "source": source])
+                    SpotLogger.debug("Report tapped", details: ["spotId": spot.safeId, "source": source])
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -647,7 +665,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Delete tapped", details: ["spotId": spot.id ?? "nil", "source": source])
+                    SpotLogger.debug("Delete tapped", details: ["spotId": spot.safeId, "source": source])
                     showDeleteConfirm = true
                 } label: {
                     HStack {

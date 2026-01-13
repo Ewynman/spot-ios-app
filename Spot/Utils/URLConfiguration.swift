@@ -1,0 +1,58 @@
+//
+//  URLConfiguration.swift
+//  Spot
+//
+//  Created by Edward Wynman on 1/12/26.
+//
+
+import Foundation
+
+struct URLConfiguration {
+    static let shared = URLConfiguration()
+
+    private let plist: [String: Any]
+
+    private init() {
+        guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+            fatalError("Could not load Info.plist")
+        }
+        self.plist = plist
+    }
+
+    // MARK: - Universal Link Domains
+    var universalLinkDomains: [String] {
+        guard let spotURLs = plist["SpotURLs"] as? [String: Any],
+              let domains = spotURLs["universalLinkDomains"] as? [String] else {
+            return []
+        }
+        return domains
+    }
+
+    // MARK: - Share URL
+    var shareURLBase: String {
+        guard let spotURLs = plist["SpotURLs"] as? [String: Any],
+              let base = spotURLs["shareURLBase"] as? String else {
+            return ""
+        }
+        return base
+    }
+
+    func shareURL(for spotId: String) -> String {
+        return "\(shareURLBase)/s/\(spotId)"
+    }
+
+    // MARK: - Custom Scheme
+    var customScheme: String {
+        guard let spotURLs = plist["SpotURLs"] as? [String: Any],
+              let scheme = spotURLs["customScheme"] as? String else {
+            return ""
+        }
+        return scheme
+    }
+
+    // MARK: - URL Validation
+    func isAllowedUniversalLinkHost(_ host: String) -> Bool {
+        return universalLinkDomains.contains(host)
+    }
+}

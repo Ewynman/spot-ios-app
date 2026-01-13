@@ -42,8 +42,7 @@ struct ShareSheet: View {
     private func prepareShareItems() {
         Task {
             // Universal link that will deep link to app or redirect to App Store
-            // For local testing, use ngrok. For production, use spotapp.online
-            let spotUrl = "https://spotapp.online/s/\(spot.id ?? "")"
+            let spotUrl = URLConfiguration.shared.shareURL(for: spot.safeId)
             let metadata = LPLinkMetadata()
             metadata.originalURL = URL(string: spotUrl)
             metadata.url = metadata.originalURL
@@ -81,7 +80,7 @@ struct ShareSheet: View {
             await MainActor.run {
                 shareItems = [linkItem, spotUrl]
                 isLoading = false
-                SpotLogger.info("Share prepared for spot id=\(spot.id ?? "nil")")
+                SpotLogger.info("Share prepared for spot id=\(spot.safeId)")
             }
         }
     }

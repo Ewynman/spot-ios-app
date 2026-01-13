@@ -6,29 +6,10 @@ struct VibeSelectionView: View {
     @State private var customVibe: String = ""
     @State private var validationMessage: String?
 
-    private let vibeTags = [
-        "Chill Spot",
-        "Hidden Gem",
-        "Scenic View",
-        "Romantic",
-        "Great For Photos",
-        "Family Friendly",
-        "Nature Escape",
-        "Foodie Heaven",
-        "Beach Day",
-        "Late Night",
-        "Historical",
-        "People Watching",
-        "Quiet Moment",
-        "Cozy Corner",
-        "Pet Friendly",
-        "Adventure",
-        "Waterfront",
-        "Study Spot"
-    ]
+    private let vibeTags = Constants.VibeTags.defaultTags
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: Constants.Layout.Spacing.extraLarge) {
             // Header
             VStack(spacing: 8) {
                 Text("Pick Your Vibe")
@@ -40,22 +21,22 @@ struct VibeSelectionView: View {
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
             // Vibe Tags Grid
             ScrollView {
                 // User custom vibe tags (Pro)
                 if authVM.isPro, !authVM.customVibeTags.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Constants.Layout.Spacing.small) {
                         Text("Your tags")
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
-                            .padding(.horizontal, 32)
+                            .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
                         LazyVGrid(columns: [
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: 12) {
+                        ], spacing: Constants.Layout.Spacing.medium) {
                             ForEach(authVM.customVibeTags, id: \.self) { vibe in
                                 VibeTagButton(
                                     vibe: vibe,
@@ -67,7 +48,7 @@ struct VibeSelectionView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, Constants.Layout.Padding.horizontal)
                     }
                 }
 
@@ -86,48 +67,48 @@ struct VibeSelectionView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, Constants.Layout.Padding.horizontal)
                 // Custom vibe (Pro)
-                VStack(spacing: 8) {
+                VStack(spacing: Constants.Layout.Spacing.small) {
                     HStack {
                         Text("Custom vibe tag")
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
                         Spacer()
-                        Text("\(customVibe.count)/30")
+                        Text("\(customVibe.count)/\(Constants.Limits.vibeTagMaxLength)")
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: Constants.Layout.Spacing.small) {
                         TextField("e.g. Golden Hour", text: $customVibe)
                             .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
                             .foregroundColor(Constants.Colors.primary)
-                            .padding(12)
+                            .padding(Constants.Layout.Padding.verticalMedium)
                             .background(Color.white)
-                            .cornerRadius(12)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
+                            .cornerRadius(Constants.Layout.CornerRadius.medium)
+                            .overlay(RoundedRectangle(cornerRadius: Constants.Layout.CornerRadius.medium).stroke(Constants.Colors.primary, lineWidth: 1))
 
                         Button(action: useCustomVibe) {
                             Text("Use")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.buttonText)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
+                                .padding(.horizontal, Constants.Layout.Padding.verticalMedium)
+                                .padding(.vertical, Constants.Layout.Padding.verticalSmall)
                                 .background(Constants.Colors.primary)
-                                .cornerRadius(10)
+                                .cornerRadius(Constants.Layout.CornerRadius.small)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
                     if let msg = validationMessage {
                         Text(msg)
                             .font(.caption)
                             .foregroundColor(.red)
-                            .padding(.horizontal, 32)
+                            .padding(.horizontal, Constants.Layout.Padding.horizontal)
                     }
                 }
             }
@@ -157,11 +138,11 @@ struct VibeSelectionView: View {
                 }
             }
         case .tooShort:
-            validationMessage = "Please use at least 2 characters."
+            validationMessage = Constants.ValidationMessages.vibeTooShort
         case .tooLong:
-            validationMessage = "Please keep it under 30 characters."
+            validationMessage = Constants.ValidationMessages.vibeTooLong
         case .blocked:
-            validationMessage = "That tag isn’t allowed."
+            validationMessage = Constants.ValidationMessages.vibeBlocked
         }
     }
 }
@@ -177,15 +158,15 @@ struct VibeTagButton: View {
             Text(vibe)
                 .font(FontManager.primaryText())
                 .foregroundColor(isSelected ? .white : Constants.Colors.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, Constants.Layout.Padding.verticalLarge)
+                .padding(.vertical, Constants.Layout.Padding.verticalMedium)
                 .frame(maxWidth: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: Constants.Layout.CornerRadius.large)
                         .fill(isSelected ? Constants.Colors.primary : Color.white)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: Constants.Layout.CornerRadius.large)
                         .stroke(Constants.Colors.primary, lineWidth: 1)
                 )
         }

@@ -113,7 +113,7 @@ struct LoginView: View {
                         isLoading = true
                         errorMessage = nil
 
-                        AuthService.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password) { result in
+                        AuthService.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password) { (result: Result<Void, Error>) in
                             DispatchQueue.main.async {
                                 isLoading = false
                                 switch result {

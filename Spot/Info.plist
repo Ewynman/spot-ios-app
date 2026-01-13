@@ -23,5 +23,19 @@
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
+	<key>SpotURLs</key>
+	<dict>
+		<key>universalLinkDomains</key>
+		<array>
+			<string>spotapp.online</string>
+			<string>www.spotapp.online</string>
+			<string>localhost</string>
+			<string>454ab5d34eb4.ngrok-free.app</string>
+		</array>
+		<key>shareURLBase</key>
+		<string>https://spotapp.online</string>
+		<key>customScheme</key>
+		<string>spotapp</string>
+	</dict>
 </dict>
 </plist>

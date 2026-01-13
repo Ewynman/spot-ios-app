@@ -13,7 +13,7 @@ final class FirestoreSearchDataSource {
 
     // MARK: Users
     func searchUsers(prefix: String, last: DocumentSnapshot? = nil) async throws -> SearchPage<[String: Any]> {
-        guard !prefix.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+        guard !prefix.isEmpty else { throw NSError(domain: "FirestoreSearchDataSource", code: -1, userInfo: [NSLocalizedDescriptionKey: "Prefix is empty"]) }
         let lower = prefix.lowercased()
         do {
             // Try lowercased field prefix range first
@@ -280,6 +280,50 @@ final class FirestoreSearchDataSource {
             return ad > bd
         }
         return SearchPage(items: Array(merged.prefix(pageSize)), lastDocument: nil)
+    }
+
+    // MARK: Location + Multiple vibes (Pro)
+    func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+        let lowers = Array(Set(vibeLowers.map { $0.lowercased() }))
+        guard !lowers.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+
+        // Firestore limitation: can only use 'in' with one field, so we filter by location first, then client-filter by vibes
+        // This is efficient if location filter is selective
+        var query: Query = db.collection("spots")
+            .whereField("locationName_lower", isEqualTo: locationLower)
+            .order(by: "createdAt", descending: true)
+            .limit(to: pageSize * 3) // Fetch more to account for client-side filtering
+        if let last { query = query.start(afterDocument: last) }
+        
+        do {
+            let snap = try await query.getDocuments()
+            let allItems = snap.documents.compactMap { try? $0.data(as: Spot.self) }
+            // Client-side filter by vibe tags
+            let filtered = allItems.filter { spot in
+                guard let tag = spot.vibeTag?.lowercased() else { return false }
+                return lowers.contains(tag)
+            }
+            // Remove duplicates and limit
+            var seen = Set<String>()
+            var unique: [Spot] = []
+            for spot in filtered {
+                let id = spot.id ?? UUID().uuidString
+                if !seen.contains(id) {
+                    seen.insert(id)
+                    unique.append(spot)
+                    if unique.count >= pageSize { break }
+                }
+            }
+            return SearchPage(items: unique, lastDocument: snap.documents.last)
+        } catch {
+            // Fallback: fetch by location, then client-filter
+            let page = try await fetchSpotsByLocation(locationLower, last: last)
+            let filtered = page.items.filter { spot in
+                guard let tag = spot.vibeTag?.lowercased() else { return false }
+                return lowers.contains(tag)
+            }
+            return SearchPage(items: filtered, lastDocument: page.lastDocument)
+        }
     }
 }
 

@@ -52,7 +52,7 @@ final class SpotUploader {
 
     private func getCurrentUserData(completion: @escaping (Result<(String, String?), Error>) -> Void) {
         guard let uid = Auth.auth().currentUser?.uid else {
-            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             return
         }
 
@@ -66,7 +66,7 @@ final class SpotUploader {
             guard let data = snapshot?.data(),
                   let username = data["username"] as? String else {
                 SpotLogger.error("Invalid user data format", details: ["uid": uid])
-                completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
+                completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.badRequest, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
                 return
             }
 
@@ -84,7 +84,7 @@ final class SpotUploader {
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
-            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
         }
@@ -121,7 +121,7 @@ final class SpotUploader {
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
-            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
         }
@@ -220,7 +220,7 @@ final class SpotUploader {
             var urls: [String] = []
             for (idx, image) in limited.enumerated() {
                 guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                    completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."]))); return
+                    completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.badRequest, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."]))); return
                 }
                 let filename = "spot_\(postId)_\(idx).jpg"
                 let storageRef = storage.reference().child("spots/\(filename)")
@@ -291,7 +291,20 @@ final class SpotUploader {
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))
             } catch {
-                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
+                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription, "postId": postId])
+                // Attempt to clean up uploaded images if document creation fails
+                Task {
+                    for (idx, _) in limited.enumerated() {
+                        let filename = "spot_\(postId)_\(idx).jpg"
+                        let ref = storage.reference().child("spots/\(filename)")
+                        do {
+                            try await ref.delete()
+                            SpotLogger.debug("Cleaned up orphaned image", details: ["postId": postId, "index": idx])
+                        } catch {
+                            SpotLogger.warning("Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+                        }
+                    }
+                }
                 completion(.failure(error))
             }
         }
@@ -344,7 +357,7 @@ final class SpotUploader {
 
                 guard let imageUrl = url?.absoluteString else {
                     SpotLogger.error("Download URL nil after image upload", details: [:])
-                    completion(.failure(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "URL not found."])))
+                    completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.internalServerError, userInfo: [NSLocalizedDescriptionKey: "URL not found."])))
                     return
                 }
 
@@ -391,8 +404,8 @@ final class SpotUploader {
                         "createdAt": FieldValue.serverTimestamp()
                     ]
 
-                    // Denormalize author's current privacy snapshot
-                    Task {
+                    // Denormalize author's current privacy snapshot and create document atomically
+                    Task { @MainActor in
                         do {
                             let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
                             if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool {
@@ -402,13 +415,22 @@ final class SpotUploader {
                             SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
                         // Ensure the vibe tag exists globally (non-blocking)
-                        do { _ = try await VibeTagService.shared.ensureTagExists(name: vibeTag) } catch {}
+                        Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
                         do {
                             try await Firestore.firestore().collection("spots").document(postId).setData(data)
                             SpotLogger.info("Spot created", details: ["postId": postId])
                             completion(.success(()))
                         } catch {
-                            SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription])
+                            SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription, "postId": postId])
+                            // Attempt to clean up uploaded image if document creation fails
+                            Task {
+                                do {
+                                    try await storageRef.delete()
+                                    SpotLogger.info("Cleaned up orphaned image after document creation failure", details: ["postId": postId])
+                                } catch {
+                                    SpotLogger.warning("Failed to clean up orphaned image", details: ["postId": postId, "error": error.localizedDescription])
+                                }
+                            }
                             completion(.failure(error))
                         }
                     }

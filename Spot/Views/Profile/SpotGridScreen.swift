@@ -205,7 +205,7 @@ struct SpotGridScreen: View {
                         onSpotTapped: { spot in
                             SpotLogger.info("Open spot from grid", details: [
                                 "context": String(describing: context),
-                                "spotId": spot.id ?? "nil"
+                                "spotId": spot.safeId
                             ])
                             selectedSpot = spot
                         },

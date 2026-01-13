@@ -16,50 +16,87 @@ class AuthService {
 
     // MARK: - Sign Up with Email-in-Use Handling
 
-    func signUp(email: String, password: String) async throws -> AuthResult {
+    func signUp(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
         // Trim and lowercase email
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-        do {
-            let result = try await Auth.auth().createUser(withEmail: cleanEmail, password: password)
+        Auth.auth().createUser(withEmail: cleanEmail, password: password) { [weak self] result, error in
+            if let error = error {
+                let nsError = error as NSError
+                if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
+                    SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
+                    completion(.success(.emailInUse(.passwordAccount)))
+                } else {
+                    completion(.failure(error))
+                }
+                return
+            }
+
+            guard let authResult = result else {
+                let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing auth result"])
+                completion(.failure(error))
+                return
+            }
 
             // Create user document
-            try await createUserDocument(for: result.user)
-
-            return .success(result.user)
-        } catch let error as NSError {
-            if error.code == AuthErrorCode.emailAlreadyInUse.rawValue {
-                return try await handleEmailInUse(email: cleanEmail)
-            } else {
-                throw error
+            self?.createUserDocument(for: authResult.user) { result in
+                switch result {
+                case .success:
+                    completion(.success(.success(authResult.user)))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
         }
     }
 
-    private func handleEmailInUse(email: String) async throws -> AuthResult {
-        SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
-        return .emailInUse(.passwordAccount)
-    }
-
     // MARK: - Sign In
 
-    func signIn(email: String, password: String) async throws -> AuthResult {
+    func signIn(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-        do {
-            let result = try await Auth.auth().signIn(withEmail: cleanEmail, password: password)
-            return .success(result.user)
-        } catch {
-            throw error
+        Auth.auth().signIn(withEmail: cleanEmail, password: password) { result, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let authResult = result else {
+                let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing auth result"])
+                completion(.failure(error))
+                return
+            }
+
+            completion(.success(.success(authResult.user)))
         }
     }
 
     // MARK: - Password Reset
 
-    func resetPassword(email: String) async throws {
+    func resetPassword(email: String, completion: @escaping (Result<Void, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        try await Auth.auth().sendPasswordReset(withEmail: cleanEmail)
-        SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=reset")
+        Auth.auth().sendPasswordReset(withEmail: cleanEmail) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=reset")
+                completion(.success(()))
+            }
+        }
+    }
+
+    /// Async/await wrapper for password reset.
+    func resetPassword(email: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            resetPassword(email: email) { result in
+                switch result {
+                case .success:
+                    continuation.resume()
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     // MARK: - Sign Out
@@ -70,7 +107,7 @@ class AuthService {
 
     // MARK: - User Document Creation
 
-    private func createUserDocument(for user: FirebaseAuth.User) async throws {
+    private func createUserDocument(for user: FirebaseAuth.User, completion: @escaping (Result<Void, Error>) -> Void) {
         let userData: [String: Any] = [
             "email": user.email ?? "",
             "username": user.email?.components(separatedBy: "@").first ?? "",
@@ -85,10 +122,16 @@ class AuthService {
             "bookmarkedSpots": []
         ]
 
-        try await Firestore.firestore()
+        Firestore.firestore()
             .collection("users")
             .document(user.uid)
-            .setData(userData)
+            .setData(userData) { error in
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(()))
+                }
+            }
     }
 
     // MARK: - Legacy/Callback API (to satisfy existing callers)
@@ -251,19 +294,26 @@ class AuthService {
 
     #if DEBUG
     /// Delete Auth user by email (DEBUG only)
-    func deleteAuthUserByEmail(_ email: String) async throws {
+    func deleteAuthUserByEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).requested email=\(email)")
 
         // This would call a Cloud Function in production
-        // For now, just log the request
+        // For now, just log the request and complete successfully
         SpotLogger.warning("AuthService: deleteAuthUserByEmail called - implement Cloud Function")
 
         // In production, this would be:
         // let functions = Functions.functions()
         // let data = ["email": email]
-        // let result = try await functions.httpsCallable("deleteAuthUserByEmail").call(data)
+        // functions.httpsCallable("deleteAuthUserByEmail").call(data) { result, error in
+        //     if let error = error {
+        //         completion(.failure(error))
+        //     } else {
+        //         completion(.success(()))
+        //     }
+        // }
 
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).result=ok")
+        completion(.success(()))
     }
     #endif
 }

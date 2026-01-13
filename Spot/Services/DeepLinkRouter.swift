@@ -37,7 +37,7 @@ final class DeepLinkRouter {
         SpotLogger.debug("DeepLinkRouter: Host: \(url.host ?? "nil"), Path: \(url.path), PathComponents: \(url.pathComponents)")
 
         // Handle Universal Links (https://spotapp.online/s/:spotId, localhost for testing, or ngrok for DEBUG)
-        if url.scheme == "https" && (url.host == "spotapp.online" || url.host == "www.spotapp.online" || url.host == "localhost" || url.host == "454ab5d34eb4.ngrok-free.app") {
+        if url.scheme == "https" && URLConfiguration.shared.isAllowedUniversalLinkHost(url.host ?? "") {
             return parseUniversalLink(url)
         }
 

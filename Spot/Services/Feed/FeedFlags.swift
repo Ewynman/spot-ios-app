@@ -28,7 +28,7 @@ struct FeedDiagnostics {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
         SpotLogger.warning("Feed exclusion - reason: \(reason), source: \(source)", details: [
-            "spotId": spot.id ?? "nil",
+            "spotId": spot.safeId,
             "createdAt": spot.createdAt?.description ?? "nil",
             "likes": spot.likes ?? 0,
             "username": spot.username ?? "nil"

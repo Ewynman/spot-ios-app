@@ -86,37 +86,37 @@ class AuthViewModel: ObservableObject {
     }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        Task {
-            do {
-                let result = try await AuthService.shared.signUp(email: email, password: password)
+        AuthService.shared.signUp(email: email, password: password) { result in
+            DispatchQueue.main.async {
                 switch result {
-                case .success:
-                    await MainActor.run { completion(.success(())) }
-                case .emailInUse(let emailInUseType):
-                    await MainActor.run {
+                case .success(let authResult):
+                    switch authResult {
+                    case .success:
+                        completion(.success(()))
+                    case .emailInUse(let emailInUseType):
                         completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: emailInUseType.message])))
                     }
+                case .failure(let error):
+                    completion(.failure(error))
                 }
-            } catch {
-                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
 
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        Task {
-            do {
-                let result = try await AuthService.shared.signIn(email: email, password: password)
+        AuthService.shared.signIn(email: email, password: password) { (result: Result<AuthResult, Error>) in
+            DispatchQueue.main.async {
                 switch result {
-                case .success:
-                    await MainActor.run { completion(.success(())) }
-                case .emailInUse:
-                    await MainActor.run {
+                case .success(let authResult):
+                    switch authResult {
+                    case .success:
+                        completion(.success(()))
+                    case .emailInUse:
                         completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unexpected email in use during sign in"])))
                     }
+                case .failure(let error):
+                    completion(.failure(error))
                 }
-            } catch {
-                await MainActor.run { completion(.failure(error)) }
             }
         }
     }

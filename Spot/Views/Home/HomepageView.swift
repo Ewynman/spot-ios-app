@@ -369,7 +369,7 @@ struct FeedContentView: View {
                             }
                             .onAppear {
                                 if (spot.imageURL ?? "").isEmpty {
-                                    SpotLogger.error("Feed missing imageURL for spot id=\(spot.id ?? "nil") — rendering placeholder")
+                                    SpotLogger.error("Feed missing imageURL for spot id=\(spot.safeId) — rendering placeholder")
                                 }
                                 if !firstItemRecorded {
                                     let t = PerfMetrics.shared.measure("t_first_item") ?? 0

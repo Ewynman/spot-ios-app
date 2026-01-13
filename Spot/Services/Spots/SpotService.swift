@@ -115,38 +115,62 @@ final class SpotService {
 
     // MARK: - Fetch Single Spot
 
-    func fetchSpotById(_ spotId: String) async throws -> Spot? {
+    func fetchSpotById(_ spotId: String, completion: @escaping (Result<Spot?, Error>) -> Void) {
         SpotLogger.debug("Fetch spot by ID", details: ["spotId": spotId])
 
         let docRef = Firestore.firestore().collection("spots").document(spotId)
-        let document = try await docRef.getDocument()
+        docRef.getDocument { [weak self] document, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
 
-        guard document.exists else {
-            SpotLogger.warning("Spot not found", details: ["spotId": spotId])
-            return nil
-        }
+            guard let document = document, document.exists else {
+                SpotLogger.warning("Spot not found", details: ["spotId": spotId])
+                completion(.success(nil))
+                return
+            }
 
-        let data = document.data() ?? [:]
+            let data = document.data() ?? [:]
 
-        // Check if user is blocked
-        if let userId = data["userId"] as? String {
-            let isBlocked = await checkIfUserIsBlocked(userId)
-            if isBlocked {
-                SpotLogger.info("Spot owner blocked (returning nil)", details: ["spotId": spotId])
-                return nil
+            // Check if user is blocked
+            if let userId = data["userId"] as? String {
+                self?.checkIfUserIsBlocked(userId) { isBlocked in
+                    if isBlocked {
+                        SpotLogger.info("Spot owner blocked (returning nil)", details: ["spotId": spotId])
+                        completion(.success(nil))
+                        return
+                    }
+
+                    self?.processSpotData(data, spotId: spotId, completion: completion)
+                }
+            } else {
+                self?.processSpotData(data, spotId: spotId, completion: completion)
             }
         }
+    }
 
+    /// Async/await wrapper for existing callback API.
+    func fetchSpotById(_ spotId: String) async throws -> Spot? {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchSpotById(spotId) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    private func processSpotData(_ data: [String: Any], spotId: String, completion: @escaping (Result<Spot?, Error>) -> Void) {
         guard let userId = data["userId"] as? String,
               let imageURL = data["imageURL"] as? String,
               let latitude = data["latitude"] as? Double,
               let longitude = data["longitude"] as? Double else {
             SpotLogger.error("Invalid spot data", details: ["spotId": spotId])
-            return nil
+            completion(.success(nil))
+            return
         }
 
         let spot = Spot(
-            id: document.documentID,
+            id: spotId,
             userId: userId,
             username: data["username"] as? String ?? "Unknown",
             userProfileImageURL: data["userProfileImageURL"] as? String,
@@ -163,38 +187,66 @@ final class SpotService {
         )
 
         SpotLogger.info("Fetched spot", details: ["spotId": spotId])
-        return spot
+        completion(.success(spot))
     }
 
-    private func checkIfUserIsBlocked(_ userId: String) async -> Bool {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+    private func checkIfUserIsBlocked(_ userId: String, completion: @escaping (Bool) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(false)
+            return
+        }
 
-        do {
-            let userDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
-            let blockedUsers = userDoc.data()?["blockedUsers"] as? [String] ?? []
-            return blockedUsers.contains(userId)
-        } catch {
-            SpotLogger.error("Failed to check blocked users", details: ["error": error.localizedDescription])
-            return false
+        Firestore.firestore().collection("users").document(currentUserId).getDocument { document, error in
+            if let error = error {
+                SpotLogger.error("Failed to check blocked users", details: ["error": error.localizedDescription])
+                completion(false)
+                return
+            }
+
+            let blockedUsers = document?.data()?["blockedUsers"] as? [String] ?? []
+            completion(blockedUsers.contains(userId))
         }
     }
 
     // MARK: - Delete Spot
-    func deleteSpot(_ spot: Spot) async throws {
+    func deleteSpot(_ spot: Spot, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let id = spot.id else {
-            throw NSError(domain: "SpotService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing spot id; cannot delete"]) }
+            completion(.failure(NSError(domain: "SpotService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing spot id; cannot delete"])))
+            return
+        }
         let docRef = Firestore.firestore().collection("spots").document(id)
 
         // Delete Firestore document first
-        try await docRef.delete()
+        docRef.delete { error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
 
-        // Best-effort delete of main image
-        if let urlString = spot.imageURL {
-            deleteStorageIfPossible(fromDownloadURL: urlString)
+            // Best-effort delete of main image
+            if let urlString = spot.imageURL {
+                self.deleteStorageIfPossible(fromDownloadURL: urlString)
+            }
+            // Best-effort delete of thumbnail if distinct
+            if let thumbString = spot.thumbnailURL, thumbString != spot.imageURL {
+                self.deleteStorageIfPossible(fromDownloadURL: thumbString)
+            }
+
+            completion(.success(()))
         }
-        // Best-effort delete of thumbnail if distinct
-        if let thumbString = spot.thumbnailURL, thumbString != spot.imageURL {
-            deleteStorageIfPossible(fromDownloadURL: thumbString)
+    }
+
+    /// Async/await wrapper for existing callback API.
+    func deleteSpot(_ spot: Spot) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            deleteSpot(spot) { result in
+                switch result {
+                case .success:
+                    continuation.resume()
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 

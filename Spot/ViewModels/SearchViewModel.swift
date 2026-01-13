@@ -42,7 +42,8 @@ final class SearchViewModel: ObservableObject {
     // Advanced filters (Pro)
     @Published var allVibeTags: [String] = []
     @Published var selectedVibeFilters: Set<String> = []
-    private var gridVibeFilters: [String]?
+    @Published var gridVibeFilters: [String]? // Published so view can display active filters
+    private var gridLocationFilter: String? // Track location when filtering by vibes
 
     private let debouncer = Debouncer(interval: 0.3)
     private let service = SearchService.shared
@@ -73,11 +74,13 @@ final class SearchViewModel: ObservableObject {
             } catch { }
         }
     }
-
+    
     // MARK: Grid flows
     func openLocation(_ name: String) async {
         gridTitle = name
         gridIsVibe = false
+        gridLocationFilter = name // Store location for potential vibe filtering
+        gridVibeFilters = nil // Clear vibe filters when opening new location
         // Clear suggestions so only the grid is visible
         users = []
         locations = []
@@ -131,7 +134,10 @@ final class SearchViewModel: ObservableObject {
             while accumulated.count < 24 && attempts < 5 {
                 attempts += 1
                 let page: SearchPage<Spot>
-                if isVibe, let filters = gridVibeFilters, !filters.isEmpty {
+                // Check for location + vibe combination (Pro feature)
+                if let locationFilter = gridLocationFilter, let filters = gridVibeFilters, !filters.isEmpty {
+                    page = try await service.fetchSpotsByLocationAndVibes(locationFilter.lowercased(), vibeLowers: filters.map { $0.lowercased() }, last: nextCursor)
+                } else if isVibe, let filters = gridVibeFilters, !filters.isEmpty {
                     page = try await service.fetchSpotsByVibes(filters.map { $0.lowercased() }, last: nextCursor)
                 } else {
                     page = try await (isVibe ? service.fetchSpotsByVibe(lower, last: nextCursor) : service.fetchSpotsByLocation(lower, last: nextCursor))
@@ -162,13 +168,52 @@ final class SearchViewModel: ObservableObject {
 
     // MARK: Vibe tags source for filters
     func loadAllVibeTags() async {
-        let tags = await VibeTagService.shared.fetchAll().map { $0.name }
-        let unique = Array(Set(tags)).sorted { $0.lowercased() < $1.lowercased() }
-        allVibeTags = unique
+        // Fetch custom tags from database
+        let customTags = await VibeTagService.shared.fetchAll().map { $0.name }
+        
+        // Combine defaults + custom tags, remove duplicates, and sort
+        let allTags = Array(Set(Constants.VibeTags.defaultTags + customTags)).sorted { $0.lowercased() < $1.lowercased() }
+        allVibeTags = allTags
+        SpotLogger.info("Loaded all vibe tags for filters", details: ["defaultCount": Constants.VibeTags.defaultTags.count, "customCount": customTags.count, "total": allTags.count])
     }
 
     func applySelectedVibeFilters() async {
         let tags = Array(selectedVibeFilters)
-        await openVibeFilters(tags)
+        // If we have a location filter active, preserve it and filter by vibes within that location
+        if let locationFilter = gridLocationFilter, !tags.isEmpty {
+            gridVibeFilters = tags
+            gridSpots = []
+            lastGridDoc = nil
+            hasMoreGrid = true
+            SpotLogger.debug("Apply vibe filters to location", details: ["location": locationFilter, "vibes": tags])
+            await loadMoreGrid(isVibe: false) // Not a pure vibe grid, but uses location+vibe combo
+        } else if !tags.isEmpty {
+            await openVibeFilters(tags)
+        } else {
+            // No tags selected, clear filters
+            await clearFiltersAndReload()
+        }
+    }
+
+    func clearFiltersAndReload() async {
+        selectedVibeFilters.removeAll()
+        gridVibeFilters = nil
+        
+        // If we have a location filter active, reload without vibe filters
+        if let locationFilter = gridLocationFilter {
+            gridSpots = []
+            lastGridDoc = nil
+            hasMoreGrid = true
+            SpotLogger.debug("Clear vibe filters, reloading location", details: ["location": locationFilter])
+            await loadMoreGrid(isVibe: false)
+        } else if gridIsVibe, let title = gridTitle {
+            // If we're viewing a vibe grid, reload without multi-vibe filters
+            gridSpots = []
+            lastGridDoc = nil
+            hasMoreGrid = true
+            SpotLogger.debug("Clear filters, reloading vibe", details: ["vibe": title])
+            await loadMoreGrid(isVibe: true)
+        }
+        // Otherwise, grid will remain as-is (no filters were active)
     }
 }

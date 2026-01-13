@@ -34,6 +34,76 @@ enum Constants {
         static let authEmailInUse = "Auth.EmailInUse"
         static let authDeleteByEmail = "Auth.DeleteByEmail"
     }
+
+    enum VibeTags {
+        static let defaultTags: [String] = [
+            "Chill Spot",
+            "Hidden Gem",
+            "Scenic View",
+            "Romantic",
+            "Great For Photos",
+            "Family Friendly",
+            "Nature Escape",
+            "Foodie Heaven",
+            "Beach Day",
+            "Late Night",
+            "Historical",
+            "People Watching",
+            "Quiet Moment",
+            "Cozy Corner",
+            "Pet Friendly",
+            "Adventure",
+            "Waterfront",
+            "Study Spot"
+        ]
+    }
+
+    enum Layout {
+        enum Padding {
+            static let horizontal: CGFloat = 32
+            static let verticalSmall: CGFloat = 8
+            static let verticalMedium: CGFloat = 12
+            static let verticalLarge: CGFloat = 16
+            static let verticalExtraLarge: CGFloat = 24
+        }
+
+        enum Spacing {
+            static let small: CGFloat = 8
+            static let medium: CGFloat = 12
+            static let large: CGFloat = 16
+            static let extraLarge: CGFloat = 24
+        }
+
+        enum CornerRadius {
+            static let small: CGFloat = 10
+            static let medium: CGFloat = 12
+            static let large: CGFloat = 20
+        }
+    }
+
+    enum ValidationMessages {
+        static let vibeTooShort = "Please use at least 2 characters."
+        static let vibeTooLong = "Please keep it under 30 characters."
+        static let vibeBlocked = "That tag isn't allowed."
+    }
+
+    enum Limits {
+        static let vibeTagMaxLength = 30
+        static let vibeTagMinLength = 2
+    }
+
+    enum HTTPErrorCode {
+        static let unauthorized = 401
+        static let badRequest = 400
+        static let internalServerError = 500
+    }
+
+    enum Pagination {
+        static let defaultPageSize = 24
+        static let largePageSize = 100
+        static let extraLargePageSize = 200
+        static let maxPageSize = 500
+    }
 }
 
 extension Color {

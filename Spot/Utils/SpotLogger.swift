@@ -139,7 +139,7 @@ final class SpotLogger {
 
     private static func merge(_ base: [String: Any], with spot: Spot) -> [String: Any] {
         var d = base
-        d["spotId"] = spot.id ?? "nil"
+        d["spotId"] = spot.safeId
         d["userId"] = spot.userId ?? "nil"
         d["username"] = spot.username ?? "nil"
         d["likes"] = spot.likes ?? 0

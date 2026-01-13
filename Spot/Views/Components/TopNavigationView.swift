@@ -87,37 +87,30 @@ struct TopNavigationView: View {
 }
 
 // MARK: - Previews
-struct TopNavigationView_Previews: PreviewProvider {
-    static var previews: some View {
-        Group {
-            // Homepage Style
-            TopNavigationView(
-                title: "SPOT",
-                rightButton: .plus,
-                showUploadView: .constant(false)
-            )
-            .previewDisplayName("Homepage")
+#Preview("Homepage") {
+    TopNavigationView(
+        title: "SPOT",
+        rightButton: .plus,
+        showUploadView: .constant(false)
+    )
+}
 
-            // With Back Button
-            TopNavigationView(
-                title: "Profile",
-                showBackButton: true
-            )
-            .previewDisplayName("With Back")
+#Preview("With Back") {
+    TopNavigationView(
+        title: "Profile",
+        showBackButton: true
+    )
+}
 
-            // With Settings
-            TopNavigationView(
-                title: "Profile",
-                rightButton: .settings
-            )
-            .previewDisplayName("With Settings")
+#Preview("With Settings") {
+    TopNavigationView(
+        title: "Profile",
+        rightButton: .settings
+    )
+}
 
-            // Basic
-            TopNavigationView(
-                title: "Profile"
-            )
-            .previewDisplayName("Basic")
-        }
-        .previewLayout(.sizeThatFits)
-    }
+#Preview("Basic") {
+    TopNavigationView(
+        title: "Profile"
+    )
 }

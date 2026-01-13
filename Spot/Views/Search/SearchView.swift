@@ -47,14 +47,23 @@ struct SearchView: View {
                         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { vm.segment = seg } }
                     }
                     Spacer()
-                    if vm.segment == .vibes {
+                    // Show filter button for Pro users: on vibes tab OR when viewing a location grid
+                    if authVM.isPro && (vm.segment == .vibes || (vm.gridTitle != nil && !vm.gridIsVibe)) {
                         Button {
-                            if authVM.isPro {
-                                showFilters = true
-                                Task { await vm.loadAllVibeTags() }
-                            } else {
-                                NotificationCenter.default.post(name: .showPaywall, object: nil)
+                            showFilters = true
+                            Task { await vm.loadAllVibeTags() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                Text("Filter")
                             }
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    } else if !authVM.isPro && vm.segment == .vibes {
+                        Button {
+                            NotificationCenter.default.post(name: .showPaywall, object: nil)
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "line.3.horizontal.decrease.circle")
@@ -138,11 +147,22 @@ struct SearchView: View {
                         // Grid when a location or vibe chosen
                         if let title = vm.gridTitle {
                             Divider().padding(.horizontal, 16)
-                            HStack {
+                            HStack(spacing: 8) {
                                 if vm.gridIsVibe {
                                     VibeChip(text: title.capitalized)
                                 } else {
                                     Text(title.capitalized).font(FontManager.sectionHeader())
+                                }
+                                // Show active vibe filters if any
+                                if let filters = vm.gridVibeFilters, !filters.isEmpty {
+                                    ForEach(filters.prefix(3), id: \.self) { tag in
+                                        VibeChip(text: tag.capitalized)
+                                    }
+                                    if filters.count > 3 {
+                                        Text("+\(filters.count - 3)")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                    }
                                 }
                                 Spacer()
                             }
@@ -198,10 +218,16 @@ extension SearchView {
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
                 Spacer()
-                Button("Clear") { vm.selectedVibeFilters.removeAll() }
-                    .buttonStyle(PlainButtonStyle())
-                    .font(FontManager.primaryText())
-                    .foregroundColor(Constants.Colors.primary)
+                Button("Clear") {
+                    vm.selectedVibeFilters.removeAll()
+                    // Clear active filters and reload grid without filters
+                    Task {
+                        await vm.clearFiltersAndReload()
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .font(FontManager.primaryText())
+                .foregroundColor(Constants.Colors.primary)
             }
             .padding(.horizontal, 16)
 
@@ -237,7 +263,13 @@ extension SearchView {
 
             Button {
                 showFilters = false
-                Task { await vm.applySelectedVibeFilters() }
+                Task {
+                    if vm.selectedVibeFilters.isEmpty {
+                        await vm.clearFiltersAndReload()
+                    } else {
+                        await vm.applySelectedVibeFilters()
+                    }
+                }
             } label: {
                 Text("Apply")
                     .font(FontManager.buttonText())
