@@ -139,7 +139,10 @@ struct SpotCard: View {
             ReportSheet(spot: spot)
         }
         .sheet(isPresented: $showCollectionPicker) {
-            CollectionPickerSheet(spotId: spot.safeId) { showCollectionPicker = false }
+            CollectionPickerSheet(spotId: spot.safeId, onDone: { showCollectionPicker = false }) {
+                // Mark as saved when user successfully saves to collection
+                isSaved = true
+            }
         }
         .sheet(isPresented: $showEditSheet) {
             EditSpotView(spot: spot) { _ in }
@@ -151,22 +154,26 @@ struct SpotCard: View {
     @ViewBuilder private var header: some View {
         HStack {
             if let backAction {
-                Button { backAction() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Constants.Colors.primary)
-                        Text("Back to all spots")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                    }
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Constants.Colors.primary)
+                    Text("Back to profile")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(Constants.Colors.primary)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    SpotLogger.debug("Back button tapped", details: ["spotId": spot.safeId, "source": source])
+                    backAction()
+                }
+                .zIndex(10)
             } else if showUserInfo, let userId = spot.userId {
-                NavigationLink {
-                    ProfileView(userId: userId, fromNavigationPush: true)
-                        .navigationBarBackButtonHidden(true)
-                } label: {
+                NavigationLink(value: Route.profile(userId)) {
                     HStack(spacing: 8) {
                         if let urlString = spot.userProfileImageURL,
                            let url = URL(string: urlString) {
@@ -481,16 +488,21 @@ struct SpotCard: View {
                         NotificationCenter.default.post(name: .showPaywall, object: nil)
                         return
                     }
-                    isSaved.toggle()
-                    isLoadingSave = true
-                    if isSaved {
-                        authVM.bookmarkSpot(spotId)
-                        isLoadingSave = false
-                        // Pro: immediately allow adding to a collection (Instagram-style)
-                        if authVM.isPro { showCollectionPicker = true }
+                    // For Pro users: Save OR Save to Collection (not both)
+                    if authVM.isPro && !isSaved {
+                        // Show collection picker instead of just bookmarking
+                        showCollectionPicker = true
                     } else {
-                        authVM.unbookmarkSpot(spotId)
-                        isLoadingSave = false
+                        // Regular save/unsave
+                        isSaved.toggle()
+                        isLoadingSave = true
+                        if isSaved {
+                            authVM.bookmarkSpot(spotId)
+                            isLoadingSave = false
+                        } else {
+                            authVM.unbookmarkSpot(spotId)
+                            isLoadingSave = false
+                        }
                     }
                 } label: {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -692,6 +704,7 @@ struct SpotCard: View {
     private struct CollectionPickerSheet: View {
         let spotId: String
         var onDone: () -> Void
+        var onSave: (() -> Void)? = nil
         @State private var collections: [BookmarkCollection] = []
         @State private var previews: [String: [String]] = [:]
         @State private var newName: String = ""
@@ -819,7 +832,17 @@ struct SpotCard: View {
             let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
             do {
-                _ = try await BookmarksCollectionsService.shared.createCollection(name: name)
+                let collectionId = try await BookmarksCollectionsService.shared.createCollection(name: name)
+                // Add the spot to the new collection
+                try await BookmarksCollectionsService.shared.addSpot(spotId, to: collectionId)
+                // Also add to bookmarks so it shows up in bookmarks view
+                await withCheckedContinuation { continuation in
+                    UserSpotService.shared.bookmarkSpot(spotId: spotId) { result in
+                        continuation.resume()
+                    }
+                }
+                // Notify parent that spot was saved
+                onSave?()
                 newName = ""
                 showCreateModal = false
                 await load()
@@ -830,6 +853,16 @@ struct SpotCard: View {
             guard !spotId.isEmpty else { return }
             do {
                 try await BookmarksCollectionsService.shared.addSpot(spotId, to: collectionId)
+                // Also add to bookmarks so it shows up in bookmarks view
+                await withCheckedContinuation { continuation in
+                    UserSpotService.shared.bookmarkSpot(spotId: spotId) { result in
+                        continuation.resume()
+                    }
+                }
+                // Notify parent that spot was saved
+                onSave?()
+                // Refresh collections to update counts and previews
+                await load()
                 onDone()
             } catch { }
         }
@@ -871,6 +904,7 @@ struct SpotCard: View {
 
                     HStack(spacing: 8) {
                         TextField("Collection Name", text: $newName)
+                            .foregroundColor(Constants.Colors.primary)
                             .padding(10)
                             .background(Color.white)
                             .cornerRadius(10)

@@ -49,7 +49,26 @@ struct ProfileView: View {
                     // MARK: — Top Bar (left-aligned title)
                     HStack(spacing: 0) {
                         let isViewingOther = (userId != nil) && (userId != authVM.userId)
-                        if fromNavigationPush || isViewingOther {
+                        if selectedSpot != nil {
+                            // Show back button when spot is expanded
+                            Button {
+                                withAnimation { self.selectedSpot = nil }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(Constants.Colors.primary)
+                                    Text("Back to profile")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        } else if fromNavigationPush || isViewingOther {
                             Button {
                                 dismiss()
                             } label: {
@@ -61,13 +80,15 @@ struct ProfileView: View {
                             .padding(.trailing, 8)
                         }
 
-                        Text("Spot")
-                            .font(FontManager.logoTitle())
-                            .foregroundColor(Constants.Colors.primary)
+                        if selectedSpot == nil {
+                            Text("Spot")
+                                .font(FontManager.logoTitle())
+                                .foregroundColor(Constants.Colors.primary)
+                        }
 
                         Spacer()
 
-                        if userId == nil || userId == authVM.userId {
+                        if selectedSpot == nil && (userId == nil || userId == authVM.userId) {
                             Button {
                                 withAnimation { showMenu.toggle() }
                             } label: {
@@ -103,7 +124,7 @@ struct ProfileView: View {
                     } else {
                         // MARK: — Profile Header + Tabs
                         VStack(spacing: 16) {
-                            if !(selectedTab == "Map" && isMapExpanded) {
+                            if selectedSpot == nil && !(selectedTab == "Map" && isMapExpanded) {
                             VStack(spacing: 12) {
                                 if let url = profileImageURL {
                                     AsyncImage(url: URL(string: url)) { img in
@@ -127,7 +148,7 @@ struct ProfileView: View {
                                     Text(username ?? "")
                                         .font(FontManager.sectionHeader())
                                         .foregroundColor(.black)
-                                    if isProProfile {
+                                    if (userId == nil || userId == authVM.userId) ? authVM.isPro : isProProfile {
                                         Text("Pro")
                                             .font(.caption)
                                             .foregroundColor(Constants.Colors.buttonText)
@@ -211,7 +232,10 @@ struct ProfileView: View {
                                         Button {
                                             UserSpotService.shared.follow(userId: viewedUserId) { result in
                                                 DispatchQueue.main.async {
-                                                    if case .success = result { }
+                                                    if case .success = result {
+                                                        self.isFollowingUser = true
+                                                        self.loadUser(forceReload: true)
+                                                    }
                                                 }
                                             }
                                         } label: {
@@ -248,8 +272,8 @@ struct ProfileView: View {
                                         showUserInfo: false,
                                         userId: userId,
                                         onDelete: { pendingDeleteSpot = selectedSpot; showDeleteConfirm = true },
-                                        source: "ProfileInline",
-                                        backAction: { withAnimation { self.selectedSpot = nil } }
+                                        source: "ProfileInline"
+                                        // backAction removed - now handled by ProfileView top bar
                                     )
                                     .transition(.opacity)
                                     .zIndex(1)
@@ -423,6 +447,12 @@ struct ProfileView: View {
                     if let spot = pendingDeleteSpot { Task { await deleteSpotFromProfile(spot) } }
                 }
                 Button("Cancel", role: .cancel) { pendingDeleteSpot = nil }
+            }
+        }
+        .onChange(of: authVM.isPro) { _, newValue in
+            // Update isProProfile when viewing own profile
+            if userId == nil || userId == authVM.userId {
+                isProProfile = newValue
             }
         }
     }

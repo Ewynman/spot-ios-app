@@ -20,6 +20,11 @@ Carthage/
 # Firebase
 GoogleService-Info.plist
 
+# Configuration files (may contain sensitive data)
+Spot/*.plist
+# But keep the main Info.plist
+!Spot/Info.plist
+
 # User data
 *.xcworkspace
 *.xcodeproj/project.xcworkspace/

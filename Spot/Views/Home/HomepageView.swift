@@ -3,6 +3,10 @@ import MapKit
 import FirebaseFirestore // Added for DocumentSnapshot
 import FirebaseAuth
 
+enum Route: Hashable {
+    case profile(String)
+}
+
 class FeedViewModel: ObservableObject {
     @Published var spots: [Spot] = []
     @Published var mapSpots: [Spot] = []
@@ -38,7 +42,6 @@ class FeedViewModel: ObservableObject {
         // Start new loading task
         loadTask = Task {
             await MainActor.run { self.isLoading = true }
-            let beforeCount = repo.spots.count
             await repo.loadMore()
             await MainActor.run {
                 let new = repo.spots
@@ -55,25 +58,12 @@ class FeedViewModel: ObservableObject {
 
         // Start new refresh task
         loadTask = Task {
-            do {
-                await MainActor.run {
-                    isLoading = true
-                }
-                let spots = try await FeedCache.shared.refreshFeed()
-
-                await MainActor.run {
-                    self.spots = spots
-                    self.mapSpots = spots
-                    self.hasMore = spots.count >= 24
-                    self.isLoading = false
-                }
-            } catch {
-                SpotLogger.error("Feed refresh failed", details: [
-                    "error": error.localizedDescription
-                ])
-                await MainActor.run {
-                    self.isLoading = false
-                }
+            await MainActor.run { self.isLoading = true }
+            await repo.loadInitial()
+            await MainActor.run {
+                self.spots = repo.spots
+                self.hasMore = repo.moreAvailable
+                self.isLoading = false
             }
         }
     }
@@ -243,6 +233,13 @@ struct HomepageView: View {
                 PostFlowView(onPostSuccess: {
                     feedVM.refreshFeed()
                 })
+            }
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .profile(let userId):
+                    ProfileView(userId: userId, fromNavigationPush: true)
+                        .navigationBarBackButtonHidden(true)
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }

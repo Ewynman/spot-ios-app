@@ -26,6 +26,7 @@ struct CollectionsView: View {
 
             HStack(spacing: 8) {
                 TextField("New collection name", text: $newName)
+                    .foregroundColor(Constants.Colors.primary)
                     .padding(10)
                     .background(Color.white)
                     .cornerRadius(10)
