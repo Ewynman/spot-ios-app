@@ -27,7 +27,6 @@ struct SignupView: View {
     @State private var showConfirmEmail = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var showPaywall: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -168,15 +167,6 @@ struct SignupView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 32)
 
-                    // Compare Free vs Pro
-                    Button(action: { showPaywall = true }) {
-                        Text("Compare Free vs Pro")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .underline()
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
                     Button(action: {
                         guard agreedToTerms else {
                             errorMessage = "Please agree to the Terms of Service."
@@ -271,9 +261,6 @@ struct SignupView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView().environmentObject(authVM)
-        }
     }
 
     private func validateAndSignUp() {

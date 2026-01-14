@@ -182,14 +182,23 @@ struct SettingsView: View {
                                     settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                
+                                Button {
+                                    // Open website for subscription management
+                                    SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
+                                } label: {
+                                    settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            } else {
+                                Button {
+                                    // Open website for subscription signup
+                                    SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
+                                } label: {
+                                    settingsRow(title: "Go Pro", icon: "star.fill")
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
-                            
-                            Button {
-                                Task { try? await SubscriptionManager.shared.manageSubscriptions() }
-                            } label: {
-                                settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
-                            }
-                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     

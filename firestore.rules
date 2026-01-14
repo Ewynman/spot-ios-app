@@ -96,5 +96,26 @@ service cloud.firestore {
       // Only system operations should modify followers (managed server-side)
       allow write: if false; // Use Cloud Functions for follower management
     }
+
+    // ============================
+    // Subscription Sessions - SECURE TOKENS
+    // ============================
+    match /subscriptionSessions/{sessionId} {
+      // No client-side reads allowed (web backend uses Admin SDK)
+      allow read: if false;
+      
+      // Authenticated users can create session tokens for themselves
+      allow create: if request.auth != null && 
+                     request.resource.data.userId == request.auth.uid &&
+                     request.resource.data.keys().hasAll(['userId', 'email', 'username', 'returnUrl', 'createdAt', 'expiresAt']);
+      
+      // Users can delete their own session tokens (for cleanup)
+      // Web backend will also delete via Admin SDK
+      allow delete: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
+      
+      // No updates allowed (tokens are immutable)
+      allow update: if false;
+    }
   }
 }
