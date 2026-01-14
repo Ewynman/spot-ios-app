@@ -18,9 +18,7 @@ struct SpotApp: App {
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    init() {
-        // Firebase initialization moved to AppDelegate for consistency
-    }
+    init() {}
 
     var body: some Scene {
         WindowGroup {

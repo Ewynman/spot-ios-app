@@ -19,7 +19,7 @@ final class SubscriptionManager: ObservableObject {
         if let p = cachedProduct { return p }
         let products = try await Product.products(for: productIds)
         guard let product = products.first else {
-            SpotLogger.warning("StoreKit loadProduct: No matching product found", details: ["ids": productIds])
+            SpotLogger.error("StoreKit: No matching product found", details: ["ids": productIds])
             throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "No products found. Select a .storekit file in Scheme > Run > Options or finish subscription setup in App Store Connect."])
         }
         cachedProduct = product

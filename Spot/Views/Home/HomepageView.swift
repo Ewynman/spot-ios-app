@@ -3,10 +3,6 @@ import MapKit
 import FirebaseFirestore // Added for DocumentSnapshot
 import FirebaseAuth
 
-enum Route: Hashable {
-    case profile(String)
-}
-
 class FeedViewModel: ObservableObject {
     @Published var spots: [Spot] = []
     @Published var mapSpots: [Spot] = []
@@ -52,7 +48,7 @@ class FeedViewModel: ObservableObject {
         }
     }
 
-    func refreshFeed() {
+    func refreshFeed() async {
         // Cancel any existing task
         loadTask?.cancel()
 
@@ -66,6 +62,18 @@ class FeedViewModel: ObservableObject {
                 self.isLoading = false
             }
         }
+        // Wait for the task to complete
+        await loadTask?.value
+    }
+    
+    // MARK: - Insert newly posted spot
+    @MainActor
+    func insertNewSpot(_ spot: Spot) {
+        // Remove if already exists (shouldn't happen, but safety check)
+        spots.removeAll { $0.id == spot.id }
+        // Insert at the beginning
+        spots.insert(spot, at: 0)
+        SpotLogger.info("Inserted new spot at top of feed", details: ["spotId": spot.safeId])
     }
 
     func loadMapSpots(forceRefresh: Bool = false) {
@@ -177,7 +185,7 @@ struct HomepageView: View {
                                     mapSpots: feedVM.mapSpots,
                                     selectedTab: feedViewType,
                                     onScrolledToBottom: { feedVM.loadMoreSpots() },
-                                    onRefresh: { feedVM.refreshFeed() },
+                                    onRefresh: { await feedVM.refreshFeed() },
                                  userId: authVM.userId,
                                  onDeleteSpot: { spot in
                                      Task { await feedVM.delete(spot: spot) }
@@ -230,8 +238,9 @@ struct HomepageView: View {
                 })
             }
             .navigationDestination(isPresented: $showUploadView) {
-                PostFlowView(onPostSuccess: {
-                    feedVM.refreshFeed()
+                PostFlowView(onPostSuccess: { spot in
+                    // Insert newly posted spot at the top of feed
+                    feedVM.insertNewSpot(spot)
                 })
             }
             .navigationDestination(for: Route.self) { route in
@@ -304,7 +313,7 @@ struct FeedContentView: View {
     let mapSpots: [Spot]
     let selectedTab: String
     let onScrolledToBottom: () -> Void
-    let onRefresh: () -> Void
+    let onRefresh: () async -> Void
     let userId: String?
     let onDeleteSpot: (Spot) -> Void
     @State private var firstItemRecorded = false
@@ -338,7 +347,7 @@ struct FeedContentView: View {
                 ScrollView {
                     RefreshControl(coordinateSpace: .named("RefreshControl")) {
                         failedImageSpotIds.removeAll()
-                        onRefresh()
+                        Task { await onRefresh() }
                     }
 
                     LazyVStack(spacing: 0) {
@@ -394,7 +403,7 @@ struct FeedContentView: View {
                 }
                 .refreshable {
                     failedImageSpotIds.removeAll()
-                    onRefresh()
+                    await onRefresh()
                 }
                 .coordinateSpace(name: "RefreshControl")
                 .background(Color(hex: "F5F3EF"))

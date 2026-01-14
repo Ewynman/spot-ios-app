@@ -101,7 +101,7 @@ struct ConfirmEmailView: View {
                 let ok = await authVM.checkVerificationStatus()
                 if ok { await proceed() }
             }
-            if elapsed >= max { SpotLogger.warning("Auth.EmailVerify.Timeout"); timer.invalidate() }
+            if elapsed >= max { SpotLogger.debug(.auth, "Email verification timeout"); timer.invalidate() }
         }
     }
 

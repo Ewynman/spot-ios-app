@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PaywallView: View {
     @EnvironmentObject var authVM: AuthViewModel
-    @StateObject private var sub = SubscriptionManager.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -36,30 +35,14 @@ struct PaywallView: View {
 
                 Spacer()
 
-                Button(action: purchase) {
-                    Text(sub.isPurchasing ? "Purchasing..." : "Go Pro - $9.99 / year")
+                Button(action: subscribe) {
+                    Text("Go Pro - $9.99 / year")
                         .font(FontManager.buttonText())
                         .foregroundColor(Constants.Colors.buttonText)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Constants.Colors.primary)
                         .cornerRadius(20)
-                }
-                .disabled(sub.isPurchasing)
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: restore) {
-                    Text("Restore Purchases")
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.bottom, 12)
-
-                Button(action: manage) {
-                    Text("Manage Subscription")
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.bottom, 8)
@@ -79,35 +62,10 @@ struct PaywallView: View {
         }
     }
 
-    private func purchase() {
-        Task { @MainActor in
-            do {
-                try await sub.purchasePro()
-                await authVM.setProActive(true)
-                dismiss()
-            } catch {
-                SpotLogger.error("Purchase failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func restore() {
-        Task { @MainActor in
-            do {
-                try await sub.restorePurchases()
-                let entitled = await sub.refreshEntitlement()
-                if entitled { await authVM.setProActive(true) }
-                dismiss()
-            } catch {
-                SpotLogger.error("Restore failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func manage() {
-        Task { @MainActor in
-            do { try await sub.manageSubscriptions() } catch { SpotLogger.error("Manage subs failed: \(error.localizedDescription)") }
-        }
+    private func subscribe() {
+        SpotLogger.info("PaywallView: User clicked subscribe, redirecting to website")
+        SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
+        dismiss()
     }
 }
 

@@ -134,16 +134,16 @@ actor AuthorPrivacyCache {
             guard let author = s.userId else { continue }
             if let v = viewerId, v == author { filtered.append(s); continue }
             if cachedBlockedUsers.contains(author) {
-                SpotLogger.info("Privacy.Drop spotId=\(s.id ?? "nil") authorId=\(author) reason=blocked_user")
+                SpotLogger.debug(.privacy, "Privacy drop - blocked user", details: ["spotId": s.id ?? "nil", "authorId": author])
                 continue
             }
             if let allowed = isAllowed(authorId: author) {
                 if allowed { filtered.append(s) } else {
-                    SpotLogger.info("Privacy.Drop spotId=\(s.id ?? "nil") authorId=\(author) reason=private_not_followed")
+                    SpotLogger.debug(.privacy, "Privacy drop - private not followed", details: ["spotId": s.id ?? "nil", "authorId": author])
                 }
             } else {
                 // Unknown author after warm should be rare; default-hide
-                SpotLogger.info("Privacy.Drop spotId=\(s.id ?? "nil") authorId=\(author) reason=unknown_author")
+                SpotLogger.debug(.privacy, "Privacy drop - unknown author", details: ["spotId": s.id ?? "nil", "authorId": author])
             }
         }
         return filtered

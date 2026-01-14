@@ -25,7 +25,7 @@ class ImageService {
 
         // Check if URL has failed before
         if failedURLs.contains(urlString) {
-            SpotLogger.warning("ImageService: Skipping previously failed URL: \(urlString)")
+            SpotLogger.debug(.image, "Skipping previously failed URL", details: ["url": urlString])
             return nil
         }
 
@@ -54,7 +54,7 @@ class ImageService {
 
             } catch {
                 let errorCode = (error as? URLError)?.code.rawValue ?? -1
-                SpotLogger.warning("ImageService: Load failed for spot \(spotId ?? "unknown") urlHost=\(url.host ?? "unknown") code=\(errorCode) attempt=\(attempt)")
+                SpotLogger.debug(.image, "Image load failed", details: ["spotId": spotId ?? "unknown", "urlHost": url.host ?? "unknown", "code": errorCode, "attempt": attempt])
 
                 if attempt == maxRetries {
                     // Final failure - mark URL as failed
@@ -114,7 +114,7 @@ class ImageService {
 
         // For now, return nil to indicate conversion needed
         // In production, you'd implement Firebase Storage download URL conversion
-        SpotLogger.warning("ImageService: GS URL conversion needed: \(gsUrl)")
+        SpotLogger.debug(.image, "GS URL conversion needed", details: ["gsUrl": gsUrl])
         return nil
     }
 }

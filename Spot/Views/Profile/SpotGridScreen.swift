@@ -112,10 +112,10 @@ struct SpotGridScreen: View {
             HStack {
                 Button {
                     if selectedSpot != nil {
-                        SpotLogger.info("Header back clears inline spot", details: ["context": String(describing: context)])
+                        SpotLogger.debug(.navigation, "Header back clears inline spot", details: ["context": String(describing: context)])
                         withAnimation { selectedSpot = nil }
                     } else {
-                        SpotLogger.info("Back button tapped - dismiss", details: ["context": String(describing: context)])
+                        SpotLogger.debug(.navigation, "Back button tapped - dismiss", details: ["context": String(describing: context)])
                         dismiss()
                     }
                 } label: {
@@ -189,25 +189,31 @@ struct SpotGridScreen: View {
                 emptyStateView
             } else {
                 if let selectedSpot {
-                    SpotCard(
-                        spot: selectedSpot,
-                        showUserInfo: false,
-                        userId: userId,
-                        onDelete: nil,
-                        source: "\(context)",
-                        backAction: { withAnimation { self.selectedSpot = nil } }
-                    )
+                    // Show expanded spot - header stays visible
+                    ScrollView {
+                        SpotCard(
+                            spot: selectedSpot,
+                            showUserInfo: false,
+                            userId: userId,
+                            onDelete: nil,
+                            source: "\(context)",
+                            backAction: nil // Don't show back button, header handles it
+                        )
+                        .padding(.top, 8)
+                    }
                     .transition(.opacity)
                 } else {
                     // Grid content
                     SpotsGridView(
                         spots: spots,
                         onSpotTapped: { spot in
-                            SpotLogger.info("Open spot from grid", details: [
+                            SpotLogger.debug(.ui, "Open spot from grid", details: [
                                 "context": String(describing: context),
                                 "spotId": spot.safeId
                             ])
-                            selectedSpot = spot
+                            withAnimation {
+                                selectedSpot = spot
+                            }
                         },
                         columns: 3
                     )
@@ -221,7 +227,7 @@ struct SpotGridScreen: View {
         .background(Color(hex: "F5F3EF"))
         .navigationBarBackButtonHidden(true)
         .onAppear {
-            SpotLogger.info("SpotGridScreen onAppear", details: ["context": String(describing: context)])
+            SpotLogger.debug(.ui, "SpotGridScreen onAppear", details: ["context": String(describing: context)])
 
             Task {
                 await loadData()
@@ -265,7 +271,7 @@ struct SpotGridScreen: View {
     }
 
     private func loadData() async {
-        SpotLogger.info("SpotGridScreen load data", details: ["context": String(describing: context)])
+        SpotLogger.debug(.feed, "SpotGridScreen load data", details: ["context": String(describing: context)])
 
         do {
             switch context {
@@ -274,7 +280,7 @@ struct SpotGridScreen: View {
             case .bookmarks:
                 await bookmarksViewModel.loadInitial()
             }
-            SpotLogger.info("SpotGridScreen data loaded", details: ["context": String(describing: context)])
+            SpotLogger.debug(.feed, "SpotGridScreen data loaded", details: ["context": String(describing: context)])
         }
     }
 }

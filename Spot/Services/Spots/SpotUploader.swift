@@ -280,7 +280,7 @@ final class SpotUploader {
                 let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
                 if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool { data["authorIsPrivate"] = isPrivate }
             } catch {
-                SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
+                SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
             }
 
             // Ensure the vibe tag exists globally (non-blocking)
@@ -301,7 +301,7 @@ final class SpotUploader {
                             try await ref.delete()
                             SpotLogger.debug("Cleaned up orphaned image", details: ["postId": postId, "index": idx])
                         } catch {
-                            SpotLogger.warning("Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+                            SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
                         }
                     }
                 }
@@ -412,7 +412,7 @@ final class SpotUploader {
                                 data["authorIsPrivate"] = isPrivate
                             }
                         } catch {
-                            SpotLogger.warning("Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
+                            SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
                         // Ensure the vibe tag exists globally (non-blocking)
                         Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
@@ -428,7 +428,7 @@ final class SpotUploader {
                                     try await storageRef.delete()
                                     SpotLogger.info("Cleaned up orphaned image after document creation failure", details: ["postId": postId])
                                 } catch {
-                                    SpotLogger.warning("Failed to clean up orphaned image", details: ["postId": postId, "error": error.localizedDescription])
+                                    SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "error": error.localizedDescription])
                                 }
                             }
                             completion(.failure(error))

@@ -116,7 +116,7 @@ class TokenService {
         // Add new item
         let status = SecItemAdd(query as CFDictionary, nil)
         if status != errSecSuccess {
-            SpotLogger.warning("TokenService: Failed to save to keychain for key \(key), status: \(status)")
+            SpotLogger.error("Failed to save to keychain", details: ["key": key, "status": status])
         }
     }
 

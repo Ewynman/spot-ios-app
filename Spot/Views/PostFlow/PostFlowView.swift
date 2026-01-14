@@ -17,7 +17,7 @@ struct PostFlowView: View {
     @State private var toastIsError = false
     @State private var showSuccessBanner = false
 
-    var onPostSuccess: (() -> Void)?
+    var onPostSuccess: ((Spot) -> Void)?
 
     private let totalSteps = 3
 
@@ -225,7 +225,7 @@ struct PostFlowView: View {
                 if await self.evaluateModeration(doc: latest) { return }
                 try await Task.sleep(nanoseconds: 1_000_000_000) // 1s
             }
-            SpotLogger.warning("Moderation.Check.Timeout spotId=\(doc.documentID)")
+            SpotLogger.error("Moderation check timeout", details: ["spotId": doc.documentID])
             await MainActor.run {
                 self.moderationMessage = "We couldn’t verify your image yet. Please retry.This is day zero of making the best new social media app and youre coming along for the eride this is anoytjer angle even though you dont get to see my screen and now I have my third angle ho[wejfijwhefowenfiuwhc0ijckjwnhcoijwdlnweoim"
                 self.showToastWith(message: self.moderationMessage ?? "", isError: true)
@@ -247,18 +247,33 @@ struct PostFlowView: View {
             let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
             if ok {
                 SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
-                await MainActor.run {
-                    self.showSuccessBanner = true
-                    self.onPostSuccess?()
-                    self.isPosting = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        withAnimation { self.showSuccessBanner = false }
-                        self.dismiss()
+                // Convert document to Spot and pass to callback
+                if var spot = try? doc.data(as: Spot.self) {
+                    spot.id = doc.documentID
+                    await MainActor.run {
+                        self.showSuccessBanner = true
+                        self.onPostSuccess?(spot)
+                        self.isPosting = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            withAnimation { self.showSuccessBanner = false }
+                            self.dismiss()
+                        }
+                    }
+                } else {
+                    // Fallback if conversion fails
+                    await MainActor.run {
+                        self.showSuccessBanner = true
+                        self.onPostSuccess?(Spot(id: doc.documentID))
+                        self.isPosting = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            withAnimation { self.showSuccessBanner = false }
+                            self.dismiss()
+                        }
                     }
                 }
                 return true
             } else {
-                SpotLogger.warning("Post.Publish.Blocked reason=\(reason ?? "over_threshold")")
+                SpotLogger.error("Post blocked by moderation", details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
                 await MainActor.run {
                     self.moderationMessage = "This photo violates our guidelines and can’t be posted."
                     self.showToastWith(message: self.moderationMessage ?? "", isError: true)
@@ -267,7 +282,7 @@ struct PostFlowView: View {
                 return true
             }
         } else if status == "rejected" {
-            SpotLogger.warning("Moderation.Check.Rejected spotId=\(doc.documentID) scores=\(scores ?? [:])")
+            SpotLogger.error("Moderation check rejected", details: ["spotId": doc.documentID, "scores": scores ?? [:]])
             // Hard block: delete the spot doc so it never surfaces
             try? await doc.reference.delete()
             await MainActor.run {

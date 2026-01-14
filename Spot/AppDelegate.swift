@@ -31,6 +31,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
         Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
 
+        // Configure logging (default: info + error only, debug categories disabled)
+        LoggingConfig.configure()
+        
+        // Uncomment to enable specific component logging:
+        // LoggingConfig.enableSpotCardLogging()         // SpotCard UI and image logs
+        // LoggingConfig.enablePrivacyLogging()          // Privacy filtering logs
+        // LoggingConfig.enableFeedLogging()             // Feed category only
+        // LoggingConfig.enableFeedComponentLogging()    // Feed components + category
+        // LoggingConfig.enablePostFlowLogging()         // Post flow, moderation, location
+        LoggingConfig.enableAuthLogging()               // Authentication logs
+        LoggingConfig.enableNetworkLogging()            // Network category only
+        // LoggingConfig.enableNetworkComponentLogging() // Network components + category
+        // LoggingConfig.enableDeepLinkLogging()         // Deep link routing
+        
+        // Or enable individual components:
+        // ComponentLogging.spotCard = true
+        // ComponentLogging.authorPrivacyCache = true
+        // ComponentLogging.feedRepository = true
+        
+        // Or enable by category:
+        // DebugCategory.enable(.privacy)
+        // DebugCategory.enable(.feed)
+
         return true
     }
 

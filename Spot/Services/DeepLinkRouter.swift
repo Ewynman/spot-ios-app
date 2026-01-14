@@ -10,6 +10,7 @@ import UIKit
 
 enum DeepLinkRoute {
     case spotDetail(spotId: String)
+    case subscriptionReturn
     case unknown
 }
 
@@ -46,12 +47,12 @@ final class DeepLinkRouter {
             return parseUniversalLink(url)
         }
 
-        // Handle Custom Scheme (spotapp://spot/:spotId)
+        // Handle Custom Scheme (spotapp://spot/:spotId or spotapp://subscription/return)
         if url.scheme == "spotapp" {
             return parseCustomScheme(url)
         }
 
-        SpotLogger.warning("DeepLinkRouter: Unknown URL scheme: \(url.scheme ?? "nil")")
+        SpotLogger.debug(.deepLink, "Unknown URL scheme", details: ["scheme": url.scheme ?? "nil"])
         return .unknown
     }
 
@@ -65,11 +66,11 @@ final class DeepLinkRouter {
                 SpotLogger.info("DeepLinkRouter: Parsed Universal Link for spot: \(spotId)")
                 return .spotDetail(spotId: spotId)
             } else {
-                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Universal Link: \(spotId)")
+                SpotLogger.debug(.deepLink, "Invalid spot ID in Universal Link", details: ["spotId": spotId])
             }
         }
 
-        SpotLogger.warning("DeepLinkRouter: Invalid Universal Link path: \(url.path)")
+        SpotLogger.debug(.deepLink, "Invalid Universal Link path", details: ["path": url.path])
         return .unknown
     }
 
@@ -86,7 +87,7 @@ final class DeepLinkRouter {
                 SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (host variant) for spot: \(spotId)")
                 return .spotDetail(spotId: spotId)
             } else {
-                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (host variant): \(spotId)")
+                SpotLogger.debug(.deepLink, "Invalid spot ID in Custom Scheme (host variant)", details: ["spotId": spotId])
             }
         }
 
@@ -97,7 +98,7 @@ final class DeepLinkRouter {
                 SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (path variant) for spot: \(spotId)")
                 return .spotDetail(spotId: spotId)
             } else {
-                SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (path variant): \(spotId)")
+                SpotLogger.debug(.deepLink, "Invalid spot ID in Custom Scheme (path variant)", details: ["spotId": spotId])
             }
         }
 
@@ -108,12 +109,18 @@ final class DeepLinkRouter {
                     SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme (query variant) for spot: \(spotId)")
                     return .spotDetail(spotId: spotId)
                 } else {
-                    SpotLogger.warning("DeepLinkRouter: Invalid spot ID in Custom Scheme (query variant): \(spotId)")
+                    SpotLogger.debug(.deepLink, "Invalid spot ID in Custom Scheme (query variant)", details: ["spotId": spotId])
                 }
             }
         }
+        
+        // Pattern 4: spotapp://subscription/return (subscription return)
+        if host == "subscription" && pathComponents.count == 1 && pathComponents[0].lowercased() == "return" {
+            SpotLogger.info("DeepLinkRouter: Parsed Custom Scheme for subscription return")
+            return .subscriptionReturn
+        }
 
-        SpotLogger.warning("DeepLinkRouter: Invalid Custom Scheme - Host: \(host ?? "nil"), Path: \(url.path)")
+        SpotLogger.debug(.deepLink, "Invalid Custom Scheme", details: ["host": host ?? "nil", "path": url.path])
         return .unknown
     }
 

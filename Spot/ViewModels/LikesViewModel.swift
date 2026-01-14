@@ -37,7 +37,7 @@ class LikesViewModel: ObservableObject {
             // Filter out duplicates within session
             let newSpots = result.spots.filter { spot in
                 guard let spotId = spot.id else {
-                    SpotLogger.warning("LikesViewModel: Spot without ID found")
+                    SpotLogger.debug(.feed, "Spot without ID found in likes")
                     return false
                 }
                 let isNew = !loadedSpotIds.contains(spotId)

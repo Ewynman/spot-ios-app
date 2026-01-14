@@ -2,14 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Spot uses your camera to take photos of your spots</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Spot uses your photo library to select photos for your spots</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Spot uses your location to show nearby spots and add your spot to the map</string>
-	<key>NSUserNotificationsUsageDescription</key>
-	<string>Spot sends you alerts about new spots nearby</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,8 +15,14 @@
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Spot sends you alerts about new spots nearby</string>
 	<key>SpotURLs</key>
 	<dict>
+		<key>customScheme</key>
+		<string>spotapp</string>
+		<key>shareURLBase</key>
+		<string>https://spotapp.online</string>
 		<key>universalLinkDomains</key>
 		<array>
 			<string>spotapp.online</string>
@@ -32,10 +30,6 @@
 			<string>localhost</string>
 			<string>454ab5d34eb4.ngrok-free.app</string>
 		</array>
-		<key>shareURLBase</key>
-		<string>https://spotapp.online</string>
-		<key>customScheme</key>
-		<string>spotapp</string>
 	</dict>
 </dict>
 </plist>

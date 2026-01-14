@@ -6,35 +6,53 @@ service cloud.firestore {
     // Users and their subcollections
     // ============================
     match /users/{userId} {
-      // Allow reading any user's public data
+      // Allow reading any user's basic public data (but respect privacy for sensitive info)
       allow read: if true;
 
       // Allow user to modify their own profile document
       allow write: if request.auth != null && request.auth.uid == userId;
 
-      // Allow the same user to read/write any nested subcollection
+      // User subcollections (collections, followRequests, followers)
       match /{subpath=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
     // ============================
-    // Spots collection
+    // Spots collection - WITH PRIVACY
     // ============================
     match /spots/{spotId} {
-      // Anyone can read spots
-      allow read: if true;
+      // Public spots: anyone can read
+      allow read: if resource.data.get("authorIsPrivate", false) == false;
+      
+      // Private spots: only followers can read
+      allow read: if resource.data.get("authorIsPrivate", false) == true && 
+                     request.auth != null && 
+                     exists(/databases/$(database)/documents/users/$(resource.data.userId)/followers/$(request.auth.uid));
 
-      // Create or update: user can only manage their own spots
-      allow create, update: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Create: authenticated users can create their own spots
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+
+      // Update: owner can update anything, authenticated users can update saves/likes counters
+      allow update: if request.auth != null && (
+        // Owner can update anything
+        request.auth.uid == resource.data.userId ||
+        // Authenticated users can update saves/likes counters for bookmarking/liking
+        // Ensure userId and other critical fields don't change, only saves/likes can be updated
+        (request.resource.data.userId == resource.data.userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['saves']) &&
+         request.resource.data.saves is int) ||
+        (request.resource.data.userId == resource.data.userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+         request.resource.data.likes is int) ||
+        (request.resource.data.userId == resource.data.userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['saves', 'likes']) &&
+         request.resource.data.saves is int &&
+         request.resource.data.likes is int)
+      );
 
       // Delete: only owner can delete
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
-
-      // Optional: if you have subcollections under each spot (e.g. comments)
-      match /{subpath=**} {
-        allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      }
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
 
     // ============================
@@ -55,9 +73,28 @@ service cloud.firestore {
     match /places/{placeId} {
       // Anyone can read
       allow read: if true;
-
       // Only authenticated users may create or update
       allow write: if request.auth != null;
+    }
+
+    // ============================
+    // Follow Requests - PRIVATE
+    // ============================
+    match /users/{userId}/followRequests/{requesterId} {
+      // Only the target user can read their own follow requests
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Only the requester can create, target user can update/delete
+      allow write: if request.auth != null && (request.auth.uid == requesterId || request.auth.uid == userId);
+    }
+
+    // ============================
+    // Followers - PRIVATE
+    // ============================
+    match /users/{userId}/followers/{followerId} {
+      // Only the user can read their own followers list
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Only system operations should modify followers (managed server-side)
+      allow write: if false; // Use Cloud Functions for follower management
     }
   }
 }

@@ -111,6 +111,26 @@ struct RootView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: deepLinkState.showSpotUnavailable)
                     }
+                    
+                    // Subscription Success Overlay
+                    if deepLinkState.showSubscriptionSuccess {
+                        VStack {
+                            Spacer()
+                            ProSuccessView()
+                                .environmentObject(authViewModel)
+                                .environmentObject(deepLinkState)
+                            Spacer()
+                        }
+                        .background(Color(hex: "F5F3EF").opacity(0.9))
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: deepLinkState.showSubscriptionSuccess)
+                        .onAppear {
+                            // Refresh pro status when showing success screen
+                            Task {
+                                await authViewModel.refreshUserFlags()
+                            }
+                        }
+                    }
                 }
                 .onAppear {
                     // Process any pending deep links when user becomes authenticated
@@ -132,7 +152,7 @@ struct RootView: View {
         .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
             // Handle Universal Links
             guard let url = userActivity.webpageURL else {
-                SpotLogger.warning("RootView: Universal link without webpage URL")
+                SpotLogger.debug(.deepLink, "Universal link without webpage URL")
                 return
             }
 

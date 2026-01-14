@@ -8,7 +8,10 @@
 import SwiftUI
 
 struct WelcomeView: View {
-    @State private var navigateToNext = false
+    @ObservedObject private var permissionManager = PermissionManager.shared
+    @State private var navigateToLocation = false
+    @State private var navigateToNotifications = false
+    @State private var navigateToSignup = false
     @State private var showLogin = false
 
     var body: some View {
@@ -34,7 +37,21 @@ struct WelcomeView: View {
                     Spacer()
 
                     Button(action: {
-                        navigateToNext = true
+                        // Check permission status and navigate accordingly
+                        permissionManager.updatePermissionStatuses()
+                        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
+                        let notificationsGranted = permissionManager.notificationStatus == .authorized
+                        
+                        if locationGranted && notificationsGranted {
+                            // Both granted, skip to signup
+                            navigateToSignup = true
+                        } else if locationGranted {
+                            // Location granted, skip to notifications
+                            navigateToNotifications = true
+                        } else {
+                            // Need location permission
+                            navigateToLocation = true
+                        }
                     }) {
                         Text("Get Started")
                             .font(FontManager.buttonText())
@@ -63,8 +80,14 @@ struct WelcomeView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 24)
                 }
-                .navigationDestination(isPresented: $navigateToNext) {
+                .navigationDestination(isPresented: $navigateToLocation) {
                     LocationPermissionView()
+                }
+                .navigationDestination(isPresented: $navigateToNotifications) {
+                    NotificationPermissionView()
+                }
+                .navigationDestination(isPresented: $navigateToSignup) {
+                    SignupView()
                 }
                 .navigationDestination(isPresented: $showLogin) {
                     LoginView()

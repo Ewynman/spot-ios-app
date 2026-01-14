@@ -11,6 +11,7 @@ struct LocationPermissionView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var permissionManager: PermissionManager
     @State private var navigateToNotifications = false
+    @State private var navigateToSignup = false
 
     var body: some View {
         NavigationStack {
@@ -72,7 +73,13 @@ struct LocationPermissionView: View {
                         .buttonStyle(PlainButtonStyle())
 
                         Button(action: {
-                            navigateToNotifications = true
+                            // Check if notifications are already granted
+                            permissionManager.updatePermissionStatuses()
+                            if permissionManager.notificationStatus == .authorized {
+                                navigateToSignup = true
+                            } else {
+                                navigateToNotifications = true
+                            }
                         }) {
                             Text("Maybe Later")
                                 .font(FontManager.buttonText())
@@ -89,11 +96,34 @@ struct LocationPermissionView: View {
             .navigationDestination(isPresented: $navigateToNotifications) {
                 NotificationPermissionView()
             }
+            .navigationDestination(isPresented: $navigateToSignup) {
+                SignupView()
+            }
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            // Check if location is already granted on appear
+            permissionManager.updatePermissionStatuses()
+            let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
+            let notificationsGranted = permissionManager.notificationStatus == .authorized
+            
+            if locationGranted && notificationsGranted {
+                // Both granted, skip to signup
+                navigateToSignup = true
+            } else if locationGranted {
+                // Location granted, skip to notifications
+                navigateToNotifications = true
+            }
+        }
         .onChange(of: permissionManager.locationStatus) { _, newStatus in
             if newStatus != .notDetermined {
-                navigateToNotifications = true
+                // Check if notifications are already granted
+                permissionManager.updatePermissionStatuses()
+                if permissionManager.notificationStatus == .authorized {
+                    navigateToSignup = true
+                } else {
+                    navigateToNotifications = true
+                }
             }
         }
     }

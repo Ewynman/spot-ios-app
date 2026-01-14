@@ -45,7 +45,7 @@ final class FeedCandidateService {
             return Page(items: items, last: snap.documents.last)
         } catch {
             // Missing composite index or other failure: gracefully fall back to createdAt desc
-            SpotLogger.warning("Trending query failed, falling back to createdAt desc: \(error.localizedDescription)")
+            SpotLogger.debug(.feed, "Trending query failed, falling back to createdAt desc", details: ["error": error.localizedDescription])
             var q: Query = db.collection("spots").order(by: "createdAt", descending: true).limit(to: pageSize)
             if let last { q = q.start(afterDocument: last) }
             let snap = try await q.getDocuments()

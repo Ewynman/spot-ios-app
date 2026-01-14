@@ -27,6 +27,11 @@ final class FeedRepository: ObservableObject {
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
 
+        // Reset cursors and seen spots for fresh feed
+        globalCursor = nil
+        followeeChunkCursors = [:]
+        seenSpotIds = []
+
         // Log cold start diagnostics
         FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
 
@@ -37,7 +42,7 @@ final class FeedRepository: ObservableObject {
             }
             let followeesSet = Set(followeeIds)
 
-            // Pull candidates in parallel
+            // Pull candidates in parallel - start fresh with nil cursors
             async let globalPage = candidate.fetchRecent(last: nil)
             async let followeesPage = candidate.fetchFolloweesRecent(followeeIds: followeeIds, lastByChunk: [:])
             let (g, f) = try await (globalPage, followeesPage)
@@ -61,7 +66,11 @@ final class FeedRepository: ObservableObject {
 
             let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
 
-            SpotLogger.info("Feed loadInitial: followees=\(rankedFollowees.count), global=\(rankedGlobal.count), blended=\(blended.count)")
+            SpotLogger.debug(.feed, "Feed loadInitial", details: [
+                "followees": rankedFollowees.count,
+                "global": rankedGlobal.count,
+                "blended": blended.count
+            ])
             await MainActor.run { self.spots = blended }
             isColdStart = false
         } catch {
@@ -102,7 +111,11 @@ final class FeedRepository: ObservableObject {
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
-            SpotLogger.info("Feed loadMore: followees=\(rankedFollowees.count), global=\(rankedGlobal.count), appending=\(newUnique.count)")
+            SpotLogger.debug(.feed, "Feed loadMore", details: [
+                "followees": rankedFollowees.count,
+                "global": rankedGlobal.count,
+                "appending": newUnique.count
+            ])
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch {
             SpotLogger.error("Feed loadMore failed: \(error.localizedDescription)")

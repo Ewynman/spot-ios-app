@@ -4,15 +4,79 @@ import os
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
     case info = "INFO"
-    case warning = "WARNING"
     case error = "ERROR"
-    case notice = "NOTICE"
 
-    // For filtering: debug < info < warning < error < firebase
+    // For filtering: debug < info < error
     static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
-        let order: [LogLevel] = [.debug, .info, .warning, .error, .notice]
+        let order: [LogLevel] = [.debug, .info, .error]
         return order.firstIndex(of: lhs)! < order.firstIndex(of: rhs)!
     }
+}
+
+/// Debug log categories for fine-grained control
+enum DebugCategory: String, CaseIterable {
+    case ui = "UI"                    // UI interactions (taps, appears, etc.)
+    case navigation = "Navigation"   // Navigation events
+    case feed = "Feed"               // Feed loading, ranking, blending
+    case network = "Network"         // API calls, Firestore operations
+    case auth = "Auth"               // Authentication events
+    case image = "Image"             // Image loading, caching
+    case location = "Location"       // Location services
+    case performance = "Performance" // Performance metrics
+    case deepLink = "DeepLink"       // Deep linking
+    case moderation = "Moderation"   // Content moderation
+    case privacy = "Privacy"         // Privacy filtering
+    
+    static var enabledCategories: Set<DebugCategory> = []
+    
+    static func enable(_ category: DebugCategory) {
+        enabledCategories.insert(category)
+    }
+    
+    static func disable(_ category: DebugCategory) {
+        enabledCategories.remove(category)
+    }
+    
+    static func enableAll() {
+        enabledCategories = Set(DebugCategory.allCases)
+    }
+    
+    static func disableAll() {
+        enabledCategories.removeAll()
+    }
+    
+    var isEnabled: Bool {
+        return DebugCategory.enabledCategories.contains(self)
+    }
+}
+
+/// Component-specific logging flags for major files/components
+struct ComponentLogging {
+    // UI Components
+    static var spotCard: Bool = false
+    static var profileView: Bool = false
+    static var searchView: Bool = false
+    static var feedView: Bool = false
+    
+    // Services
+    static var authorPrivacyCache: Bool = false
+    static var feedRepository: Bool = false
+    static var feedRanker: Bool = false
+    static var spotService: Bool = false
+    static var spotUploader: Bool = false
+    static var authService: Bool = false
+    static var imageService: Bool = false
+    static var deepLinkRouter: Bool = false
+    
+    // ViewModels
+    static var authViewModel: Bool = false
+    static var likesViewModel: Bool = false
+    static var bookmarksViewModel: Bool = false
+    
+    // Post Flow
+    static var postFlow: Bool = false
+    static var locationSelection: Bool = false
+    static var photoSelection: Bool = false
 }
 
 final class SpotLogger {
@@ -20,62 +84,96 @@ final class SpotLogger {
     private init() {}
 
     // MARK: - Configuration
-    static var minimumLevel: LogLevel = .debug // Change to .info, .warning, etc. to filter
+    static var minimumLevel: LogLevel = .info // Default to info, debug requires category enablement
+    static var enableAllDebug: Bool = false   // Master switch for all debug logs
 
     static func setMinimumLevel(_ level: LogLevel) {
         minimumLevel = level
     }
 
     // MARK: - Public Logging Methods
-    static func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.debug, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
-    }
-
+    
+    // INFO - Always enabled for important events
     static func info(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.info, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
-    }
-
-    static func warning(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.warning, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
-    }
-
-    static func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.error, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
-    }
-
-    static func notice(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
-        log(.notice, message: composeMessage(title: message, details: ["message": message]), file: file, function: function, line: line)
-    }
-
-    // MARK: - Key/Value Structured Variants (all levels)
-    static func debug(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
-        log(.debug, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+        log(.info, message: composeMessage(title: "", details: ["message": message]), file: file, function: function, line: line)
     }
 
     static func info(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
         log(.info, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
     }
 
-    static func warning(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
-        log(.warning, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    // ERROR - Always enabled
+    static func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(.error, message: composeMessage(title: "", details: ["message": message]), file: file, function: function, line: line)
     }
 
     static func error(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
         log(.error, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
     }
 
-    static func notice(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
-        log(.notice, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
+    // DEBUG - Category-based, requires explicit enablement
+    static func debug(_ category: DebugCategory, _ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        guard shouldLogDebug(category: category, file: file) else { return }
+        log(.debug, message: composeMessage(title: "", details: ["category": category.rawValue, "message": message]), file: file, function: function, line: line)
+    }
+
+    static func debug(_ category: DebugCategory, _ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        guard shouldLogDebug(category: category, file: file) else { return }
+        var enhancedDetails = details
+        enhancedDetails["category"] = category.rawValue
+        log(.debug, message: composeMessage(title: title, details: enhancedDetails), file: file, function: function, line: line)
+    }
+
+    // Convenience debug methods (backward compatibility - defaults to UI category)
+    static func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        debug(.ui, message, file: file, function: function, line: line)
+    }
+
+    static func debug(_ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
+        debug(.ui, title, details: details, file: file, function: function, line: line)
     }
 
     // MARK: - Private Logging Implementation
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.spotapp.spot", category: "SpotLogger")
 
+    private static func shouldLogDebug(category: DebugCategory, file: String) -> Bool {
+        // Always log if master switch is on
+        if enableAllDebug { return true }
+        // Check component-specific flag
+        if isComponentEnabled(file: file) { return true }
+        // Log if category is enabled
+        return category.isEnabled
+    }
+    
+    private static func isComponentEnabled(file: String) -> Bool {
+        let fileName = URL(fileURLWithPath: file).lastPathComponent
+        switch fileName {
+        case "SpotCard.swift": return ComponentLogging.spotCard
+        case "ProfileView.swift": return ComponentLogging.profileView
+        case "SearchView.swift": return ComponentLogging.searchView
+        case "HomepageView.swift", "FeedView.swift": return ComponentLogging.feedView
+        case "AuthorPrivacyCache.swift": return ComponentLogging.authorPrivacyCache
+        case "FeedRepository.swift": return ComponentLogging.feedRepository
+        case "FeedRanker.swift": return ComponentLogging.feedRanker
+        case "SpotService.swift": return ComponentLogging.spotService
+        case "SpotUploader.swift": return ComponentLogging.spotUploader
+        case "AuthService.swift": return ComponentLogging.authService
+        case "ImageService.swift": return ComponentLogging.imageService
+        case "DeepLinkRouter.swift": return ComponentLogging.deepLinkRouter
+        case "AuthViewModel.swift": return ComponentLogging.authViewModel
+        case "LikesViewModel.swift": return ComponentLogging.likesViewModel
+        case "BookmarksViewModel.swift": return ComponentLogging.bookmarksViewModel
+        case "PostFlowView.swift": return ComponentLogging.postFlow
+        case "LocationSelectionView.swift": return ComponentLogging.locationSelection
+        case "PhotoSelectionView.swift": return ComponentLogging.photoSelection
+        default: return false
+        }
+    }
+
     private static func log(_ level: LogLevel, message: String, file: String, function: String, line: Int) {
         guard level >= minimumLevel else { return }
-        let timestamp = DateFormatter.logFormatter.string(from: Date())
         let fileName = URL(fileURLWithPath: file).lastPathComponent
-        let logMessage = "[SpotLogger][\(level.rawValue)] [\(timestamp)] \(fileName):\(line) | \(function) | \(message)"
+        let logMessage = "[SpotLogger][\(level.rawValue)] \(fileName):\(line) | \(function) | \(message)"
 
         // Use unified logging so each call is a distinct record with proper level filtering
         switch level {
@@ -83,24 +181,14 @@ final class SpotLogger {
             logger.debug("\(logMessage, privacy: .public)")
         case .info:
             logger.info("\(logMessage, privacy: .public)")
-        case .warning:
-            logger.warning("\(logMessage, privacy: .public)")
         case .error:
             logger.error("\(logMessage, privacy: .public)")
-        case .notice:
-            logger.notice("\(logMessage, privacy: .public)")
         }
 
         // Optional: also print to Xcode console as a fallback
         #if DEBUG
         print(logMessage)
         #endif
-    }
-
-    // Structured logging helper (generic)
-    static func structured(_ level: LogLevel, _ title: String, details: [String: Any], file: String = #file, function: String = #function, line: Int = #line) {
-        guard level >= minimumLevel else { return }
-        log(level, message: composeMessage(title: title, details: details), file: file, function: function, line: line)
     }
 
     // MARK: - Compose message with JSON details
@@ -120,6 +208,11 @@ final class SpotLogger {
             }
             .sorted()
             .joined(separator: "\n")
+        
+        // If title is empty, only show details block
+        if title.isEmpty {
+            return "[\n\(lines)\n]"
+        }
         return "\(title)\n[\n\(lines)\n]"
     }
 
@@ -127,13 +220,13 @@ final class SpotLogger {
     static func info(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
         log(.info, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
     }
-    static func warning(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
-        log(.warning, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
-    }
+    
     static func error(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
         log(.error, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
     }
-    static func debug(_ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+    
+    static func debug(_ category: DebugCategory, _ title: String, spot: Spot, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        guard shouldLogDebug(category: category, file: file) else { return }
         log(.debug, message: composeMessage(title: title, details: merge(details, with: spot)), file: file, function: function, line: line)
     }
 
@@ -159,17 +252,3 @@ extension DateFormatter {
         return formatter
     }()
 }
-
-// MARK: - Usage Examples
-/*
- SpotLogger.debug("Post flow started")
- SpotLogger.info("User selected photo")
- SpotLogger.warning("Location permission denied")
- SpotLogger.error("Failed to upload spot")
- SpotLogger.firebase("Spot uploaded successfully")
-
- Output:
- [SpotLogger][DEBUG   ] [2024-01-15 14:30:25] PostFlowView.swift:45 | handleNext | User progressed from step 1 to step 2
- [SpotLogger][INFO    ] [2024-01-15 14:30:26] PhotoSelectionView.swift:23 | User selected photo from gallery
- [SpotLogger][ERROR   ] [2024-01-15 14:30:27] LocationSelectionView.swift:45 | Failed to search places: Network error
-*/ 

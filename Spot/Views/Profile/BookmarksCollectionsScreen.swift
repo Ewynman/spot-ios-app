@@ -14,79 +14,79 @@ struct BookmarksCollectionsScreen: View {
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(Constants.Colors.primary)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Spacer()
-
-                    Text("Your Bookmarks")
-                        .font(FontManager.sectionHeader())
-                        .foregroundColor(Constants.Colors.primary)
-
-                    Spacer()
-
-                    // balance spacer
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.clear)
+                        .foregroundColor(Constants.Colors.primary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .buttonStyle(PlainButtonStyle())
 
-                if isLoading {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                } else {
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            // All Bookmarks card
-                            Button { navigateToAll = true } label: {
+                Spacer()
+
+                Text("Your Bookmarks")
+                    .font(FontManager.sectionHeader())
+                    .foregroundColor(Constants.Colors.primary)
+
+                Spacer()
+
+                // balance spacer
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.clear)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+
+            if isLoading {
+                Spacer()
+                ProgressView()
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        // All Bookmarks card
+                        Button { navigateToAll = true } label: {
+                            CollectionCardView(
+                                title: "All Bookmarks",
+                                previewURLs: allPreviewURLs,
+                                count: nil
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        ForEach(collections) { c in
+                            Button { selectedCollection = c } label: {
                                 CollectionCardView(
-                                    title: "All Bookmarks",
-                                    previewURLs: allPreviewURLs,
-                                    count: nil
+                                    title: c.name,
+                                    previewURLs: previews[c.id] ?? [],
+                                    count: c.spotIds.count
                                 )
                             }
                             .buttonStyle(PlainButtonStyle())
-
-                            ForEach(collections) { c in
-                                Button { selectedCollection = c } label: {
-                                    CollectionCardView(
-                                        title: c.name,
-                                        previewURLs: previews[c.id] ?? [],
-                                        count: c.spotIds.count
-                                    )
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Constants.Colors.background.ignoresSafeArea())
-            .navigationDestination(isPresented: $navigateToAll) {
-                SpotGridScreen(context: .bookmarks, userId: authVM.userId)
-            }
-            .sheet(item: $selectedCollection) { collection in
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Constants.Colors.background.ignoresSafeArea())
+        .navigationDestination(isPresented: $navigateToAll) {
+            SpotGridScreen(context: .bookmarks, userId: authVM.userId)
+        }
+        .sheet(item: $selectedCollection) { collection in
+            NavigationStack {
                 CollectionDetailScreen(collection: collection, onBack: { selectedCollection = nil })
             }
-            .onAppear { Task { await load() } }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
         }
+        .onAppear { Task { await load() } }
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
     }
 
     private func load() async {
@@ -161,11 +161,19 @@ private struct CollectionDetailScreen: View {
     var onBack: () -> Void
     @State private var spots: [Spot] = []
     @State private var isLoading: Bool = true
+    @State private var selectedSpot: Spot?
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header - always visible
             HStack {
-                Button { onBack() } label: {
+                Button {
+                    if selectedSpot != nil {
+                        withAnimation { selectedSpot = nil }
+                    } else {
+                        onBack()
+                    }
+                } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(Constants.Colors.primary)
@@ -187,6 +195,7 @@ private struct CollectionDetailScreen: View {
             .padding(.top, 8)
             .padding(.bottom, 12)
 
+            // Content
             if isLoading {
                 Spacer(); ProgressView(); Spacer()
             } else if spots.isEmpty {
@@ -196,8 +205,33 @@ private struct CollectionDetailScreen: View {
                     .foregroundColor(.gray)
                 Spacer()
             } else {
-                SpotsGridView(spots: spots, onSpotTapped: { _ in }, columns: 3)
+                if let selectedSpot {
+                    // Show expanded spot - header stays visible
+                    ScrollView {
+                        SpotCard(
+                            spot: selectedSpot,
+                            showUserInfo: false,
+                            userId: nil,
+                            onDelete: nil,
+                            source: "CollectionDetail",
+                            backAction: nil // Don't show back button, header handles it
+                        )
+                        .padding(.top, 8)
+                    }
+                    .transition(.opacity)
+                } else {
+                    // Grid content
+                    SpotsGridView(
+                        spots: spots,
+                        onSpotTapped: { spot in
+                            withAnimation {
+                                selectedSpot = spot
+                            }
+                        },
+                        columns: 3
+                    )
                     .refreshable { await load() }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

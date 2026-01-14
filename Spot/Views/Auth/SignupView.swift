@@ -143,7 +143,7 @@ struct SignupView: View {
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
 
-                        Button(action: { if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) } }) {
+                        Button(action: { if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) } }) {
                             Text("Terms & Conditions")
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
@@ -156,7 +156,7 @@ struct SignupView: View {
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
 
-                        Button(action: { if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) } }) {
+                        Button(action: { if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) } }) {
                             Text("Privacy Policy")
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
@@ -202,7 +202,7 @@ struct SignupView: View {
                         case .reserved:
                             errorMessage = "That username is reserved"; return
                         case .blocked:
-                            SpotLogger.warning("Username.Blocked raw=\(username) norm=\(validator.normalized(username)) reason=blocked")
+                            SpotLogger.debug(.auth, "Username blocked", details: ["raw": username, "norm": validator.normalized(username), "reason": "blocked"])
                             errorMessage = "That username isn’t allowed"; return
                         }
 

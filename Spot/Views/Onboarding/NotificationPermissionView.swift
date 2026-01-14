@@ -92,6 +92,14 @@ struct NotificationPermissionView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            // Check if notifications are already granted on appear
+            permissionManager.updatePermissionStatuses()
+            if permissionManager.notificationStatus == .authorized {
+                // Already granted, skip to signup
+                navigateToSignup = true
+            }
+        }
         .onChange(of: permissionManager.notificationStatus) { _, newStatus in
             if newStatus != .notDetermined {
                 navigateToSignup = true

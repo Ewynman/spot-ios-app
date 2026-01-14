@@ -304,7 +304,7 @@ class AuthViewModel: ObservableObject {
             switch result {
             case .failure(let error):
                 // Fallback: mirror to Firestore only
-                SpotLogger.warning("AuthViewModel.updateEmail failed: \(error.localizedDescription) — falling back to Firestore-only sync")
+                SpotLogger.debug(.auth, "Email update failed, falling back to Firestore-only sync", details: ["error": error.localizedDescription])
                 Task {
                     do {
                         try await Firestore.firestore()
@@ -328,7 +328,7 @@ class AuthViewModel: ObservableObject {
                             .updateData(["email": newEmail])
                         await MainActor.run { completion(.success(())) }
                     } catch {
-                        SpotLogger.warning("AuthViewModel.updateEmail: FirebaseAuth updated but Firestore email sync failed: \(error.localizedDescription)")
+                        SpotLogger.debug(.auth, "FirebaseAuth updated but Firestore email sync failed", details: ["error": error.localizedDescription])
                         await MainActor.run { completion(.success(())) } // keep your original behavior
                     }
                 }
@@ -408,7 +408,7 @@ class AuthViewModel: ObservableObject {
         } catch {
             let ns = error as NSError
             if ns.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                SpotLogger.warning("Auth.ChangeEmail.ReauthRequired")
+                SpotLogger.debug(.auth, "Email change requires reauthentication")
             } else {
                 SpotLogger.error("Auth.ChangeEmail.Error(\(ns.code))")
             }

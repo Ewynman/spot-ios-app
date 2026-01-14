@@ -51,255 +51,216 @@ struct SettingsView: View {
             .padding(.top, 8)
 
             ScrollView {
-                VStack(spacing: 16) {
-                    sectionHeader("Profile Photo")
+                VStack(spacing: 24) {
+                    // MARK: - Profile Section
+                    settingsSection {
+                        VStack(spacing: 16) {
+                            sectionHeader("Profile")
+                            
+                            PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                                ZStack {
+                                    if let image = selectedProfileImage {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 100, height: 100)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                    } else if let urlString = profileImageURL, let url = URL(string: urlString) {
+                                        AsyncImage(url: url) { img in
+                                            img.resizable()
+                                                .scaledToFill()
+                                        } placeholder: {
+                                            Image(systemName: "person.fill")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(Constants.Colors.primary)
+                                        }
+                                        .frame(width: 100, height: 100)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                    } else {
+                                        Circle()
+                                            .fill(Constants.Colors.background)
+                                            .frame(width: 100, height: 100)
+                                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                            .overlay(
+                                                Image(systemName: "person.fill")
+                                                    .font(.system(size: 40))
+                                                    .foregroundColor(Constants.Colors.primary)
+                                            )
+                                    }
 
-                    PhotosPicker(selection: $photoPickerItem, matching: .images) {
-                        ZStack {
-                            if let image = selectedProfileImage {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                            } else if let urlString = profileImageURL, let url = URL(string: urlString) {
-                                AsyncImage(url: url) { img in
-                                    img.resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    Image(systemName: "person.fill")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Constants.Colors.primary)
-                                }
-                                .frame(width: 100, height: 100)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                            } else {
-                                Circle()
-                                    .fill(Constants.Colors.background)
-                                    .frame(width: 100, height: 100)
-                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 40))
-                                            .foregroundColor(Constants.Colors.primary)
-                                    )
-                            }
-
-                            if isUploadingPhoto {
-                                Circle()
-                                    .fill(Color.black.opacity(0.15))
-                                    .frame(width: 100, height: 100)
-                                ProgressView()
-                            }
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .onChange(of: photoPickerItem) { _, newItem in
-                        Task {
-                            if let data = try? await newItem?.loadTransferable(type: Data.self),
-                               let uiImage = UIImage(data: data) {
-                                selectedProfileImage = uiImage
-                                uploadProfilePhoto(uiImage)
-                            }
-                        }
-                    }
-
-                    sectionHeader("Account")
-
-                    SettingsTextField(title: "Username", text: $username)
-                    SettingsTextField(title: "Name", text: $name)
-                    SettingsTextField(title: "Email", text: $email, keyboardType: .emailAddress)
-
-                    sectionHeader("Password")
-                    SettingsSecureField(title: "Current Password", text: $currentPassword)
-                    SettingsSecureField(title: "New Password", text: $newPassword)
-                    SettingsSecureField(title: "Confirm Password", text: $confirmPassword)
-
-                    sectionHeader("Privacy")
-                    Toggle(isOn: $isPrivate) {
-                        Text("Private Account")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                    }
-                    .tint(Constants.Colors.primary)
-
-                    if let error = errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(FontManager.primaryText())
-                            .multilineTextAlignment(.center)
-                    }
-                    if let success = successMessage {
-                        Text(success)
-                            .foregroundColor(.green)
-                            .font(FontManager.primaryText())
-                            .multilineTextAlignment(.center)
-                    }
-
-                    Button(action: save) {
-                        Text(isSaving ? "Saving..." : "Save Changes")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.buttonText)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Constants.Colors.primary)
-                            .cornerRadius(20)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(isSaving)
-
-                    // Privacy & Account Section
-                    sectionHeader("Privacy & Account")
-
-                    NavigationLink {
-                        BlockedUsersView()
-                    } label: {
-                        Text("Blocked Users")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Constants.Colors.primary, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button {
-                        authVM.signOut()
-                    } label: {
-                        Text("Log Out")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Constants.Colors.primary, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    // Pro: Collections management
-                    if authVM.isPro {
-                        Button {
-                            showCollectionsNav = true
-                        } label: {
-                            Text("Bookmark Collections (Pro)")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(Constants.Colors.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.white)
-                                .cornerRadius(20)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(Constants.Colors.primary, lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    Button {
-                        Task { try? await SubscriptionManager.shared.manageSubscriptions() }
-                    } label: {
-                        Text("Manage Subscription")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Constants.Colors.primary, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Toggle(isOn: $confirmDelete) {
-                            Text("I understand this will permanently delete my account")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.primary)
-                        }
-                        .tint(Constants.Colors.primary)
-
-                        SettingsSecureField(title: "Password to Confirm", text: $deletePassword)
-
-                        Button {
-                            guard confirmDelete, !deletePassword.isEmpty else {
-                                showToast(message: "Please confirm and enter your password", isError: true)
-                                return
-                            }
-                            isSaving = true
-                            authVM.deleteAccount(password: deletePassword) { result in
-                                DispatchQueue.main.async {
-                                    isSaving = false
-                                    switch result {
-                                    case .success:
-                                        showToast(message: "Account deleted", isError: false)
-                                    case .failure(let error):
-                                        showToast(message: error.localizedDescription, isError: true)
+                                    if isUploadingPhoto {
+                                        Circle()
+                                            .fill(Color.black.opacity(0.15))
+                                            .frame(width: 100, height: 100)
+                                        ProgressView()
                                     }
                                 }
                             }
-                        } label: {
-                            Text("Delete Account")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.red)
-                                .cornerRadius(20)
+                            .buttonStyle(PlainButtonStyle())
+                            .onChange(of: photoPickerItem) { _, newItem in
+                                Task {
+                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                       let uiImage = UIImage(data: data) {
+                                        selectedProfileImage = uiImage
+                                        uploadProfilePhoto(uiImage)
+                                    }
+                                }
+                            }
+                            
+                            SettingsTextField(title: "Username", text: $username)
+                            SettingsTextField(title: "Name", text: $name)
+                            SettingsTextField(title: "Email", text: $email, keyboardType: .emailAddress)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.top, 8)
-
-                    // Legal
-                    sectionHeader("Legal")
-
-                    Button {
-                        if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) }
-                    } label: {
-                        Text("Terms & Conditions")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Constants.Colors.primary, lineWidth: 1)
-                            )
+                    
+                    // MARK: - Security Section
+                    settingsSection {
+                        VStack(spacing: 16) {
+                            sectionHeader("Security")
+                            
+                            SettingsSecureField(title: "Current Password", text: $currentPassword)
+                            SettingsSecureField(title: "New Password", text: $newPassword)
+                            SettingsSecureField(title: "Confirm Password", text: $confirmPassword)
+                            
+                            Toggle(isOn: $isPrivate) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Private Account")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
+                                    Text("Only approved followers can see your spots")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .tint(Constants.Colors.primary)
+                            
+                            if let error = errorMessage {
+                                Text(error)
+                                    .foregroundColor(.red)
+                                    .font(FontManager.primaryText())
+                                    .multilineTextAlignment(.center)
+                            }
+                            if let success = successMessage {
+                                Text(success)
+                                    .foregroundColor(.green)
+                                    .font(FontManager.primaryText())
+                                    .multilineTextAlignment(.center)
+                            }
+                            
+                            Button(action: save) {
+                                Text(isSaving ? "Saving..." : "Save Changes")
+                                    .font(FontManager.buttonText())
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(12)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isSaving)
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button {
-                        if let url = URL(string: "https://spotapp.online") { UIApplication.shared.open(url) }
-                    } label: {
-                        Text("Privacy Policy")
-                            .font(FontManager.buttonText())
-                            .foregroundColor(Constants.Colors.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Constants.Colors.primary, lineWidth: 1)
-                            )
+                    
+                    // MARK: - Account Management Section
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Account Management")
+                            
+                            NavigationLink {
+                                BlockedUsersView()
+                            } label: {
+                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            if authVM.isPro {
+                                Button {
+                                    showCollectionsNav = true
+                                } label: {
+                                    settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            
+                            Button {
+                                Task { try? await SubscriptionManager.shared.manageSubscriptions() }
+                            } label: {
+                                settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    
+                    // MARK: - Danger Zone Section
+                    settingsSection {
+                        VStack(spacing: 16) {
+                            sectionHeader("Danger Zone")
+                            
+                            Button {
+                                authVM.signOut()
+                            } label: {
+                                settingsRow(title: "Log Out", icon: "arrow.right.square.fill", isDestructive: false)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            VStack(alignment: .leading, spacing: 12) {
+                                Toggle(isOn: $confirmDelete) {
+                                    Text("I understand this will permanently delete my account")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
+                                }
+                                .tint(Constants.Colors.primary)
+
+                                SettingsSecureField(title: "Password to Confirm", text: $deletePassword)
+
+                                Button {
+                                    guard confirmDelete, !deletePassword.isEmpty else {
+                                        showToast(message: "Please confirm and enter your password", isError: true)
+                                        return
+                                    }
+                                    isSaving = true
+                                    authVM.deleteAccount(password: deletePassword) { result in
+                                        DispatchQueue.main.async {
+                                            isSaving = false
+                                            switch result {
+                                            case .success:
+                                                showToast(message: "Account deleted", isError: false)
+                                            case .failure(let error):
+                                                showToast(message: error.localizedDescription, isError: true)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(!confirmDelete || deletePassword.isEmpty)
+                            }
+                        }
+                    }
+                    
+                    // MARK: - Legal Section
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Legal")
+                            
+                            Button {
+                                if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) }
+                            } label: {
+                                settingsRow(title: "Terms & Conditions", icon: "doc.text.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Button {
+                                if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) }
+                            } label: {
+                                settingsRow(title: "Privacy Policy", icon: "lock.shield.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
                 }
                 .padding(16)
             }
@@ -393,7 +354,7 @@ struct SettingsView: View {
         case .invalidChars: isSaving = false; errorMessage = "Username has invalid characters"; return
         case .reserved: isSaving = false; errorMessage = "That username is reserved"; return
         case .blocked:
-            SpotLogger.warning("Username.Blocked", details: ["raw": username, "norm": validator.normalized(username)])
+            SpotLogger.debug(.auth, "Username blocked", details: ["raw": username, "norm": validator.normalized(username)])
             isSaving = false; errorMessage = "That username isn’t allowed"; return
         }
 
@@ -526,9 +487,50 @@ private func sectionHeader(_ title: String) -> some View {
     HStack {
         Text(title)
             .font(FontManager.sectionHeader())
+            .fontWeight(.semibold)
             .foregroundColor(Constants.Colors.primary)
         Spacer()
     }
+}
+
+private func settingsSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+        content()
+    }
+    .padding(16)
+    .background(Color.white)
+    .cornerRadius(12)
+    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+}
+
+private func settingsRow(title: String, icon: String, subtitle: String? = nil, isDestructive: Bool = false) -> some View {
+    HStack(spacing: 12) {
+        Image(systemName: icon)
+            .font(.system(size: 18))
+            .foregroundColor(isDestructive ? .red : Constants.Colors.primary)
+            .frame(width: 24)
+        
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(FontManager.primaryText())
+                .foregroundColor(isDestructive ? .red : Constants.Colors.primary)
+            if let subtitle = subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+        }
+        
+        Spacer()
+        
+        Image(systemName: "chevron.right")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.gray)
+    }
+    .padding(.vertical, 12)
+    .padding(.horizontal, 16)
+    .background(isDestructive ? Color.red.opacity(0.1) : Color.clear)
+    .cornerRadius(8)
 }
 
 struct SettingsTextField: View {

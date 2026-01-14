@@ -219,7 +219,7 @@ struct PhotoSelectionView: View {
                     selectedImages.append(contentsOf: newImages.prefix(available))
                 }
             } else {
-                SpotLogger.warning("Failed to load selected photos from gallery")
+                SpotLogger.error("Failed to load selected photos from gallery")
             }
         }
         .sheet(isPresented: $showCamera) {
@@ -289,7 +289,7 @@ struct CameraView: UIViewControllerRepresentable {
                 }
                 parent.selectedImages = imgs
             } else {
-                SpotLogger.warning("Failed to capture photo with camera")
+                SpotLogger.error("Failed to capture photo with camera")
             }
             parent.dismiss()
         }

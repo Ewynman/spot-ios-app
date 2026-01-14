@@ -152,7 +152,7 @@ class AuthService {
             }
             let exists = snapshot?.exists ?? false
             if !exists {
-                SpotLogger.warning("verifyUserExists: missing Firestore user doc; signing out")
+                SpotLogger.error("Missing Firestore user doc, signing out", details: ["userId": uid])
                 try? Auth.auth().signOut()
             }
             completion(exists)
@@ -299,7 +299,7 @@ class AuthService {
 
         // This would call a Cloud Function in production
         // For now, just log the request and complete successfully
-        SpotLogger.warning("AuthService: deleteAuthUserByEmail called - implement Cloud Function")
+        SpotLogger.debug(.auth, "deleteAuthUserByEmail called - implement Cloud Function")
 
         // In production, this would be:
         // let functions = Functions.functions()

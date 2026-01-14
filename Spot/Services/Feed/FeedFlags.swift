@@ -13,7 +13,7 @@ struct FeedFlags {
     static var disablePersistentDedupe: Bool = false
 
     /// Enable comprehensive logging for feed diagnostics
-    static var enableDiagnosticLogging: Bool = true
+    static var enableDiagnosticLogging: Bool = false
 
     /// TTL for persistent seen tracking (in hours, 0 = disabled)
     static var persistentSeenTTL: TimeInterval = 0 // 0 = disabled
@@ -27,7 +27,9 @@ struct FeedDiagnostics {
     static func logExclusion(reason: String, source: String, spot: Spot) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.warning("Feed exclusion - reason: \(reason), source: \(source)", details: [
+        SpotLogger.debug(.feed, "Feed exclusion", details: [
+            "reason": reason,
+            "source": source,
             "spotId": spot.safeId,
             "createdAt": spot.createdAt?.description ?? "nil",
             "likes": spot.likes ?? 0,
@@ -38,7 +40,7 @@ struct FeedDiagnostics {
     static func logFeedStats(recentCount: Int, trendingCount: Int, nilIdCount: Int, excludedByPersistentSeen: Int, excludedByBlendSeen: Int, excludedByExistingIds: Int) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.info("Feed stats", details: [
+        SpotLogger.debug(.feed, "Feed stats", details: [
             "recent": recentCount,
             "trending": trendingCount,
             "nilId": nilIdCount,
@@ -51,7 +53,7 @@ struct FeedDiagnostics {
     static func logColdStart(seenSetSize: Int, isApplied: Bool) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.info("Feed cold start", details: [
+        SpotLogger.debug(.feed, "Feed cold start", details: [
             "seenSetSize": seenSetSize,
             "isApplied": isApplied,
             "disablePersistentDedupe": FeedFlags.disablePersistentDedupe

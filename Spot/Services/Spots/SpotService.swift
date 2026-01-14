@@ -67,7 +67,7 @@ final class SpotService {
                 }
 
                 guard let documents = snapshot?.documents else {
-                    SpotLogger.warning("fetchSpotsForMap no documents", details: [:])
+                    SpotLogger.debug(.network, "fetchSpotsForMap returned no documents")
                     completion(.success([]))
                     return
                 }
@@ -79,7 +79,7 @@ final class SpotService {
                           let imageURL = data["imageURL"] as? String,
                           let latitude = data["latitude"] as? Double,
                           let longitude = data["longitude"] as? Double else {
-                        SpotLogger.warning("Skipping doc due to missing fields", details: ["docId": document.documentID])
+                        SpotLogger.debug(.network, "Skipping doc due to missing fields", details: ["docId": document.documentID])
                         return nil
                     }
                     return Spot(
@@ -126,7 +126,7 @@ final class SpotService {
             }
 
             guard let document = document, document.exists else {
-                SpotLogger.warning("Spot not found", details: ["spotId": spotId])
+                SpotLogger.debug(.network, "Spot not found", details: ["spotId": spotId])
                 completion(.success(nil))
                 return
             }
@@ -262,7 +262,7 @@ final class SpotService {
         let ref = Storage.storage().reference(withPath: rawPath)
         ref.delete { error in
             if let error = error {
-                SpotLogger.warning("Storage delete failed", details: ["path": rawPath, "error": error.localizedDescription])
+                SpotLogger.error("Storage delete failed", details: ["path": rawPath, "error": error.localizedDescription])
             } else {
                 SpotLogger.info("Storage deleted", details: ["path": rawPath])
             }

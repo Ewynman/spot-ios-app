@@ -71,7 +71,7 @@ struct ShareSheet: View {
                         metadata.imageProvider = NSItemProvider(object: image)
                     }
                 } catch {
-                    SpotLogger.warning("Failed to load image for share preview: \(error.localizedDescription)")
+                    SpotLogger.debug(.image, "Failed to load image for share preview", details: ["error": error.localizedDescription])
                 }
             }
 

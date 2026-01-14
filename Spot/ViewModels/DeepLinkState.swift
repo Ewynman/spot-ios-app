@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import FirebaseAuth
+import FirebaseFirestore
 
 @MainActor
 final class DeepLinkState: ObservableObject {
@@ -19,6 +20,7 @@ final class DeepLinkState: ObservableObject {
     @Published var spotDetailSpot: Spot?
     @Published var showSpotUnavailable = false
     @Published var isLoadingSpot = false
+    @Published var showSubscriptionSuccess = false
 
     private let router = DeepLinkRouter.shared
     private let spotService = SpotService.shared
@@ -38,6 +40,8 @@ final class DeepLinkState: ObservableObject {
         switch route {
         case .spotDetail(let spotId):
             handleSpotDetailDeepLink(spotId: spotId, origin: origin, isColdStart: isColdStart)
+        case .subscriptionReturn:
+            handleSubscriptionReturn(origin: origin, isColdStart: isColdStart)
         case .unknown:
             router.logDeepLinkEvent(
                 origin: origin,
@@ -100,6 +104,8 @@ final class DeepLinkState: ObservableObject {
         switch pending {
         case .spotDetail(let spotId):
             navigateToSpot(spotId: spotId, origin: .universalLink, isColdStart: true)
+        case .subscriptionReturn:
+            handleSubscriptionReturn(origin: .universalLink, isColdStart: true)
         case .unknown:
             break
         }
@@ -203,9 +209,66 @@ final class DeepLinkState: ObservableObject {
         spotDetailSpot = nil
         showSpotUnavailable = false
         isLoadingSpot = false
+        showSubscriptionSuccess = false
         lastProcessedSpotId = nil
         lastProcessedTimestamp = Date.distantPast
 
         SpotLogger.info("DeepLinkState: Cleared user session state")
+    }
+    
+    // MARK: - Subscription Return Handling
+    
+    private func handleSubscriptionReturn(origin: DeepLinkOrigin, isColdStart: Bool) {
+        SpotLogger.info("DeepLinkState: Handling subscription return", details: ["origin": "\(origin)", "coldStart": isColdStart])
+        
+        // If app is still starting up, store the pending deep link
+        if isColdStart {
+            pendingDeepLink = .subscriptionReturn
+            SpotLogger.info("DeepLinkState: Stored pending subscription return")
+            return
+        }
+        
+        // Check if user is authenticated before checking pro status
+        if Auth.auth().currentUser != nil {
+            checkProStatusAndShowSuccess()
+        } else {
+            // Store for later when user authenticates
+            pendingDeepLink = .subscriptionReturn
+            SpotLogger.info("DeepLinkState: Stored pending subscription return for unauthenticated user")
+        }
+    }
+    
+    private func checkProStatusAndShowSuccess() {
+        Task {
+            guard let userId = Auth.auth().currentUser?.uid else {
+                SpotLogger.error("DeepLinkState: No user ID for subscription check")
+                return
+            }
+            
+            do {
+                let userDoc = try await Firestore.firestore()
+                    .collection("users")
+                    .document(userId)
+                    .getDocument()
+                
+                let isPro = userDoc.data()?["isPro"] as? Bool ?? false
+                
+                await MainActor.run {
+                    if isPro {
+                        SpotLogger.info("DeepLinkState: User is Pro, showing success screen")
+                        showSubscriptionSuccess = true
+                    } else {
+                        SpotLogger.info("DeepLinkState: User is not Pro, dismissing")
+                        // User didn't complete subscription, just close
+                    }
+                }
+            } catch {
+                SpotLogger.error("DeepLinkState: Failed to check pro status", details: ["error": error.localizedDescription])
+            }
+        }
+    }
+    
+    func dismissSubscriptionSuccess() {
+        showSubscriptionSuccess = false
     }
 }

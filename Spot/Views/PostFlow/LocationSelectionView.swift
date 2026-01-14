@@ -217,7 +217,7 @@ struct LocationSelectionView: View {
     private func loadNearbyPlaces() {
         SpotLogger.debug("Loading nearby places")
         guard let location = locationManager.location else {
-            SpotLogger.warning("No current location available, using default region")
+            SpotLogger.debug(.location, "No current location available, using default region")
             // If no location, use default region
             searchNearbyPlaces(in: region)
             return
@@ -282,7 +282,7 @@ struct LocationSelectionView: View {
                     return
                 }
             } catch {
-                SpotLogger.warning("Places query failed: \(error.localizedDescription)")
+                SpotLogger.debug(.network, "Places query failed", details: ["error": error.localizedDescription])
             }
         }
         func runSearch(with span: MKCoordinateSpan, completion: @escaping ([MKMapItem]) -> Void) {
@@ -622,7 +622,7 @@ struct LocationMapView: View {
                     if let ns = error as NSError? {
                         // Ignore cancellation and transient errors
                         if ns.code == CLError.Code.network.rawValue || ns.code == CLError.Code.geocodeFoundNoResult.rawValue { }
-                        SpotLogger.warning("Reverse geocode failed: \(ns.localizedDescription)")
+                        SpotLogger.debug(.location, "Reverse geocode failed", details: ["error": ns.localizedDescription])
                         return
                     }
                     guard let placemark = placemarks?.first else { return }
@@ -685,10 +685,10 @@ struct LocationMapView: View {
                         _ = try await db.collection("places").addDocument(data: data)
                     }
                 } catch {
-                    SpotLogger.warning("Upsert place failed: \(error.localizedDescription)")
+                    SpotLogger.debug(.network, "Upsert place failed", details: ["error": error.localizedDescription])
                 }
             case .tooShort, .tooLong, .blocked:
-                SpotLogger.warning("Blocked custom place at confirm; skipping upsert")
+                SpotLogger.debug(.network, "Blocked custom place at confirm, skipping upsert")
             }
         }
         onConfirm(selected)

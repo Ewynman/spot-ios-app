@@ -106,7 +106,7 @@ struct SpotCard: View {
             let currentUserId = userId ?? authVM.userId ?? ""
             let ownerId = spot.userId ?? ""
             let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
-            SpotLogger.debug("SpotCard appear", details: [
+            SpotLogger.debug(.ui, "SpotCard appear", details: [
                 "source": source,
                 "spotId": spot.safeId,
                 "ownerId": ownerId.isEmpty ? "nil" : ownerId,
@@ -114,7 +114,7 @@ struct SpotCard: View {
                 "isOwner": isOwner
             ])
             if currentUserId.isEmpty || ownerId.isEmpty {
-                SpotLogger.warning("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.safeId])
+                SpotLogger.error("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.safeId])
             }
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
@@ -168,7 +168,7 @@ struct SpotCard: View {
                 .cornerRadius(8)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    SpotLogger.debug("Back button tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.debug(.ui, "Back button tapped", details: ["spotId": spot.safeId, "source": source])
                     backAction()
                 }
                 .zIndex(10)
@@ -275,7 +275,7 @@ struct SpotCard: View {
                         .cornerRadius(12)
                         .onAppear {
                             let host = URL(string: thumb)?.host ?? "unknown"
-                            SpotLogger.error("Image.Thumb.Failure", details: [
+                            SpotLogger.error("Image thumbnail failed to load", details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "thumbHost": host,
@@ -334,7 +334,7 @@ struct SpotCard: View {
                        .clipped()
                        .cornerRadius(12)
                         .onAppear {
-                            SpotLogger.info("Spot image loaded", details: [
+                            SpotLogger.debug(.image, "Spot image loaded", details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "hasThumb": false,
@@ -351,7 +351,7 @@ struct SpotCard: View {
                         .cornerRadius(12)
                         .onAppear {
                             let host = url.host ?? "unknown"
-                            SpotLogger.error("Image.Full.Failure", details: [
+                            SpotLogger.error("Image full size failed to load", details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
@@ -396,7 +396,7 @@ struct SpotCard: View {
                 .clipped()
                 .cornerRadius(12)
                 .onAppear {
-                    SpotLogger.error("Image placeholder used", details: [
+                    SpotLogger.debug(.image, "Image placeholder used", details: [
                         "spotId": spot.safeId,
                         "source": source,
                         "hasThumb": false,
@@ -424,7 +424,7 @@ struct SpotCard: View {
                                 if let tFirst = PerfMetrics.shared.measure("t_first_item") {
                                     PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
                                 }
-                                SpotLogger.info("Spot image loaded", details: [
+                                SpotLogger.debug(.image, "Spot image loaded", details: [
                                     "spotId": spot.safeId,
                                     "source": source,
                                     "hasThumb": true,
@@ -434,7 +434,7 @@ struct SpotCard: View {
                     case .failure(let failure):
                         Color.clear.onAppear {
                             let host = URL(string: full)?.host ?? "unknown"
-                            SpotLogger.error("Image.Full.Failure", details: [
+                            SpotLogger.error("Image full size failed to load", details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
@@ -512,7 +512,7 @@ struct SpotCard: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button {
-                    SpotLogger.debug("Menu tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.debug(.ui, "Menu tapped", details: ["spotId": spot.safeId, "source": source])
                     showCustomMenu = true
                 } label: {
                     Text("⋮")
@@ -585,7 +585,7 @@ struct SpotCard: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
-                SpotLogger.debug("Share tapped", details: ["spotId": spot.safeId, "source": source])
+                SpotLogger.debug(.ui, "Share tapped", details: ["spotId": spot.safeId, "source": source])
                 showShareSheet = true
             } label: {
                 HStack {
@@ -619,7 +619,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Report tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.debug(.ui, "Report tapped", details: ["spotId": spot.safeId, "source": source])
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -640,7 +640,7 @@ struct SpotCard: View {
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)
-                                SpotLogger.info("User blocked from spot menu", details: ["targetUserId": targetUserId])
+                                SpotLogger.info("User blocked", details: ["targetUserId": targetUserId])
                             } catch {
                                 SpotLogger.error("Failed to block user", details: ["error": error.localizedDescription])
                             }
@@ -677,7 +677,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug("Delete tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.debug(.ui, "Delete tapped", details: ["spotId": spot.safeId, "source": source])
                     showDeleteConfirm = true
                 } label: {
                     HStack {
@@ -715,42 +715,74 @@ struct SpotCard: View {
 
         var body: some View {
             NavigationStack {
-                VStack(spacing: 12) {
-                    if isLoading {
-                        ProgressView().padding(.top, 16)
-                    } else {
-                        ScrollView {
-                            LazyVGrid(columns: grid, spacing: 12) {
-                                // "+" tile to create a new collection
-                                Button {
-                                    showCreateModal = true
-                                } label: {
-                                    NewCollectionTile()
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                ForEach(collections) { c in
+                ZStack {
+                    Constants.Colors.background.ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        if isLoading {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 12) {
+                                    // "Just Save" button at the top
                                     Button {
-                                        Task { await add(to: c.id) }
+                                        Task {
+                                            // Just bookmark without collection
+                                            await withCheckedContinuation { continuation in
+                                                UserSpotService.shared.bookmarkSpot(spotId: spotId) { _ in
+                                                    continuation.resume()
+                                                }
+                                            }
+                                            onSave?()
+                                            onDone()
+                                        }
                                     } label: {
-                                        CollectionCardView(
-                                            title: c.name,
-                                            previewURLs: previews[c.id] ?? [],
-                                            count: c.spotIds.count
-                                        )
+                                        HStack {
+                                            Image(systemName: "bookmark.fill")
+                                            Text("Just Save")
+                                                .font(FontManager.primaryText())
+                                        }
+                                        .foregroundColor(Constants.Colors.buttonText)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Constants.Colors.primary)
+                                        .cornerRadius(12)
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 12)
+                                    
+                                    LazyVGrid(columns: grid, spacing: 12) {
+                                        // "+" tile to create a new collection
+                                        Button {
+                                            showCreateModal = true
+                                        } label: {
+                                            NewCollectionTile()
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+
+                                        ForEach(collections) { c in
+                                            Button {
+                                                Task { await add(to: c.id) }
+                                            } label: {
+                                                CollectionCardView(
+                                                    title: c.name,
+                                                    previewURLs: previews[c.id] ?? [],
+                                                    count: c.spotIds.count
+                                                )
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.bottom, 12)
                                 }
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.top, 12)
                         }
                     }
-
-                    Spacer()
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
-                .background(Constants.Colors.background)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
