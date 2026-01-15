@@ -47,7 +47,23 @@ enum ProfileService {
         let username = data["username"] as? String ?? "User"
         let profileImageURL = data["profileImageURL"] as? String
         let targetIsPrivate = data["isPrivate"] as? Bool ?? false
-        let targetIsPro = data["isPro"] as? Bool ?? false
+        
+        // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
+        var proUntilDate: Date? = nil
+        if let timestamp = data["proUntil"] as? Timestamp {
+            proUntilDate = timestamp.dateValue()
+        } else if let timestamp = data["proUntil"] as? Date {
+            proUntilDate = timestamp
+        }
+        
+        // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
+        let targetIsPro: Bool
+        if let proUntil = proUntilDate {
+            targetIsPro = proUntil > Date()
+        } else {
+            // Backward compatibility: check isPro boolean
+            targetIsPro = data["isPro"] as? Bool ?? false
+        }
 
         let currentUserId = Auth.auth().currentUser?.uid
         var isFollowing = false

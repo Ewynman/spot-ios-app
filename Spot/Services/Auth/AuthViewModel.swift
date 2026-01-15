@@ -19,6 +19,7 @@ class AuthViewModel: ObservableObject {
     @Published var bookmarkedSpots: [String] = []
     @Published var blockedUsers: [String] = []
     @Published var isPro: Bool = false
+    @Published var proUntil: Date? = nil
     @Published var customVibeTags: [String] = []
 
     private var handle: AuthStateDidChangeListenerHandle?
@@ -44,6 +45,7 @@ class AuthViewModel: ObservableObject {
                     self?.isLoading = false
                     self?.isEmailVerified = user.isEmailVerified
                     self?.isPro = false
+                    self?.proUntil = nil
                     self?.customVibeTags = []
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
@@ -54,15 +56,33 @@ class AuthViewModel: ObservableObject {
                         PermissionManager.shared.requestPermissionsIfNeeded()
                     }
                 }
-                // Live observe user flags (e.g., isPro) without restart
+                // Live observe user flags (e.g., isPro, proUntil) without restart
                 self?.userDocListener?.remove()
                 self?.userDocListener = Firestore.firestore().collection("users").document(user.uid)
                     .addSnapshotListener { [weak self] snapshot, _ in
                         guard let data = snapshot?.data() else { return }
-                        let pro = data["isPro"] as? Bool ?? false
                         let vibes = data["customVibeTags"] as? [String] ?? []
+                        
+                        // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
+                        var proUntilDate: Date? = nil
+                        if let timestamp = data["proUntil"] as? Timestamp {
+                            proUntilDate = timestamp.dateValue()
+                        } else if let timestamp = data["proUntil"] as? Date {
+                            proUntilDate = timestamp
+                        }
+                        
+                        // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
+                        let isProValue: Bool
+                        if let proUntil = proUntilDate {
+                            isProValue = proUntil > Date()
+                        } else {
+                            // Backward compatibility: check isPro boolean
+                            isProValue = data["isPro"] as? Bool ?? false
+                        }
+                        
                         DispatchQueue.main.async {
-                            self?.isPro = pro
+                            self?.isPro = isProValue
+                            self?.proUntil = proUntilDate
                             self?.customVibeTags = vibes
                         }
                     }
@@ -77,6 +97,7 @@ class AuthViewModel: ObservableObject {
                     self?.bookmarkedSpots = []
                     self?.blockedUsers = []
                     self?.isPro = false
+                    self?.proUntil = nil
                     self?.customVibeTags = []
                 }
                 self?.userDocListener?.remove()
@@ -167,10 +188,29 @@ class AuthViewModel: ObservableObject {
         Task {
             do {
                 let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                let pro = userDoc.data()?["isPro"] as? Bool ?? false
-                let vibes = userDoc.data()?["customVibeTags"] as? [String] ?? []
+                let data = userDoc.data() ?? [:]
+                let vibes = data["customVibeTags"] as? [String] ?? []
+                
+                // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
+                var proUntilDate: Date? = nil
+                if let timestamp = data["proUntil"] as? Timestamp {
+                    proUntilDate = timestamp.dateValue()
+                } else if let timestamp = data["proUntil"] as? Date {
+                    proUntilDate = timestamp
+                }
+                
+                // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
+                let isProValue: Bool
+                if let proUntil = proUntilDate {
+                    isProValue = proUntil > Date()
+                } else {
+                    // Backward compatibility: check isPro boolean
+                    isProValue = data["isPro"] as? Bool ?? false
+                }
+                
                 await MainActor.run {
-                    self.isPro = pro
+                    self.isPro = isProValue
+                    self.proUntil = proUntilDate
                     self.customVibeTags = vibes
                 }
             } catch {
@@ -182,6 +222,8 @@ class AuthViewModel: ObservableObject {
     func setProActive(_ active: Bool) async {
         guard let userId = userId else { return }
         do {
+            // For backward compatibility, still set isPro boolean
+            // But prefer proUntil timestamp if available
             try await Firestore.firestore().collection("users").document(userId).setData(["isPro": active], merge: true)
             await MainActor.run { self.isPro = active }
             SpotLogger.info("Pro status updated", details: ["active": active])

@@ -183,9 +183,29 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 
+                                // Show expiration date if available
+                                if let proUntil = authVM.proUntil {
+                                    HStack {
+                                        Image(systemName: "calendar")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(Constants.Colors.primary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Pro expires")
+                                                .font(FontManager.primaryText())
+                                                .foregroundColor(Constants.Colors.primary)
+                                            Text(formatDate(proUntil))
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 16)
+                                }
+                                
                                 Button {
-                                    // Open website for subscription management
-                                    SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
+                                    // Open website for subscription management/cancellation
+                                    SubscriptionWebService.shared.openSubscriptionManagementPage()
                                 } label: {
                                     settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
                                 }
@@ -454,6 +474,13 @@ struct SettingsView: View {
         }
     }
 
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
     private func uploadProfilePhoto(_ image: UIImage) {
         SpotLogger.info("Settings.ProfilePhoto.Upload.start", details: [:])
         isUploadingPhoto = true

@@ -18,6 +18,7 @@ final class SubscriptionWebService {
     
     // Base URL for subscription website
     private let subscriptionBaseURL = "https://spotapp.online/subscribe"
+    private let subscriptionManageURL = "https://spotapp.online/manage-subscription"
     
     // Token expiration time (15 minutes)
     private let tokenExpirationMinutes: TimeInterval = 15
@@ -49,6 +50,7 @@ final class SubscriptionWebService {
                     "email": user.email ?? "",
                     "username": username ?? "",
                     "returnUrl": "spotapp://subscription/return",
+                    "action": "subscribe",
                     "createdAt": FieldValue.serverTimestamp(),
                     "expiresAt": Timestamp(date: expirationDate)
                 ]
@@ -60,8 +62,8 @@ final class SubscriptionWebService {
                 
                 SpotLogger.info("SubscriptionWebService: Created secure session token", details: ["token": sessionToken, "userId": user.uid])
                 
-                // Build URL with only the token (no sensitive data)
-                guard let url = buildSubscriptionURL(token: sessionToken) else {
+                // Build URL with token and userId (userId for redundancy)
+                guard let url = buildSubscriptionURL(token: sessionToken, userId: user.uid) else {
                     SpotLogger.error("SubscriptionWebService: Failed to build subscription URL", details: ["token": sessionToken])
                     return
                 }
@@ -88,15 +90,98 @@ final class SubscriptionWebService {
         }
     }
     
-    /// Builds subscription URL with only the secure token (no sensitive data)
-    private func buildSubscriptionURL(token: String) -> URL? {
+    /// Opens the subscription management/cancellation page
+    func openSubscriptionManagementPage() {
+        guard let user = Auth.auth().currentUser else {
+            SpotLogger.error("SubscriptionWebService: No current user for management", details: [:])
+            return
+        }
+        
+        Task {
+            do {
+                // Fetch username from Firestore
+                let userDoc = try await Firestore.firestore()
+                    .collection("users")
+                    .document(user.uid)
+                    .getDocument()
+                
+                let username = userDoc.data()?["username"] as? String
+                
+                // Create secure session token for management
+                let sessionToken = UUID().uuidString
+                let expirationDate = Date().addingTimeInterval(tokenExpirationMinutes * 60)
+                
+                // Store session data in Firestore
+                let sessionData: [String: Any] = [
+                    "userId": user.uid,
+                    "email": user.email ?? "",
+                    "username": username ?? "",
+                    "returnUrl": "spotapp://subscription/return",
+                    "action": "manage", // Indicates this is for management/cancellation
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "expiresAt": Timestamp(date: expirationDate)
+                ]
+                
+                try await Firestore.firestore()
+                    .collection("subscriptionSessions")
+                    .document(sessionToken)
+                    .setData(sessionData)
+                
+                SpotLogger.info("SubscriptionWebService: Created management session token", details: ["token": sessionToken, "userId": user.uid])
+                
+                // Build URL with token and userId (userId for redundancy)
+                guard let url = buildManagementURL(token: sessionToken, userId: user.uid) else {
+                    SpotLogger.error("SubscriptionWebService: Failed to build management URL", details: ["token": sessionToken])
+                    return
+                }
+                
+                SpotLogger.info("SubscriptionWebService: Opening subscription management page")
+                
+                // Open in Safari
+                await MainActor.run {
+                    UIApplication.shared.open(url, options: [:]) { success in
+                        if success {
+                            SpotLogger.info("SubscriptionWebService: Successfully opened management page")
+                        } else {
+                            SpotLogger.error("SubscriptionWebService: Failed to open management page")
+                        }
+                    }
+                }
+                
+                // Schedule cleanup
+                scheduleTokenCleanup(sessionToken: sessionToken, expirationDate: expirationDate)
+                
+            } catch {
+                SpotLogger.error("SubscriptionWebService: Failed to create management session token", details: ["error": error.localizedDescription])
+            }
+        }
+    }
+    
+    /// Builds subscription URL with token and userId (userId for redundancy)
+    private func buildSubscriptionURL(token: String, userId: String) -> URL? {
         guard var components = URLComponents(string: subscriptionBaseURL) else {
             return nil
         }
         
-        // Only pass the token - no user data in URL
+        // Include token AND userId for redundancy (webhook fallback)
         components.queryItems = [
             URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "returnUrl", value: "spotapp://subscription/return")
+        ]
+        
+        return components.url
+    }
+    
+    /// Builds subscription management URL with token and userId (userId for redundancy)
+    private func buildManagementURL(token: String, userId: String) -> URL? {
+        guard var components = URLComponents(string: subscriptionManageURL) else {
+            return nil
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "userId", value: userId),
             URLQueryItem(name: "returnUrl", value: "spotapp://subscription/return")
         ]
         

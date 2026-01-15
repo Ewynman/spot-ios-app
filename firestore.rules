@@ -105,9 +105,11 @@ service cloud.firestore {
       allow read: if false;
       
       // Authenticated users can create session tokens for themselves
+      // action field is optional (for manage vs subscribe)
       allow create: if request.auth != null && 
                      request.resource.data.userId == request.auth.uid &&
-                     request.resource.data.keys().hasAll(['userId', 'email', 'username', 'returnUrl', 'createdAt', 'expiresAt']);
+                     request.resource.data.keys().hasAll(['userId', 'email', 'username', 'returnUrl', 'createdAt', 'expiresAt']) &&
+                     (!('action' in request.resource.data) || request.resource.data.action is string);
       
       // Users can delete their own session tokens (for cleanup)
       // Web backend will also delete via Admin SDK
