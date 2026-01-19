@@ -26,7 +26,7 @@ struct SpotApp: App {
                 if showLaunchScreen {
                     LaunchView()
                         .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                                 withAnimation(.easeInOut(duration: 0.5)) {
                                     showLaunchScreen = false
                                 }

@@ -17,6 +17,9 @@ class UserSpotService {
             if let error = error {
                 completion(.failure(error))
             } else {
+                Task { @MainActor in
+                    AnalyticsService.shared.trackUserAction("spot_liked", contentType: "spot", contentId: spotId)
+                }
                 completion(.success(()))
             }
         }
@@ -31,6 +34,9 @@ class UserSpotService {
             if let error = error {
                 completion(.failure(error))
             } else {
+                Task { @MainActor in
+                    AnalyticsService.shared.trackUserAction("spot_unliked", contentType: "spot", contentId: spotId)
+                }
                 completion(.success(()))
             }
         }
@@ -50,6 +56,9 @@ class UserSpotService {
                 self.db.collection("spots").document(spotId).updateData([
                     "saves": FieldValue.increment(Int64(1))
                 ]) { _ in }
+                Task { @MainActor in
+                    AnalyticsService.shared.trackUserAction("spot_saved", contentType: "spot", contentId: spotId)
+                }
                 completion(.success(()))
             }
         }
@@ -68,6 +77,9 @@ class UserSpotService {
                 self.db.collection("spots").document(spotId).updateData([
                     "saves": FieldValue.increment(Int64(-1))
                 ]) { _ in }
+                Task { @MainActor in
+                    AnalyticsService.shared.trackUserAction("spot_unsaved", contentType: "spot", contentId: spotId)
+                }
                 completion(.success(()))
             }
         }

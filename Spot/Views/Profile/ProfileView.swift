@@ -62,8 +62,26 @@ struct ProfileView: View {
                 // MARK: — Top Bar (left-aligned title)
                 HStack(spacing: 0) {
                     let isViewingOther = (userId != nil) && (userId != authVM.userId)
-                    if selectedSpot != nil {
-                        // Show back button when spot is expanded
+                    
+                    // Always show back button when viewing other user's profile or when navigated from another screen
+                    if fromNavigationPush || isViewingOther {
+                        Button {
+                            if selectedSpot != nil {
+                                // If spot is selected, go back to profile first
+                                withAnimation { self.selectedSpot = nil }
+                            } else {
+                                // Otherwise, dismiss the entire profile view
+                                dismiss()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(Constants.Colors.primary)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.trailing, 8)
+                    } else if selectedSpot != nil {
+                        // Show back button when spot is expanded (own profile)
                         Button {
                             withAnimation { self.selectedSpot = nil }
                         } label: {
@@ -81,16 +99,6 @@ struct ProfileView: View {
                             .cornerRadius(8)
                         }
                         .buttonStyle(PlainButtonStyle())
-                    } else if fromNavigationPush || isViewingOther {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(Constants.Colors.primary)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .padding(.trailing, 8)
                     }
 
                     if selectedSpot == nil {
@@ -137,46 +145,88 @@ struct ProfileView: View {
                 } else {
                     // MARK: — Profile Header + Tabs
                     VStack(spacing: 16) {
+                        // Collapsed header when spot is selected on map, full header otherwise
                         if selectedSpot == nil && !(selectedTab == "Map" && isMapExpanded) {
-                        VStack(spacing: 12) {
-                            if let url = profileImageURL {
-                                AsyncImage(url: URL(string: url)) { img in
-                                    img.resizable()
-                                       .aspectRatio(contentMode: .fill)
-                                } placeholder: {
+                            // Full header
+                            VStack(spacing: 12) {
+                                if let url = profileImageURL {
+                                    AsyncImage(url: URL(string: url)) { img in
+                                        img.resizable()
+                                           .aspectRatio(contentMode: .fill)
+                                    } placeholder: {
+                                        Image(systemName: "person.circle.fill")
+                                            .resizable()
+                                            .foregroundColor(.gray)
+                                    }
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                } else {
                                     Image(systemName: "person.circle.fill")
                                         .resizable()
+                                        .frame(width: 100, height: 100)
                                         .foregroundColor(.gray)
                                 }
-                                .frame(width: 100, height: 100)
-                                .clipShape(Circle())
-                            } else {
-                                Image(systemName: "person.circle.fill")
-                                    .resizable()
-                                    .frame(width: 100, height: 100)
+
+                                HStack(spacing: 8) {
+                                    Text(username ?? "")
+                                        .font(FontManager.sectionHeader())
+                                        .foregroundColor(.black)
+                                    if (userId == nil || userId == authVM.userId) ? authVM.isPro : isProProfile {
+                                        Text("Pro")
+                                            .font(.caption)
+                                            .foregroundColor(Constants.Colors.buttonText)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Constants.Colors.primary)
+                                            .cornerRadius(10)
+                                    }
+                                }
+
+                                Text("\(spots.count) spots shared")
+                                    .font(FontManager.primaryText())
                                     .foregroundColor(.gray)
                             }
-
-                            HStack(spacing: 8) {
+                            .padding(.top, 12)
+                        } else if selectedSpot != nil && selectedTab == "Map" {
+                            // Collapsed header when spot is selected on map
+                            HStack(spacing: 12) {
+                                if let url = profileImageURL {
+                                    AsyncImage(url: URL(string: url)) { img in
+                                        img.resizable()
+                                           .aspectRatio(contentMode: .fill)
+                                    } placeholder: {
+                                        Image(systemName: "person.circle.fill")
+                                            .resizable()
+                                            .foregroundColor(.gray)
+                                    }
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(Circle())
+                                } else {
+                                    Image(systemName: "person.circle.fill")
+                                        .resizable()
+                                        .frame(width: 32, height: 32)
+                                        .foregroundColor(.gray)
+                                }
+                                
                                 Text(username ?? "")
-                                    .font(FontManager.sectionHeader())
+                                    .font(FontManager.primaryText())
                                     .foregroundColor(.black)
+                                
                                 if (userId == nil || userId == authVM.userId) ? authVM.isPro : isProProfile {
                                     Text("Pro")
-                                        .font(.caption)
+                                        .font(.caption2)
                                         .foregroundColor(Constants.Colors.buttonText)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
                                         .background(Constants.Colors.primary)
-                                        .cornerRadius(10)
+                                        .cornerRadius(8)
                                 }
+                                
+                                Spacer()
                             }
-
-                            Text("\(spots.count) spots shared")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(.gray)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
                         }
-                        .padding(.top, 12)
 
                         // Follow / Request actions centered under header when viewing someone else
                         if let viewedUserId = userId, viewedUserId != authVM.userId {
@@ -292,17 +342,25 @@ struct ProfileView: View {
                             .padding(.bottom, 8)
                         }
 
-                        // Tabs (simple text)
+                        // Tabs (simple text) - always visible
                         HStack(spacing: 24) {
                             ForEach(tabs, id: \.self) { tab in
                                 Text(tab)
                                     .font(FontManager.primaryText())
                                     .foregroundColor(selectedTab == tab ? Constants.Colors.primary : .gray)
                                     .fontWeight(.semibold)
-                                    .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab } }
+                                    .onTapGesture { 
+                                        withAnimation(.easeInOut(duration: 0.2)) { 
+                                            selectedTab = tab
+                                            // Clear selected spot when switching tabs
+                                            if selectedSpot != nil {
+                                                selectedSpot = nil
+                                            }
+                                        } 
+                                    }
                             }
                         }
-                        } // end header hide gate
+                        .padding(.top, selectedSpot != nil && selectedTab == "Map" ? 8 : 0)
 
                         if selectedTab == "Spots" {
                             if let selectedSpot {
@@ -463,7 +521,17 @@ struct ProfileView: View {
                 }
             }
         }
-        .onDisappear { followReqListener?.remove(); followReqListener = nil }
+        .onDisappear { 
+            followReqListener?.remove(); 
+            followReqListener = nil
+            // Clear selected spot with a small delay to ensure map cleanup completes
+            // This prevents Metal crashes when navigating away
+            Task { @MainActor in
+                selectedSpot = nil
+                // Small delay to let Metal finish rendering before view deallocation
+                try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 seconds
+            }
+        }
         .navigationDestination(isPresented: $showSettingsNav) {
             SettingsView()
         }

@@ -27,6 +27,9 @@ class FreshInstallDetector {
             // Check if Firebase Auth has a persisted user
             if Auth.auth().currentUser != nil {
                 SpotLogger.info("\(Constants.Analytics.authReinstall) hadKeychainUser=true action=autoSignOut")
+                Task { @MainActor in
+                    AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authReinstall, parameters: ["had_keychain_user": true, "action": "auto_sign_out"])
+                }
 
                 // Auto sign out the persisted user
                 do {
@@ -41,6 +44,9 @@ class FreshInstallDetector {
                 }
             } else {
                 SpotLogger.info("\(Constants.Analytics.authReinstall) hadKeychainUser=false action=none")
+                Task { @MainActor in
+                    AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authReinstall, parameters: ["had_keychain_user": false, "action": "none"])
+                }
             }
         }
 

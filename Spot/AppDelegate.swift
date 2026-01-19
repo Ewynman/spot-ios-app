@@ -9,6 +9,7 @@ import UIKit
 import FirebaseCore
 import FirebaseCrashlytics
 import FirebaseAppCheck
+import FirebaseAnalytics
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -30,29 +31,49 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Enable Crashlytics collection
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
         Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
+        
+        // Configure Firebase Analytics
+        #if DEBUG
+        // Disable analytics collection in debug builds (optional, for privacy)
+        // Analytics.setAnalyticsCollectionEnabled(false)
+        #else
+        Analytics.setAnalyticsCollectionEnabled(true)
+        #endif
 
-        // Configure logging (default: info + error only, debug categories disabled)
+        // Configure logging - ENABLE ALL LOGS
         LoggingConfig.configure()
         
-        // Uncomment to enable specific component logging:
-        // LoggingConfig.enableSpotCardLogging()         // SpotCard UI and image logs
-        // LoggingConfig.enablePrivacyLogging()          // Privacy filtering logs
-        // LoggingConfig.enableFeedLogging()             // Feed category only
-        // LoggingConfig.enableFeedComponentLogging()    // Feed components + category
-        // LoggingConfig.enablePostFlowLogging()         // Post flow, moderation, location
-        LoggingConfig.enableAuthLogging()               // Authentication logs
-        LoggingConfig.enableNetworkLogging()            // Network category only
-        // LoggingConfig.enableNetworkComponentLogging() // Network components + category
-        // LoggingConfig.enableDeepLinkLogging()         // Deep link routing
+        // Enable all debug logging (categories, components, and minimum level)
+        LoggingConfig.enableAllDebugLogging()
         
-        // Or enable individual components:
-        // ComponentLogging.spotCard = true
-        // ComponentLogging.authorPrivacyCache = true
-        // ComponentLogging.feedRepository = true
+        // Set minimum log level to debug to show all logs
+        SpotLogger.setMinimumLevel(.debug)
         
-        // Or enable by category:
-        // DebugCategory.enable(.privacy)
-        // DebugCategory.enable(.feed)
+        // Enable ALL component logging flags
+        ComponentLogging.spotCard = true
+        ComponentLogging.profileView = true
+        ComponentLogging.searchView = true
+        ComponentLogging.feedView = true
+        ComponentLogging.authorPrivacyCache = true
+        ComponentLogging.feedRepository = true
+        ComponentLogging.feedRanker = true
+        ComponentLogging.postFlow = true
+        ComponentLogging.locationSelection = true
+        ComponentLogging.photoSelection = true
+        ComponentLogging.authService = true
+        ComponentLogging.authViewModel = true
+        ComponentLogging.likesViewModel = true
+        ComponentLogging.bookmarksViewModel = true
+        ComponentLogging.spotService = true
+        ComponentLogging.spotUploader = true
+        ComponentLogging.imageService = true
+        ComponentLogging.deepLinkRouter = true
+        
+        // Enable all debug categories
+        DebugCategory.enableAll()
+        
+        // Enable feed diagnostic logging
+        FeedFlags.enableDiagnosticLogging = true
 
         return true
     }

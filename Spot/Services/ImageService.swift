@@ -60,6 +60,9 @@ class ImageService {
                     // Final failure - mark URL as failed
                     failedURLs.insert(urlString)
                     SpotLogger.error("\(Constants.Analytics.imageLoadFailed) spotId=\(spotId ?? "nil") urlHost=\(url.host ?? "unknown") code=\(errorCode) attempt=\(attempt)")
+                    Task { @MainActor in
+                        AnalyticsService.shared.trackImageLoadFailure(spotId: spotId, urlHost: url.host, errorCode: errorCode, attempt: attempt)
+                    }
                     return nil
                 }
 

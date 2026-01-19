@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import FirebaseFirestore
 
 @MainActor
 struct MapView: View {
@@ -14,6 +15,7 @@ struct MapView: View {
     @State private var hasPerformedInitialFit: Bool = false
     @State private var visibleSpots: [Spot] = []
     @State private var regionLoadTask: Task<Void, Never>?
+    @State private var isLoadingAllSpots: Bool = false
 
     @Environment(\.verticalSizeClass) private var vSize
 
@@ -27,7 +29,7 @@ struct MapView: View {
             ZStack(alignment: .bottom) {
                 // Clustered map (UIKit-backed) for performance with many pins
                 ClusteredSpotMap(spots: visibleSpots, onRegionChanged: { region in
-                    debounceLoad(for: region)
+                    // Region changes don't need to reload - we show all spots
                 }) { spot, coord in
                     select(spot, coord)
                 }
@@ -43,13 +45,23 @@ struct MapView: View {
             .onAppear {
                 locationManager.startUpdatingLocation()
                 performInitialFitIfNeeded()
-                // Trigger initial viewport load
-                debounceLoad(for: LocationManager.shared.getUserRegion())
+                // Load all spots for map
+                loadAllSpots()
             }
-            .onDisappear { locationManager.stopUpdatingLocation() }
-            .onChange(of: locationManager.userLocation) { _, _ in
-                // Only follow user if there are no map spots; otherwise preserve the fit-to-pins.
-                if selectedSpot == nil && !hasValidSpots { updateCameraToUser() }
+            .onDisappear { 
+                locationManager.stopUpdatingLocation()
+                // Clear selected spot to ensure map resources are released before navigation
+                selectedSpot = nil
+                // Cancel any pending region load tasks
+                regionLoadTask?.cancel()
+                regionLoadTask = nil
+            }
+            .onChange(of: locationManager.userLocation) { oldLocation, newLocation in
+                // Zoom to user location when it first becomes available
+                if oldLocation == nil && newLocation != nil && selectedSpot == nil && !hasPerformedInitialFit {
+                    updateCameraToUser()
+                    hasPerformedInitialFit = true
+                }
             }
             .onChange(of: spots) { _, _ in
                 // When spots load asynchronously, perform initial fit once.
@@ -109,13 +121,31 @@ struct MapView: View {
         hasPerformedInitialFit = true
     }
 
+    private func loadAllSpots() {
+        guard !isLoadingAllSpots else { return }
+        isLoadingAllSpots = true
+        
+        SpotService.shared.fetchSpotsForMap(forceRefresh: true) { result in
+            DispatchQueue.main.async {
+                self.isLoadingAllSpots = false
+                switch result {
+                case .success(let spots):
+                    self.visibleSpots = spots
+                    SpotLogger.info("Map loaded all spots", details: ["count": spots.count])
+                case .failure(let error):
+                    SpotLogger.error("Failed to load all spots for map", details: ["error": error.localizedDescription])
+                }
+            }
+        }
+    }
+    
     private func debounceLoad(for region: MKCoordinateRegion) {
+        // Keep for region changes if needed, but initial load uses loadAllSpots
         regionLoadTask?.cancel()
         regionLoadTask = Task { [region] in
             try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
             if Task.isCancelled { return }
-            let spots = await MapViewportLoader.shared.load(region: region)
-            await MainActor.run { self.visibleSpots = spots }
+            // Optionally reload visible region spots, but we're showing all spots now
         }
     }
 }
@@ -170,6 +200,7 @@ private struct ClusteredSpotMap: UIViewRepresentable {
         map.delegate = context.coordinator
         map.pointOfInterestFilter = .excludingAll
         map.showsTraffic = false
+        map.showsUserLocation = true
         // Always light mode
         if #available(iOS 13.0, *) { map.overrideUserInterfaceStyle = .light }
         // Standard light configuration
@@ -179,12 +210,22 @@ private struct ClusteredSpotMap: UIViewRepresentable {
         }
         map.register(MKAnnotationView.self, forAnnotationViewWithReuseIdentifier: "SpotImage")
         map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
+        
+        // Set initial region to user location (or default)
+        let initialRegion = LocationManager.shared.getUserRegion()
+        map.setRegion(initialRegion, animated: false)
+        context.coordinator.initialRegionSet = true
+        
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         let existing = map.annotations.compactMap { $0 as? SpotPointAnnotation }
-        if existing.count != spots.count {
+        let existingIds = Set(existing.map { $0.spot.id })
+        let newIds = Set(spots.map { $0.id })
+        
+        // Only update if spots actually changed
+        if existingIds != newIds {
             map.removeAnnotations(existing)
             let anns: [SpotPointAnnotation] = spots.compactMap { s in
                 guard let lat = s.latitude, let lon = s.longitude else { return nil }
@@ -194,17 +235,50 @@ private struct ClusteredSpotMap: UIViewRepresentable {
                 return a
             }
             map.addAnnotations(anns)
+            
+            // If we have spots and this is the first load, fit them to view
+            // Don't auto-fit if user has already panned/zoomed
             if !anns.isEmpty {
-                map.showAnnotations(anns, animated: false)
+                let spotAnnotations = map.annotations.compactMap { $0 as? SpotPointAnnotation }
+                // Only auto-fit if we just added spots and map hasn't been significantly moved
+                let currentCenter = map.region.center
+                let initialRegion = LocationManager.shared.getUserRegion()
+                let distance = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
+                    .distance(from: CLLocation(latitude: initialRegion.center.latitude, longitude: initialRegion.center.longitude))
+                
+                // If still near initial location (within 10km) or no spots were shown before, fit to spots
+                if distance < 10000 || existing.isEmpty {
+                    map.showAnnotations(spotAnnotations, animated: false)
+                }
             }
         }
-        // Initial region notification removed to avoid SwiftUI state changes during updates
+    }
+    
+    func dismantleUIView(_ map: MKMapView, coordinator: Coordinator) {
+        // Clean up map resources before deallocation to prevent Metal crashes
+        // This ensures Metal textures are properly released before the view is deallocated
+        map.delegate = nil
+        map.removeAnnotations(map.annotations)
+        map.showsUserLocation = false
+        map.removeOverlays(map.overlays)
+        
+        // Hide the map view to stop rendering and give Metal time to finish
+        map.isHidden = true
+        map.alpha = 0
+        
+        // Give Metal time to finish current frame before deallocation
+        // This prevents the texture from being destroyed while still referenced by command buffer
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            // Additional cleanup if needed - Metal should have finished by now
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         let parent: ClusteredSpotMap
+        var initialRegionSet = false
+        var hasZoomedToUserLocation = false
         init(_ parent: ClusteredSpotMap) { self.parent = parent }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
@@ -245,6 +319,24 @@ private struct ClusteredSpotMap: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             parent.onRegionChanged?(mapView.region)
+        }
+        
+        func mapViewDidFinishLoadingMap(_ mapView: MKMapView) {
+            // Ensure initial region is set after map loads
+            if !initialRegionSet {
+                let userRegion = LocationManager.shared.getUserRegion()
+                mapView.setRegion(userRegion, animated: false)
+                initialRegionSet = true
+            }
+        }
+        
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            // Zoom to user location when it first becomes available (if we haven't already)
+            if !hasZoomedToUserLocation && userLocation.location != nil {
+                let userRegion = LocationManager.shared.getUserRegion()
+                mapView.setRegion(userRegion, animated: true)
+                hasZoomedToUserLocation = true
+            }
         }
     }
 }

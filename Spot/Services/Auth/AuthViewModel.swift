@@ -35,11 +35,14 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    private var previousUserId: String?
+    
     private func listenToAuthState() {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             if let user = user {
                 SpotLogger.debug("Auth state changed - user signed in: \(user.uid)")
                 DispatchQueue.main.async {
+                    let isNewLogin = self?.previousUserId == nil && self?.userId == nil
                     self?.userId = user.uid
                     self?.isAuthenticated = true
                     self?.isLoading = false
@@ -47,6 +50,17 @@ class AuthViewModel: ObservableObject {
                     self?.isPro = false
                     self?.proUntil = nil
                     self?.customVibeTags = []
+                    
+                    // Set user ID for analytics
+                    AnalyticsService.shared.setUserId(user.uid)
+                    
+                    // Track login if this is a new session
+                    if isNewLogin {
+                        AnalyticsService.shared.logEvent("user_login", parameters: [
+                            "email_verified": user.isEmailVerified
+                        ])
+                    }
+                    
                     self?.refreshUserSpotLists()
                     self?.refreshBlockedUsers()
                     self?.refreshUserFlags()
@@ -55,6 +69,7 @@ class AuthViewModel: ObservableObject {
                         SpotLogger.info("Perms.AutoPrompt reason=freshInstallLogin")
                         PermissionManager.shared.requestPermissionsIfNeeded()
                     }
+                    self?.previousUserId = user.uid
                 }
                 // Live observe user flags (e.g., isPro, proUntil) without restart
                 self?.userDocListener?.remove()
@@ -64,11 +79,13 @@ class AuthViewModel: ObservableObject {
                         let vibes = data["customVibeTags"] as? [String] ?? []
                         
                         // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
-                        var proUntilDate: Date? = nil
+                        let proUntilDate: Date?
                         if let timestamp = data["proUntil"] as? Timestamp {
                             proUntilDate = timestamp.dateValue()
                         } else if let timestamp = data["proUntil"] as? Date {
                             proUntilDate = timestamp
+                        } else {
+                            proUntilDate = nil
                         }
                         
                         // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
@@ -89,6 +106,9 @@ class AuthViewModel: ObservableObject {
             } else {
                 DispatchQueue.main.async {
                     SpotLogger.debug("Auth state changed - no user")
+                    // Clear analytics user ID on sign out
+                    AnalyticsService.shared.setUserId(nil)
+                    
                     self?.userId = nil
                     self?.isAuthenticated = false
                     self?.isLoading = false
@@ -100,6 +120,7 @@ class AuthViewModel: ObservableObject {
                     self?.proUntil = nil
                     self?.customVibeTags = []
                 }
+                self?.previousUserId = nil
                 self?.userDocListener?.remove()
                 self?.userDocListener = nil
             }

@@ -43,7 +43,14 @@ struct ProfileMapView: View {
             ZStack(alignment: .bottom) {
                 // Map kept alive (we never animate its height)
                 InnerProfileSpotMap(
-                    position: $cameraPosition,
+                    region: Binding(
+                        get: {
+                            extractRegion(from: cameraPosition)
+                        },
+                        set: { newRegion in
+                            cameraPosition = .region(newRegion)
+                        }
+                    ),
                     spots: spots,
                     selectedSpot: selectedSpot,
                     onSelect: { spot, coord in
@@ -61,6 +68,11 @@ struct ProfileMapView: View {
             }
             .onAppear {
                 if selectedSpot == nil { zoomToFitAllPins() }
+            }
+            .onDisappear {
+                // Clear selected spot to ensure map resources are released before navigation
+                // This prevents Metal crashes when navigating away
+                selectedSpot = nil
             }
         }
         // Hide the system Tab Bar while the panel is open so it can't intercept taps.
@@ -89,9 +101,10 @@ struct ProfileMapView: View {
     }
 
     // MARK: - Panel sizing
+    // Smaller panel for profile map - shows spot card below marker, not full screen
     private func openPanelHeight(in size: CGSize) -> CGFloat {
-        let base: CGFloat = (vSize == .compact) ? size.height * 0.40 : size.height * 0.55
-        return min(max(base, 280), size.height * 0.92)
+        // Fixed height for spot card - enough to show the card but not take over the screen
+        return 320
     }
 
     // MARK: - Actions
@@ -100,9 +113,20 @@ struct ProfileMapView: View {
         onSpotTap?(spot)
         onCollapseChange?(true)
 
-        // Base zoom you already use
-        let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-        let baseRegion = MKCoordinateRegion(center: coordinate, span: span)
+        // Get current region to compare spans
+        let currentRegion = extractRegion(from: cameraPosition)
+        let currentSpan = currentRegion.span.latitudeDelta
+        
+        // Use a tight zoom span - much smaller than typical "fit all" view
+        // This ensures we always zoom IN when selecting a spot
+        let targetSpan = MKCoordinateSpan(latitudeDelta: 0.002, longitudeDelta: 0.002)
+        
+        // Only zoom in if current span is larger (more zoomed out)
+        let finalSpan = currentSpan < targetSpan.latitudeDelta ? 
+            MKCoordinateSpan(latitudeDelta: currentSpan * 0.5, longitudeDelta: currentSpan * 0.5) : 
+            targetSpan
+        
+        let baseRegion = MKCoordinateRegion(center: coordinate, span: finalSpan)
 
         // Degrees of latitude per rendered point at the chosen zoom
         let latPerPoint = baseRegion.span.latitudeDelta / max(viewSize.height, 1)
@@ -114,7 +138,7 @@ struct ProfileMapView: View {
         )
 
         withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            cameraPosition = .region(MKCoordinateRegion(center: adjustedCenter, span: span))
+            cameraPosition = .region(MKCoordinateRegion(center: adjustedCenter, span: finalSpan))
         }
     }
 
@@ -141,6 +165,26 @@ struct ProfileMapView: View {
         }
     }
 
+    // Helper function to extract region from MapCameraPosition
+    // Uses Mirror reflection to extract the region value since pattern matching doesn't work
+    private func extractRegion(from position: MapCameraPosition) -> MKCoordinateRegion {
+        let mirror = Mirror(reflecting: position)
+        for child in mirror.children {
+            if let region = child.value as? MKCoordinateRegion {
+                return region
+            }
+        }
+        // Fallback: calculate region from spots if available, otherwise use default
+        if let region = Self.regionToFit(spots) {
+            return region
+        }
+        // Last resort: default region
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 25.7617, longitude: -80.1918),
+            span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
+        )
+    }
+    
     private static func regionToFit(_ spots: [Spot]) -> MKCoordinateRegion? {
         let coords: [CLLocationCoordinate2D] = spots.compactMap {
             guard let lat = $0.latitude, let lon = $0.longitude else { return nil }
@@ -178,38 +222,178 @@ struct ProfileMapView: View {
     return ProfileMapView(spots: spots)
 }
 
-// MARK: - Extracted Map (fast to type-check)
-private struct InnerProfileSpotMap: View {
-    @Binding var position: MapCameraPosition
+// MARK: - UIKit-backed Map (for better Metal cleanup control)
+private struct InnerProfileSpotMap: UIViewRepresentable {
+    @Binding var region: MKCoordinateRegion
     let spots: [Spot]
     let selectedSpot: Spot?
     let onSelect: (Spot, CLLocationCoordinate2D) -> Void
-
-    var body: some View {
-        Map(position: $position, interactionModes: .all) {
-            ForEach(spots, id: \.id) { spot in
-                if let coord = coordinate(for: spot) {
-                    Annotation("", coordinate: coord) {
-                        SpotMapMarker(spot: spot)
-                            .scaleEffect(selectedSpot?.id == spot.id ? 1.3 : 1.0)
-                            .onTapGesture { onSelect(spot, coord) }
-                    }
+    
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView(frame: .zero)
+        map.delegate = context.coordinator
+        map.pointOfInterestFilter = .excludingAll
+        map.showsTraffic = false
+        map.overrideUserInterfaceStyle = .light
+        
+        if #available(iOS 13.0, *) {
+            let cfg = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
+            map.preferredConfiguration = cfg
+        }
+        
+        map.register(MKAnnotationView.self, forAnnotationViewWithReuseIdentifier: "SpotImage")
+        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
+        
+        // Add initial annotations if spots are available
+        let initialAnns: [ProfileSpotPointAnnotation] = spots.compactMap { s in
+            guard let lat = s.latitude, let lon = s.longitude else { return nil }
+            let a = ProfileSpotPointAnnotation(spot: s)
+            a.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            a.title = s.vibeTag
+            return a
+        }
+        if !initialAnns.isEmpty {
+            map.addAnnotations(initialAnns)
+            // Fit map to show all annotations
+            map.showAnnotations(initialAnns, animated: false)
+        } else {
+            // Set initial region if no spots
+            map.setRegion(region, animated: false)
+        }
+        
+        return map
+    }
+    
+    func updateUIView(_ map: MKMapView, context: Context) {
+        // Update annotations
+        let existing = map.annotations.compactMap { $0 as? ProfileSpotPointAnnotation }
+        let existingIds = Set(existing.map { $0.spot.id })
+        let newIds = Set(spots.map { $0.id })
+        
+        // Always update if IDs don't match or if we have spots but no annotations
+        if existingIds != newIds || (existing.isEmpty && !spots.isEmpty) {
+            map.removeAnnotations(existing)
+            let anns: [ProfileSpotPointAnnotation] = spots.compactMap { s in
+                guard let lat = s.latitude, let lon = s.longitude else { return nil }
+                let a = ProfileSpotPointAnnotation(spot: s)
+                // Ensure coordinate is set correctly from spot data
+                let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                a.coordinate = coord
+                a.title = s.vibeTag
+                return a
+            }
+            if !anns.isEmpty {
+                map.addAnnotations(anns)
+                // Only fit all annotations if no spot is selected
+                if selectedSpot == nil {
+                    map.showAnnotations(anns, animated: !existing.isEmpty)
                 }
             }
         }
-        // Force LIGHT map; no user puck because we don't add UserAnnotation()
-        .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: false))
-        .environment(\.colorScheme, .light)
-        .preferredColorScheme(.light)
-        // Fill vertical space and render under top safe area to avoid gaps.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
+        
+        // Update scale effect for selected spot
+        for annotation in map.annotations {
+            if let ann = annotation as? ProfileSpotPointAnnotation,
+               let view = map.view(for: ann) {
+                if let selectedId = selectedSpot?.id, selectedId == ann.spot.id {
+                    view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                } else {
+                    view.transform = .identity
+                }
+            }
+        }
+        
+        // Update camera position - always respect region changes (including when spot is selected)
+        let currentCenter = map.region.center
+        let distance = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
+            .distance(from: CLLocation(latitude: region.center.latitude, longitude: region.center.longitude))
+        
+        // Update if significantly different (more than 100m) or if a spot is selected (to zoom to it)
+        if distance > 100 || selectedSpot != nil {
+            map.setRegion(region, animated: selectedSpot != nil)
+        }
     }
+    
+    func dismantleUIView(_ map: MKMapView, coordinator: Coordinator) {
+        // Clean up before deallocation to prevent Metal crashes
+        map.delegate = nil
+        map.removeAnnotations(map.annotations)
+        map.removeOverlays(map.overlays)
+        
+        // Hide the map view to stop rendering
+        map.isHidden = true
+        map.alpha = 0
+        
+        // Give Metal time to finish current frame before deallocation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            // Cleanup complete - Metal should have finished by now
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        let parent: InnerProfileSpotMap
+        
+        init(_ parent: InnerProfileSpotMap) {
+            self.parent = parent
+        }
+        
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+            
+            if let cluster = annotation as? MKClusterAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier, for: cluster) as! MKMarkerAnnotationView
+                view.markerTintColor = UIColor(Constants.Colors.primary)
+                return view
+            }
+            
+            guard let ann = annotation as? ProfileSpotPointAnnotation else { return nil }
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: "SpotImage", for: ann)
+            // No clustering for profile map - show individual markers
+            view.clusteringIdentifier = nil
+            view.canShowCallout = false
+            
+            // Custom image marker
+            if let img = UIImage(named: "green_marker") {
+                view.image = img
+                view.centerOffset = CGPoint(x: 0, y: -img.size.height * 0.4)
+            } else {
+                // Fallback to a tinted marker if asset missing
+                let marker = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: nil)
+                // No clustering for profile map
+                marker.clusteringIdentifier = nil
+                marker.markerTintColor = UIColor(Constants.Colors.primary)
+                return marker
+            }
+            
+            // Scale effect for selected spot
+            if let selectedId = parent.selectedSpot?.id, selectedId == ann.spot.id {
+                view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+            } else {
+                view.transform = .identity
+            }
+            
+            return view
+        }
+        
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            // No clustering, so no cluster handling needed
+            guard let ann = view.annotation as? ProfileSpotPointAnnotation else { return }
+            // Use the annotation's actual coordinate
+            let annotationCoordinate = ann.coordinate
+            // Call onSelect which will update cameraPosition and trigger region update
+            // Don't set region directly here - let the select() function handle it with proper offset
+            parent.onSelect(ann.spot, annotationCoordinate)
+        }
+    }
+}
 
-    private func coordinate(for spot: Spot) -> CLLocationCoordinate2D? {
-        guard let lat = spot.latitude, let lon = spot.longitude else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
+private final class ProfileSpotPointAnnotation: MKPointAnnotation {
+    let spot: Spot
+    init(spot: Spot) { self.spot = spot; super.init() }
 }
 
 // MARK: - Full-bleed bottom panel (no corners/shadows) with header like your mock

@@ -25,6 +25,9 @@ class AuthService {
                 let nsError = error as NSError
                 if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
                     SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
+                    Task { @MainActor in
+                        AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "detected"])
+                    }
                     completion(.success(.emailInUse(.passwordAccount)))
                 } else {
                     completion(.failure(error))
@@ -42,6 +45,13 @@ class AuthService {
             self?.createUserDocument(for: authResult.user) { result in
                 switch result {
                 case .success:
+                    // Track signup event
+                    Task { @MainActor in
+                        AnalyticsService.shared.setUserId(authResult.user.uid)
+                        AnalyticsService.shared.logEvent("user_signup", parameters: [
+                            "email_verified": authResult.user.isEmailVerified
+                        ])
+                    }
                     completion(.success(.success(authResult.user)))
                 case .failure(let error):
                     completion(.failure(error))
@@ -80,6 +90,9 @@ class AuthService {
                 completion(.failure(error))
             } else {
                 SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=reset")
+                Task { @MainActor in
+                    AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "reset"])
+                }
                 completion(.success(()))
             }
         }
@@ -186,7 +199,19 @@ class AuthService {
                 "bookmarkedSpots": []
             ]
             Firestore.firestore().collection("users").document(user.uid).setData(userData) { err in
-                if let err = err { completion(.failure(err)) } else { completion(.success(())) }
+                if let err = err {
+                    completion(.failure(err))
+                } else {
+                    // Track signup event
+                    Task { @MainActor in
+                        AnalyticsService.shared.setUserId(user.uid)
+                        AnalyticsService.shared.logEvent("user_signup", parameters: [
+                            "email_verified": user.isEmailVerified,
+                            "is_private": isPrivate
+                        ])
+                    }
+                    completion(.success(()))
+                }
             }
         }
     }
@@ -296,6 +321,9 @@ class AuthService {
     /// Delete Auth user by email (DEBUG only)
     func deleteAuthUserByEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).requested email=\(email)")
+        Task { @MainActor in
+            AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authDeleteByEmail, parameters: ["action": "requested", "email": email])
+        }
 
         // This would call a Cloud Function in production
         // For now, just log the request and complete successfully
@@ -313,6 +341,9 @@ class AuthService {
         // }
 
         SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).result=ok")
+        Task { @MainActor in
+            AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authDeleteByEmail, parameters: ["action": "result", "status": "ok"])
+        }
         completion(.success(()))
     }
     #endif

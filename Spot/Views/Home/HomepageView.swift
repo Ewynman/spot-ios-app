@@ -121,6 +121,7 @@ struct HomepageView: View {
     @State private var selectedTab = "Home"
     @State private var showUploadView = false
     @State private var showVerifyToast = false
+    @State private var showPostSuccessToast = false
     @State private var feedViewType = "Feed" // "Feed" or "Map"
     @State private var showRulesSheet = false
     private let feedTabs = ["Feed", "Map"]
@@ -214,16 +215,27 @@ struct HomepageView: View {
             }
             }
             .overlay(alignment: .top) {
-                if showVerifyToast {
-                    ToastView(message: "Please verify your email to post a spot.", isError: true)
-                        .transition(.move(edge: .top))
-                        .padding(.top, 8)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                withAnimation { showVerifyToast = false }
+                VStack(spacing: 8) {
+                    if showVerifyToast {
+                        ToastView(message: "Please verify your email to post a spot.", isError: true)
+                            .transition(.move(edge: .top))
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    withAnimation { showVerifyToast = false }
+                                }
                             }
-                        }
+                    }
+                    if showPostSuccessToast {
+                        SuccessToastView(message: "Spot posted!")
+                            .transition(.move(edge: .top))
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    withAnimation { showPostSuccessToast = false }
+                                }
+                            }
+                    }
                 }
+                .padding(.top, 8)
             }
             .background(Color(hex: "F5F3EF"))
             .sheet(isPresented: $showRulesSheet) {
@@ -239,8 +251,12 @@ struct HomepageView: View {
             }
             .navigationDestination(isPresented: $showUploadView) {
                 PostFlowView(onPostSuccess: { spot in
-                    // Insert newly posted spot at the top of feed
-                    feedVM.insertNewSpot(spot)
+                    // Show success toast on homepage
+                    showPostSuccessToast = true
+                    // Reload feed to show new spot
+                    Task {
+                        await feedVM.refreshFeed()
+                    }
                 })
             }
             .navigationDestination(for: Route.self) { route in

@@ -166,7 +166,22 @@ extension DeepLinkRouter {
             SpotLogger.error("DeepLinkRouter: Failure - origin: \(origin), spotId: \(spotId ?? "nil"), reason: \(errorReason ?? "unknown")")
         }
 
-        // TODO: Send to analytics service when implemented
-        // AnalyticsService.shared.trackDeepLink(analytics)
+        // Track deep link event
+        let originString: String
+        switch origin {
+        case .universalLink:
+            originString = "universal_link"
+        case .customScheme:
+            originString = "custom_scheme"
+        }
+        Task { @MainActor in
+            AnalyticsService.shared.trackDeepLink(
+                origin: originString,
+                spotId: spotId,
+                isColdStart: isColdStart,
+                success: success,
+                errorReason: errorReason
+            )
+        }
     }
 }

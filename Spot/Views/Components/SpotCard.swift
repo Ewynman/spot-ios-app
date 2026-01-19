@@ -209,8 +209,11 @@ struct SpotCard: View {
                             .foregroundColor(Constants.Colors.primary)
                             .measure(target: .username)
                     }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.plain)
             }
 
             Spacer()

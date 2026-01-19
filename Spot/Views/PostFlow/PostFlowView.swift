@@ -70,7 +70,8 @@ struct PostFlowView: View {
                     NavigationButtonsView(
                         currentStep: $currentStep,
                         totalSteps: totalSteps,
-                        canProceed: canProceedToNextStep,
+                        canProceed: canProceedToNextStep && !isPosting,
+                        isPosting: isPosting,
                         onBack: handleBack,
                         onNext: handleNext,
                         onFinish: handleFinish
@@ -245,33 +246,32 @@ struct PostFlowView: View {
 
         if status == "approved" {
             let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
-            if ok {
-                SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
-                // Convert document to Spot and pass to callback
-                if var spot = try? doc.data(as: Spot.self) {
-                    spot.id = doc.documentID
-                    await MainActor.run {
-                        self.showSuccessBanner = true
-                        self.onPostSuccess?(spot)
-                        self.isPosting = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                            withAnimation { self.showSuccessBanner = false }
+                if ok {
+                    SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
+                    // Convert document to Spot and pass to callback
+                    if var spot = try? doc.data(as: Spot.self) {
+                        spot.id = doc.documentID
+                        await MainActor.run {
+                            // Track successful post
+                            AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID, parameters: [
+                                "vibe_tag": spot.vibeTag ?? "",
+                                "has_multiple_images": spot.imageURLs?.count ?? 0 > 1
+                            ])
+                            // Dismiss immediately, success will show on homepage
+                            self.onPostSuccess?(spot)
+                            self.isPosting = false
+                            self.dismiss()
+                        }
+                    } else {
+                        // Fallback if conversion fails
+                        await MainActor.run {
+                            AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID)
+                            self.onPostSuccess?(Spot(id: doc.documentID))
+                            self.isPosting = false
                             self.dismiss()
                         }
                     }
-                } else {
-                    // Fallback if conversion fails
-                    await MainActor.run {
-                        self.showSuccessBanner = true
-                        self.onPostSuccess?(Spot(id: doc.documentID))
-                        self.isPosting = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                            withAnimation { self.showSuccessBanner = false }
-                            self.dismiss()
-                        }
-                    }
-                }
-                return true
+                    return true
             } else {
                 SpotLogger.error("Post blocked by moderation", details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
                 await MainActor.run {
@@ -334,6 +334,7 @@ struct NavigationButtonsView: View {
     @Binding var currentStep: Int
     let totalSteps: Int
     let canProceed: Bool
+    let isPosting: Bool
     let onBack: () -> Void
     let onNext: () -> Void
     let onFinish: () -> Void
@@ -358,15 +359,15 @@ struct NavigationButtonsView: View {
             }
 
             Button(action: currentStep == totalSteps ? onFinish : onNext) {
-                Text(currentStep == totalSteps ? "Post" : "Next")
+                Text(currentStep == totalSteps ? (isPosting ? "Posting..." : "Post") : "Next")
                     .font(FontManager.buttonText())
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(canProceed ? Constants.Colors.primary : Color.gray)
+                    .background(canProceed && !isPosting ? Constants.Colors.primary : Color.gray)
                     .cornerRadius(20)
             }
-            .disabled(!canProceed)
+            .disabled(!canProceed || isPosting)
             .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
