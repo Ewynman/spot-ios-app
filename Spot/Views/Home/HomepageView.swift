@@ -118,13 +118,8 @@ class FeedViewModel: ObservableObject {
 struct HomepageView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var feedVM = FeedViewModel()
-    @State private var selectedTab = "Home"
-    @State private var showUploadView = false
     @State private var showVerifyToast = false
     @State private var showPostSuccessToast = false
-    @State private var feedViewType = "Feed" // "Feed" or "Map"
-    @State private var showRulesSheet = false
-    private let feedTabs = ["Feed", "Map"]
     // Tour
     @StateObject private var tourManager = HomeTourManager()
     var isFirstSessionAfterSignup: Bool { authVM.isAuthenticated && (authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty) && !tourManager.hasSeenHomeTour }
@@ -134,85 +129,27 @@ struct HomepageView: View {
         NavigationStack {
             HomeTourHost(manager: tourManager, coachFrames: $coachFrames, isFirstSessionAfterSignup: isFirstSessionAfterSignup) {
                 VStack(spacing: 0) {
-                // Show different content based on selected tab
-                Group {
-                    if selectedTab == "Profile" {
-                        ProfileView(userId: authVM.userId)
-                            .transition(.opacity)
-                    } else {
-                        VStack(spacing: 0) {
-                            // Top Navigation with SPOT branding
-                            TopNavigationView(
-                                title: "SPOT",
-                                rightButton: .plus,
-                                showUploadView: $showUploadView,
-                                onPlusTapped: {
-                                    // Always show posting rules first
-                                    showRulesSheet = true
-                                }
-                            )
+                    // Top bar: SPOT branding only (no plus; Post is its own tab)
+                    TopNavigationView(
+                        title: "SPOT",
+                        rightButton: .none,
+                        showUploadView: .constant(false)
+                    )
 
-                            if selectedTab == "Home" {
-                                // Feed/Map Toggle
-                                VStack(spacing: 0) {
-                                    HStack(spacing: 32) {
-                                        ForEach(feedTabs, id: \.self) { tab in
-                                            VStack(spacing: 4) {
-                                                Text(tab)
-                                                    .font(FontManager.primaryText())
-                                                    .fontWeight(feedViewType == tab ? .semibold : .regular)
-                                                    .foregroundColor(feedViewType == tab ? Constants.Colors.primary : .gray)
-
-                                                Rectangle()
-                                                    .fill(feedViewType == tab ? Constants.Colors.primary : Color.clear)
-                                                    .frame(height: 2)
-                                            }
-                                            .onTapGesture {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    feedViewType = tab
-                                                }
-                                            }
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.horizontal, 16)
-                                }
-                                .padding(.top, 8)
-
-                                // Feed Content
-                                FeedContentView(
-                                    isLoading: $feedVM.isLoading,
-                                    spots: feedVM.spots,
-                                    mapSpots: feedVM.mapSpots,
-                                    selectedTab: feedViewType,
-                                    onScrolledToBottom: { feedVM.loadMoreSpots() },
-                                    onRefresh: { await feedVM.refreshFeed() },
-                                 userId: authVM.userId,
-                                 onDeleteSpot: { spot in
-                                     Task { await feedVM.delete(spot: spot) }
-                                 }
-                                )
-                                .transition(.opacity)
-                             .onChange(of: feedViewType) { _, newValue in
-                                 if newValue == "Map" {
-                                     feedVM.loadMapSpots(forceRefresh: true)
-                                 }
-                             }
-                            } else {
-                                // Search View
-                                SearchView()
-                                    .transition(.opacity)
-                            }
+                    // Feed content only
+                    FeedContentView(
+                        isLoading: $feedVM.isLoading,
+                        spots: feedVM.spots,
+                        mapSpots: feedVM.mapSpots,
+                        selectedTab: "Feed",
+                        onScrolledToBottom: { feedVM.loadMoreSpots() },
+                        onRefresh: { await feedVM.refreshFeed() },
+                        userId: authVM.userId,
+                        onDeleteSpot: { spot in
+                            Task { await feedVM.delete(spot: spot) }
                         }
-                    }
+                    )
                 }
-                .animation(.easeInOut(duration: 0.2), value: selectedTab)
-
-                // Bottom Navigation
-                BottomNavigationView(selectedTab: $selectedTab)
-                    .padding(.bottom, 0)
-                    .background(Color(hex: "F5F3EF"))
-            }
             }
             .overlay(alignment: .top) {
                 VStack(spacing: 8) {
@@ -238,27 +175,6 @@ struct HomepageView: View {
                 .padding(.top, 8)
             }
             .background(Color(hex: "F5F3EF"))
-            .sheet(isPresented: $showRulesSheet) {
-                PostingRulesView(onAgree: {
-                    // Proceed to post flow if verified
-                    if Auth.auth().currentUser?.isEmailVerified ?? false {
-                        showRulesSheet = false
-                        showUploadView = true
-                    } else {
-                        // Let the rules view drive Verify flow; no-op here
-                    }
-                })
-            }
-            .navigationDestination(isPresented: $showUploadView) {
-                PostFlowView(onPostSuccess: { spot in
-                    // Show success toast on homepage
-                    showPostSuccessToast = true
-                    // Reload feed to show new spot
-                    Task {
-                        await feedVM.refreshFeed()
-                    }
-                })
-            }
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .profile(let userId):
@@ -269,56 +185,17 @@ struct HomepageView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .onAppear {
-            // Load data in background without blocking UI
             Task {
                 await feedVM.loadInitialSpots()
             }
-            // Configure per-user tour persistence key
             tourManager.configure(userId: authVM.userId)
-            // Warm map data for first visit
-            feedVM.loadMapSpots()
         }
-    }
-}
-
-// MARK: - Tab Navigation Component
-struct TabNavigationView: View {
-    @Binding var selectedTab: String
-    let tabs: [String]
-
-    var body: some View {
-                    HStack(spacing: 32) {
-                        ForEach(tabs, id: \.self) { tab in
-                TabItemView(tab: tab, isSelected: selectedTab == tab) {
-                    SpotLogger.debug("User switched to tab: \(tab)")
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedTab = tab
-                                }
-                            }
-                        }
-                    }
-        .padding(.horizontal, 16)
-        .background(Color(hex: "F5F3EF"))
-    }
-}
-
-struct TabItemView: View {
-    let tab: String
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(tab)
-                .font(FontManager.primaryText())
-                .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundColor(isSelected ? Constants.Colors.primary : .gray)
-
-            Rectangle()
-                .fill(isSelected ? Constants.Colors.primary : Color.clear)
-                .frame(height: 2)
+        .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { _ in
+            showPostSuccessToast = true
+            Task {
+                await feedVM.refreshFeed()
+            }
         }
-        .onTapGesture(perform: onTap)
     }
 }
 
@@ -547,7 +424,7 @@ struct SpotMapMarker: View {
 
 // SpotCard Preview
 #Preview {
-                                SpotCard(spot: Spot(
+    SpotCard(spot: Spot(
         id: "test123",
         userId: "user123",
         username: "TestUser",
