@@ -21,7 +21,7 @@ struct RootView: View {
                     // Main content (verified vs confirm)
                     Group {
                         if authViewModel.isEmailVerified {
-                            HomepageView()
+                            MainTabView()
                         } else {
                             ConfirmEmailView()
                         }

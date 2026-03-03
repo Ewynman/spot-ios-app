@@ -62,12 +62,23 @@ struct ProfileMapView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 insetContent(height: openPanelHeight(in: geo.size))
             }
-            // Refit whenever the set of spot IDs changes
+            // Refit whenever the set of spot IDs changes (but only if no spot is selected)
             .onChange(of: spotsSignature) { _, _ in
                 if selectedSpot == nil { zoomToFitAllPins() }
             }
             .onAppear {
                 if selectedSpot == nil { zoomToFitAllPins() }
+            }
+            // Prevent zoom-out when selecting a spot
+            .onChange(of: selectedSpot) { oldValue, newValue in
+                // When a spot is selected, ensure we don't zoom out
+                // The select() function handles zooming in
+                if newValue != nil && oldValue == nil {
+                    // Spot just selected - select() will handle zoom
+                } else if newValue == nil && oldValue != nil {
+                    // Spot deselected - zoom back to fit all
+                    zoomToFitAllPins()
+                }
             }
             .onDisappear {
                 // Clear selected spot to ensure map resources are released before navigation
@@ -271,7 +282,8 @@ private struct InnerProfileSpotMap: UIViewRepresentable {
         let newIds = Set(spots.map { $0.id })
         
         // Always update if IDs don't match or if we have spots but no annotations
-        if existingIds != newIds || (existing.isEmpty && !spots.isEmpty) {
+        // BUT: Don't update annotations if a spot is currently selected (to prevent zoom-out)
+        if (existingIds != newIds || (existing.isEmpty && !spots.isEmpty)) && selectedSpot == nil {
             map.removeAnnotations(existing)
             let anns: [ProfileSpotPointAnnotation] = spots.compactMap { s in
                 guard let lat = s.latitude, let lon = s.longitude else { return nil }
@@ -285,9 +297,7 @@ private struct InnerProfileSpotMap: UIViewRepresentable {
             if !anns.isEmpty {
                 map.addAnnotations(anns)
                 // Only fit all annotations if no spot is selected
-                if selectedSpot == nil {
-                    map.showAnnotations(anns, animated: !existing.isEmpty)
-                }
+                map.showAnnotations(anns, animated: !existing.isEmpty)
             }
         }
         
@@ -304,13 +314,20 @@ private struct InnerProfileSpotMap: UIViewRepresentable {
         }
         
         // Update camera position - always respect region changes (including when spot is selected)
-        let currentCenter = map.region.center
-        let distance = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
-            .distance(from: CLLocation(latitude: region.center.latitude, longitude: region.center.longitude))
-        
-        // Update if significantly different (more than 100m) or if a spot is selected (to zoom to it)
-        if distance > 100 || selectedSpot != nil {
-            map.setRegion(region, animated: selectedSpot != nil)
+        // This is critical: when a spot is selected, we need to zoom in, not out
+        if selectedSpot != nil {
+            // When a spot is selected, always update the region to zoom in (don't check distance)
+            // This ensures we zoom to the selected spot even if the distance check would prevent it
+            map.setRegion(region, animated: true)
+        } else {
+            // When no spot is selected, only update if significantly different (more than 100m)
+            let currentCenter = map.region.center
+            let distance = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
+                .distance(from: CLLocation(latitude: region.center.latitude, longitude: region.center.longitude))
+            
+            if distance > 100 {
+                map.setRegion(region, animated: false)
+            }
         }
     }
     
