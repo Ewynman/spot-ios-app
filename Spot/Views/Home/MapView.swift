@@ -1,34 +1,28 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-import FirebaseFirestore
 
 @MainActor
 struct MapView: View {
-    let spots: [Spot]
+    @StateObject private var mapVM = MapViewModel()
     @StateObject private var locationManager = LocationManager.shared
     @EnvironmentObject var authVM: AuthViewModel
 
-    // iOS 17 camera replacement for coordinateRegion
     @State private var cameraPosition: MapCameraPosition
     @State private var selectedSpot: Spot?
     @State private var hasPerformedInitialFit: Bool = false
-    @State private var visibleSpots: [Spot] = []
     @State private var regionLoadTask: Task<Void, Never>?
-    @State private var isLoadingAllSpots: Bool = false
 
     @Environment(\.verticalSizeClass) private var vSize
 
-    init(spots: [Spot]) {
-        self.spots = spots
+    init(spots: [Spot] = []) {
         _cameraPosition = State(initialValue: .region(LocationManager.shared.getUserRegion()))
     }
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
-                // Clustered map (UIKit-backed) for performance with many pins
-                ClusteredSpotMap(spots: visibleSpots, onRegionChanged: { region in
+                ClusteredSpotMap(spots: mapVM.visibleSpots, onRegionChanged: { _ in
                     // Region changes don't need to reload - we show all spots
                 }) { spot, coord in
                     select(spot, coord)
@@ -45,8 +39,7 @@ struct MapView: View {
             .onAppear {
                 locationManager.startUpdatingLocation()
                 performInitialFitIfNeeded()
-                // Load all spots for map
-                loadAllSpots()
+                mapVM.loadAllSpots()
             }
             .onDisappear { 
                 locationManager.stopUpdatingLocation()
@@ -63,8 +56,7 @@ struct MapView: View {
                     hasPerformedInitialFit = true
                 }
             }
-            .onChange(of: spots) { _, _ in
-                // When spots load asynchronously, perform initial fit once.
+            .onChange(of: mapVM.visibleSpots) { _, _ in
                 performInitialFitIfNeeded()
             }
         }
@@ -108,7 +100,7 @@ struct MapView: View {
     private func zoomToFitAllPins() { /* handled inside ClusteredSpotMap */ }
 
     private var hasValidSpots: Bool {
-        return spots.contains { $0.latitude != nil && $0.longitude != nil }
+        return mapVM.visibleSpots.contains { $0.latitude != nil && $0.longitude != nil }
     }
 
     private func performInitialFitIfNeeded() {
@@ -121,24 +113,6 @@ struct MapView: View {
         hasPerformedInitialFit = true
     }
 
-    private func loadAllSpots() {
-        guard !isLoadingAllSpots else { return }
-        isLoadingAllSpots = true
-        
-        SpotService.shared.fetchSpotsForMap(forceRefresh: true) { result in
-            DispatchQueue.main.async {
-                self.isLoadingAllSpots = false
-                switch result {
-                case .success(let spots):
-                    self.visibleSpots = spots
-                    SpotLogger.info("Map loaded all spots", details: ["count": spots.count])
-                case .failure(let error):
-                    SpotLogger.error("Failed to load all spots for map", details: ["error": error.localizedDescription])
-                }
-            }
-        }
-    }
-    
     private func debounceLoad(for region: MKCoordinateRegion) {
         // Keep for region changes if needed, but initial load uses loadAllSpots
         regionLoadTask?.cancel()

@@ -1,21 +1,41 @@
+//
+//  ProfileViewModel.swift
+//  Spot
+//
+//  Created By: Wynman, Edward
+//  Date: 03/02/2025
+//
+
 import Foundation
 import FirebaseFirestore
-import FirebaseAuth
-import CoreLocation // Added for geocoding
 
 class ProfileViewModel: ObservableObject {
-    @Published var user: User?
+    @Published var username: String?
+    @Published var profileImageURL: String?
     @Published var spots: [Spot] = []
     @Published var isLoading = false
     @Published var error: Error?
+    @Published var isPrivateProfile = false
+    @Published var isProProfile = false
+    @Published var isFollowingUser = false
+    @Published var hasRequestedFollow = false
+    @Published var canViewContent = true
+    @Published var deletingSpotIds: Set<String> = []
+    @Published var followRequestsCount: Int = 0
+
     private var loadTask: Task<Void, Never>?
+    private var followReqListener: ListenerRegistration?
+    private var lastLoadedUserId: String?
 
     deinit {
         loadTask?.cancel()
+        stopFollowRequestsListener()
     }
 
-    func loadUserProfile() async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+    /// Load profile for the given user (nil = current user). Uses ProfileService.
+    func loadUser(userId: String?, forceReload: Bool = false) async {
+        guard !isLoading else { return }
+        if !forceReload, lastLoadedUserId == userId { return }
 
         await MainActor.run {
             isLoading = true
@@ -25,156 +45,126 @@ class ProfileViewModel: ObservableObject {
         loadTask?.cancel()
         loadTask = Task {
             do {
-                let docRef = Firestore.firestore().collection("users").document(userId)
-                let snapshot = try await docRef.getDocument()
-
-                guard let data = snapshot.data() else {
-                    await MainActor.run {
-                        self.isLoading = false
-                        self.error = ProfileError.userNotFound
-                    }
-                    return
-                }
-
-                let username = data["username"] as? String ?? "User"
-                let profileImageURL = data["profileImageURL"] as? String
-                let vibeStats = data["vibeStats"] as? [String: Int]
-                let createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
-
-                let user = User(
-                    id: userId,
-                    username: username,
-                    profileImageURL: profileImageURL,
-                    isPrivate: false,
-                    isCurrentUser: true,
-                    vibeStats: vibeStats,
-                    createdAt: createdAt
-                )
-
+                let data = try await ProfileService.fetchProfile(for: userId)
                 await MainActor.run {
-                    self.user = user
+                    self.username = data.username
+                    self.profileImageURL = data.profileImageURL
+                    self.spots = data.spots
+                    self.isPrivateProfile = data.isPrivate
+                    self.isProProfile = data.isPro
+                    self.isFollowingUser = data.isFollowing
+                    self.hasRequestedFollow = data.hasRequested
+                    self.canViewContent = data.canView
+                    self.lastLoadedUserId = userId
                     self.isLoading = false
                 }
-
-                SpotLogger.info("Loaded profile for user: \(username)")
-                await loadUserSpots()
+                SpotLogger.info("Loaded profile for user: \(data.username)")
             } catch {
-                SpotLogger.error("Failed to load user profile: \(error.localizedDescription)")
                 await MainActor.run {
                     self.error = error
                     self.isLoading = false
                 }
+                SpotLogger.error("Profile loadUser failed: \(error.localizedDescription)")
+            }
+        }
+        await loadTask?.value
+    }
+
+    /// Delete spot with optimistic update; rollback on failure.
+    @MainActor
+    func deleteSpot(_ spot: Spot) async {
+        guard let id = spot.id else { return }
+        if deletingSpotIds.contains(id) { return }
+        deletingSpotIds.insert(id)
+        let prevSpots = spots
+        spots.removeAll { $0.id == id }
+
+        do {
+            try await SpotService.shared.deleteSpot(spot)
+            deletingSpotIds.remove(id)
+        } catch {
+            SpotLogger.error("Profile delete failed: \(error.localizedDescription)")
+            spots = prevSpots
+            deletingSpotIds.remove(id)
+        }
+    }
+
+    /// Start listening to follow-request count for own private profile.
+    func startFollowRequestsListener(ownUserId: String?) {
+        stopFollowRequestsListener()
+        guard let uid = ownUserId else { return }
+        followReqListener = FollowRequestsService.shared.listenPendingCount(for: uid) { [weak self] n in
+            DispatchQueue.main.async {
+                self?.followRequestsCount = n
             }
         }
     }
 
-    func loadUserSpots() async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+    func stopFollowRequestsListener() {
+        followReqListener?.remove()
+        followReqListener = nil
+    }
 
-        loadTask?.cancel()
-        loadTask = Task {
-            do {
-                let query = Firestore.firestore()
-                    .collection("spots")
-                    .whereField("userId", isEqualTo: userId)
-                    .order(by: "createdAt", descending: true)
-
-                let snapshot = try await query.getDocuments()
-
-                let spots = try await withThrowingTaskGroup(of: Spot?.self) { group in
-                    for document in snapshot.documents {
-                        group.addTask {
-                            return try await Spot.fromDocument(document)
-                        }
-                    }
-
-                    var validSpots: [Spot] = []
-                    for try await spot in group {
-                        if let spot = spot {
-                            validSpots.append(spot)
-                        }
-                    }
-                    // Ensure newest-first descending order (createdAt desc; tie-break by id)
-                    return validSpots.sorted { lhs, rhs in
-                        let l = lhs.createdAt ?? .distantPast
-                        let r = rhs.createdAt ?? .distantPast
-                        if l != r { return l > r }
-                        return (lhs.id ?? "") > (rhs.id ?? "")
-                    }
-                }
-
-                await MainActor.run {
-                    self.spots = spots
-                }
-
-                SpotLogger.info("Loaded \(spots.count) spots for user: \(userId)")
-            } catch {
-                SpotLogger.error("Failed to load user spots: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.error = error
-                }
+    func follow(targetUserId: String) {
+        isFollowingUser = true
+        UserSpotService.shared.follow(userId: targetUserId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .failure = result { self?.isFollowingUser = false }
             }
         }
     }
 
-    func togglePrivateProfile() {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
-
-        Task {
-            do {
-                let userRef = Firestore.firestore().collection("users").document(userId)
-                let currentPrivacy = user?.isPrivate ?? false
-
-                try await userRef.updateData([
-                    "isPrivate": !currentPrivacy
-                ])
-
-                await MainActor.run {
-                    // Create a new User instance with updated privacy
-                    if var updatedUser = self.user {
-                        updatedUser.isPrivate = !currentPrivacy
-                        self.user = updatedUser
-                    }
-                }
-
-                SpotLogger.info("Updated profile privacy: \(!currentPrivacy)")
-            } catch {
-                SpotLogger.error("Failed to toggle profile privacy: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.error = error
-                }
+    func unfollow(targetUserId: String) {
+        isFollowingUser = false
+        UserSpotService.shared.unfollow(userId: targetUserId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .failure = result { self?.isFollowingUser = true }
             }
         }
     }
 
-    func requestAccess() {
-        guard let targetUserId = user?.id,
-              let currentUserId = Auth.auth().currentUser?.uid else { return }
-
-        Task {
-            do {
-                let requestData: [String: Any] = [
-                    "fromUserId": currentUserId,
-                    "toUserId": targetUserId,
-                    "status": "pending",
-                    "createdAt": FieldValue.serverTimestamp()
-                ]
-
-                try await Firestore.firestore().collection("accessRequests").addDocument(data: requestData)
-                SpotLogger.info("Sent access request to user: \(targetUserId)")
-            } catch {
-                SpotLogger.error("Failed to send access request: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.error = error
-                }
+    func requestFollow(targetUserId: String) {
+        hasRequestedFollow = true
+        UserSpotService.shared.requestFollow(userId: targetUserId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .failure = result { self?.hasRequestedFollow = false }
             }
         }
+    }
+
+    func cancelFollowRequest(targetUserId: String) {
+        hasRequestedFollow = false
+        UserSpotService.shared.cancelFollowRequest(userId: targetUserId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .failure = result { self?.hasRequestedFollow = true }
+            }
+        }
+    }
+
+    // MARK: - Legacy (for existing callers that use current-user-only profile)
+    var user: User? {
+        guard let id = lastLoadedUserId else { return nil }
+        return User(
+            id: id,
+            username: username ?? "User",
+            profileImageURL: profileImageURL,
+            isPrivate: isPrivateProfile,
+            isCurrentUser: true,
+            vibeStats: nil,
+            createdAt: nil,
+            blockedUsers: nil,
+            customVibeTags: nil
+        )
+    }
+
+    func loadUserProfile() async {
+        await loadUser(userId: nil)
     }
 
     // MARK: - Preview Data
     static let previewViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
-        vm.user = User.previewUser
+        vm.username = "Eddie Wynman"
         vm.spots = [
             Spot(
                 id: "spot1",
@@ -212,13 +202,9 @@ class ProfileViewModel: ObservableObject {
 
     static let previewOtherUserViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
-        vm.user = User(
-            id: "other123",
-            username: "John Doe",
-            profileImageURL: "https://example.com/profile.jpg",
-            isPrivate: false,
-            isCurrentUser: false
-        )
+        vm.username = "John Doe"
+        vm.profileImageURL = "https://example.com/profile.jpg"
+        vm.isPrivateProfile = false
         vm.spots = [
             Spot(
                 id: "spot3",
@@ -241,25 +227,14 @@ class ProfileViewModel: ObservableObject {
 
     static let previewPrivateViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
-        vm.user = User(
-            id: "private123",
-            username: "Private User",
-            profileImageURL: nil,
-            isPrivate: true,
-            isCurrentUser: false
-        )
+        vm.username = "Private User"
+        vm.isPrivateProfile = true
         return vm
     }()
 
     static let previewEmptyViewModel: ProfileViewModel = {
         let vm = ProfileViewModel()
-        vm.user = User(
-            id: "empty123",
-            username: "New User",
-            profileImageURL: nil,
-            isPrivate: false,
-            isCurrentUser: false
-        )
+        vm.username = "New User"
         vm.spots = []
         return vm
     }()

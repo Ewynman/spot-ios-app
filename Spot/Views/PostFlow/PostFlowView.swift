@@ -1,32 +1,17 @@
 import SwiftUI
-import FirebaseAuth
-import FirebaseFirestore
 import CoreLocation
 
 struct PostFlowView: View {
     @Environment(\.dismiss) var dismiss
-    @State private var currentStep = 1
-    @State private var selectedImages: [UIImage] = []
-    @State private var selectedLocation: LocationData?
-    @State private var selectedVibe: String = ""
-    @State private var isUploading = false
-    @State private var isPosting = false
-    @State private var moderationMessage: String?
-    @State private var showToast = false
-    @State private var toastMessage = ""
-    @State private var toastIsError = false
-    @State private var showSuccessBanner = false
+    @StateObject private var viewModel = PostFlowViewModel()
 
     var onPostSuccess: ((Spot) -> Void)?
-
-    private let totalSteps = 3
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    // Gate: require verified email
-                    if !(Auth.auth().currentUser?.isEmailVerified ?? false) {
+                    if !viewModel.isEmailVerified {
                         VStack(spacing: 12) {
                             Text("Email verification required to post")
                                 .font(FontManager.primaryText())
@@ -45,51 +30,47 @@ struct PostFlowView: View {
                         .padding(16)
                         .background(Constants.Colors.background)
                     } else {
-                    // Progress Indicator
-                    ProgressIndicatorView(currentStep: currentStep, totalSteps: totalSteps)
+                        ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
-                    // Step Content
-                    Group {
-                        switch currentStep {
-                        case 1:
-                            PhotoSelectionView(selectedImages: $selectedImages)
-                        case 2:
-                            LocationSelectionView(selectedLocation: $selectedLocation)
-                        case 3:
-                            VibeSelectionView(selectedVibe: $selectedVibe)
-                        default:
-                            EmptyView()
+                        Group {
+                            switch viewModel.currentStep {
+                            case 1:
+                                PhotoSelectionView(selectedImages: $viewModel.selectedImages)
+                            case 2:
+                                LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
+                            case 3:
+                                VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
+                            default:
+                                EmptyView()
+                            }
                         }
-                    }
-                    .transition(.asymmetric(
+                        .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
 
-                    // Navigation Buttons
-                    NavigationButtonsView(
-                        currentStep: $currentStep,
-                        totalSteps: totalSteps,
-                        canProceed: canProceedToNextStep && !isPosting,
-                        isPosting: isPosting,
-                        onBack: handleBack,
-                        onNext: handleNext,
-                        onFinish: handleFinish
-                    )
-                }
+                        NavigationButtonsView(
+                            currentStep: $viewModel.currentStep,
+                            totalSteps: viewModel.totalSteps,
+                            canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
+                            isPosting: viewModel.isPosting,
+                            onBack: { viewModel.goBack() },
+                            onNext: { viewModel.goNext() },
+                            onFinish: { viewModel.submitPost() }
+                        )
+                    }
                 }
 
-                // Top status overlays
                 VStack(spacing: 8) {
-                    if isUploading {
+                    if viewModel.isUploading {
                         ProgressBarView()
                             .transition(.move(edge: .top))
                     }
-                    if showToast {
-                        ToastView(message: toastMessage, isError: toastIsError)
+                    if viewModel.showToast {
+                        ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
                             .transition(.move(edge: .top))
                     }
-                    if showSuccessBanner {
+                    if viewModel.showSuccessBanner {
                         SuccessToastView(message: "Spot posted!")
                             .transition(.move(edge: .top))
                     }
@@ -106,212 +87,13 @@ struct PostFlowView: View {
                 }
             }
         }
-    }
-
-    private var canProceedToNextStep: Bool {
-        switch currentStep {
-        case 1:
-            return !selectedImages.isEmpty
-        case 2:
-            return selectedLocation != nil
-        case 3:
-            return !selectedVibe.isEmpty
-        default:
-            return false
-        }
-    }
-
-    private func handleBack() {
-        if currentStep > 1 {
-            SpotLogger.debug("User went back from step \(currentStep) to step \(currentStep - 1)")
-            withAnimation(.easeInOut(duration: 0.3)) {
-                currentStep -= 1
-            }
-        }
-    }
-
-    private func handleNext() {
-        if currentStep < totalSteps {
-            SpotLogger.debug("User progressed from step \(currentStep) to step \(currentStep + 1)")
-            withAnimation(.easeInOut(duration: 0.3)) {
-                currentStep += 1
-            }
-        }
-    }
-
-    private func handleFinish() {
-        if isPosting { return }
-        isPosting = true
-        SpotLogger.info("User completed post flow")
-        SpotLogger.debug("Post data - Images: \(selectedImages.count), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
-
-        guard let location = selectedLocation,
-              !selectedVibe.isEmpty,
-              !location.placeName.isEmpty,
-              location.coordinate.latitude != 0,
-              location.coordinate.longitude != 0
-        else {
-            showToastWith(message: "All fields are required to post a spot.", isError: true)
-            return
-        }
-
-        isUploading = true
-
-        let imagesToUpload = selectedImages
-        if imagesToUpload.count <= 1, let image = imagesToUpload.first {
-            SpotUploader.shared.uploadSpot(
-                image: image,
-                vibeTag: selectedVibe,
-                latitude: location.coordinate.latitude,
-                longitude: location.coordinate.longitude,
-                placeName: location.placeName
-            ) { result in
-                DispatchQueue.main.async {
-                    isUploading = false
-                    switch result {
-                    case .success:
-                        if let userId = Auth.auth().currentUser?.uid {
-                            SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
-                        }
-                        Task { await self.awaitModerationAndFinish() }
-                    case .failure(let error):
-                        showToastWith(message: error.localizedDescription, isError: true)
-                        SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
-                        isPosting = false
-                    }
-                }
-            }
-            return
-        }
-
-        // Multi-image upload
-        SpotUploader.shared.uploadSpot(
-            images: imagesToUpload,
-            vibeTag: selectedVibe,
-            latitude: location.coordinate.latitude,
-            longitude: location.coordinate.longitude,
-            placeName: location.placeName
-        ) { result in
-            DispatchQueue.main.async {
-                isUploading = false
-                switch result {
-                case .success:
-                    if let userId = Auth.auth().currentUser?.uid {
-                        SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: selectedVibe)
-                    }
-                    Task { await self.awaitModerationAndFinish() }
-                case .failure(let error):
-                    showToastWith(message: error.localizedDescription, isError: true)
-                    SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
-                    isPosting = false
-                }
-            }
-        }
-    }
-
-    private func awaitModerationAndFinish() async {
-        guard let uid = Auth.auth().currentUser?.uid else { isPosting = false; return }
-        // We need the latest spot doc; since SpotUploader writes the doc ID internally, fetch most recent by this user
-        // If you have the postId, prefer using it directly.
-        let db = Firestore.firestore()
-        do {
-            let snap = try await db.collection("spots").whereField("userId", isEqualTo: uid).order(by: "createdAt", descending: true).limit(to: 1).getDocuments()
-            guard let doc = snap.documents.first else { isPosting = false; return }
-            let spotRef = doc.reference
-            SpotLogger.info("Moderation.Check.Begin spotId=\(doc.documentID)")
-
-            // Poll up to ~20s to avoid blocking issues
-            for _ in 0..<20 {
-                let latest = try await spotRef.getDocument()
-                if await self.evaluateModeration(doc: latest) { return }
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1s
-            }
-            SpotLogger.error("Moderation check timeout", details: ["spotId": doc.documentID])
-            await MainActor.run {
-                self.moderationMessage = "We couldn’t verify your image yet. Please retry.This is day zero of making the best new social media app and youre coming along for the eride this is anoytjer angle even though you dont get to see my screen and now I have my third angle ho[wejfijwhefowenfiuwhc0ijckjwnhcoijwdlnweoim"
-                self.showToastWith(message: self.moderationMessage ?? "", isError: true)
-                self.isPosting = false
-            }
-        } catch {
-            SpotLogger.error("Moderation gate error: \(error.localizedDescription)")
-            await MainActor.run { self.isPosting = false }
-        }
-    }
-
-    private func evaluateModeration(doc: DocumentSnapshot) async -> Bool {
-        let data = doc.data() ?? [:]
-        let moderation = data["moderation"] as? [String: Any]
-        let status = moderation?["status"] as? String ?? "pending"
-        let scores = moderation?["scores"] as? [String: Any]
-
-        if status == "approved" {
-            let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
-                if ok {
-                    SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(scores ?? [:])")
-                    // Convert document to Spot and pass to callback
-                    if var spot = try? doc.data(as: Spot.self) {
-                        spot.id = doc.documentID
-                        await MainActor.run {
-                            // Track successful post
-                            AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID, parameters: [
-                                "vibe_tag": spot.vibeTag ?? "",
-                                "has_multiple_images": spot.imageURLs?.count ?? 0 > 1
-                            ])
-                            // Dismiss immediately, success will show on homepage
-                            self.onPostSuccess?(spot)
-                            self.isPosting = false
-                            self.dismiss()
-                        }
-                    } else {
-                        // Fallback if conversion fails
-                        await MainActor.run {
-                            AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID)
-                            self.onPostSuccess?(Spot(id: doc.documentID))
-                            self.isPosting = false
-                            self.dismiss()
-                        }
-                    }
-                    return true
-            } else {
-                SpotLogger.error("Post blocked by moderation", details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
-                await MainActor.run {
-                    self.moderationMessage = "This photo violates our guidelines and can’t be posted."
-                    self.showToastWith(message: self.moderationMessage ?? "", isError: true)
-                    self.isPosting = false
-                }
-                return true
-            }
-        } else if status == "rejected" {
-            SpotLogger.error("Moderation check rejected", details: ["spotId": doc.documentID, "scores": scores ?? [:]])
-            // Hard block: delete the spot doc so it never surfaces
-            try? await doc.reference.delete()
-            await MainActor.run {
-                self.moderationMessage = "This photo violates our guidelines and can’t be posted."
-                self.showToastWith(message: self.moderationMessage ?? "", isError: true)
-                self.isPosting = false
-            }
-            return true
-        } else {
-            SpotLogger.debug("Moderation.Check.Pending spotId=\(doc.documentID)")
-            return false
-        }
-    }
-
-    private func showToastWith(message: String, isError: Bool) {
-        toastMessage = message
-        toastIsError = isError
-        withAnimation {
-            showToast = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation {
-                showToast = false
-            }
+        .onAppear {
+            viewModel.onPostSuccess = onPostSuccess
+            viewModel.onShouldDismiss = { dismiss() }
         }
     }
 }
 
-// MARK: - Progress Indicator
 struct ProgressIndicatorView: View {
     let currentStep: Int
     let totalSteps: Int
