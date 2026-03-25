@@ -20,7 +20,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         FirebaseApp.configure()
 
         // Configure Firebase App Check
-        // DeviceCheck is not available on Simulator (or "My Mac"); use debug provider there.
+        // DeviceCheck is not available on simulator; use debug provider there.
         #if DEBUG || targetEnvironment(simulator)
         AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
         #else
