@@ -12,6 +12,10 @@ import Testing
 
 struct DebouncerTests {
 
+    private final class BoolBox: @unchecked Sendable {
+        var value = false
+    }
+
     /// Runs the main run loop for the given duration so DispatchQueue.main work can execute.
     private func runMainLoop(for duration: TimeInterval) async {
         await MainActor.run {
@@ -19,32 +23,45 @@ struct DebouncerTests {
         }
     }
 
+    private func pumpMainRunLoop(until deadline: Date, while condition: @escaping @Sendable () -> Bool) async {
+        while Date() < deadline, condition() {
+            await runMainLoop(for: 0.05)
+        }
+    }
+
     @Test func scheduleRunsBlock() async throws {
         let debouncer = Debouncer(interval: 0.15)
-        var ran = false
-        debouncer.schedule { ran = true }
-        try await Task.sleep(for: .milliseconds(10))  // Let schedule enqueue
-        await runMainLoop(for: 0.35)
-        #expect(ran)
+        let ran = BoolBox()
+        await MainActor.run {
+            debouncer.schedule { ran.value = true }
+        }
+        let deadline = Date().addingTimeInterval(3)
+        await pumpMainRunLoop(until: deadline) { !ran.value }
+        #expect(ran.value)
     }
 
     @Test func cancelPreventsExecution() async throws {
         let debouncer = Debouncer(interval: 10.0)
-        var ran = false
-        debouncer.schedule { ran = true }
-        debouncer.cancel()
+        let ran = BoolBox()
+        await MainActor.run {
+            debouncer.schedule { ran.value = true }
+            debouncer.cancel()
+        }
         await runMainLoop(for: 0.25)
-        #expect(!ran)
+        #expect(!ran.value)
     }
 
     @Test func scheduleReplacesPrevious() async throws {
         let debouncer = Debouncer(interval: 0.1)
-        var first = false
-        var second = false
-        debouncer.schedule { first = true }
-        debouncer.schedule { second = true }
-        await runMainLoop(for: 0.2)
-        #expect(!first)
-        #expect(second)
+        let first = BoolBox()
+        let second = BoolBox()
+        await MainActor.run {
+            debouncer.schedule { first.value = true }
+            debouncer.schedule { second.value = true }
+        }
+        let deadline = Date().addingTimeInterval(3)
+        await pumpMainRunLoop(until: deadline) { !second.value }
+        #expect(!first.value)
+        #expect(second.value)
     }
 }

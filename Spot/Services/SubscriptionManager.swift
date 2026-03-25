@@ -37,7 +37,14 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
-    func purchasePro() async throws {
+    enum PurchaseProResult: Sendable {
+        case purchased
+        case pending
+        case userCancelled
+    }
+
+    /// Starts the App Store purchase flow. Returns whether a verified purchase completed on-device.
+    func purchasePro() async throws -> PurchaseProResult {
         isPurchasing = true
         defer { isPurchasing = false }
         let product = try await loadProduct()
@@ -46,10 +53,13 @@ final class SubscriptionManager: ObservableObject {
         case .success(let verification):
             let transaction = try checkVerified(verification)
             await transaction.finish()
-        case .userCancelled, .pending:
-            break
+            return .purchased
+        case .userCancelled:
+            return .userCancelled
+        case .pending:
+            return .pending
         @unknown default:
-            break
+            return .userCancelled
         }
     }
 
@@ -58,9 +68,10 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func refreshEntitlement() async -> Bool {
+        let checker = ProEntitlementChecker(proProductIDs: productIds)
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
-               productIds.contains(transaction.productID) {
+               checker.grantsPro(forProductID: transaction.productID) {
                 return true
             }
         }

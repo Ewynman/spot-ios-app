@@ -204,18 +204,49 @@ struct SettingsView: View {
                                 }
                                 
                                 Button {
-                                    // Open website for subscription management/cancellation
-                                    SubscriptionWebService.shared.openSubscriptionManagementPage()
+                                    Task {
+                                        do {
+                                            try await SubscriptionManager.shared.manageSubscriptions()
+                                        } catch {
+                                            await MainActor.run {
+                                                showToast(message: error.localizedDescription, isError: true)
+                                            }
+                                        }
+                                    }
                                 } label: {
                                     settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             } else {
                                 Button {
-                                    // Open website for subscription signup
-                                    SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
+                                    NotificationCenter.default.post(name: .showPaywall, object: nil)
                                 } label: {
                                     settingsRow(title: "Go Pro", icon: "star.fill")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                Button {
+                                    Task {
+                                        do {
+                                            try await SubscriptionManager.shared.restorePurchases()
+                                            if await SubscriptionManager.shared.refreshEntitlement() {
+                                                await authVM.setProActive(true)
+                                                await MainActor.run {
+                                                    showToast(message: "Subscription restored", isError: false)
+                                                }
+                                            } else {
+                                                await MainActor.run {
+                                                    showToast(message: "No active subscription found", isError: true)
+                                                }
+                                            }
+                                        } catch {
+                                            await MainActor.run {
+                                                showToast(message: error.localizedDescription, isError: true)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    settingsRow(title: "Restore Purchases", icon: "arrow.clockwise")
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
