@@ -83,13 +83,12 @@ struct PaywallView: View {
         }
     }
 
+    @MainActor
     private func loadStorePrice() async {
         await subscriptionManager.ensureProductLoaded()
         guard subscriptionManager.hasProduct else { return }
         guard let product = try? await subscriptionManager.loadProduct() else { return }
-        await MainActor.run {
-            priceLine = "\(product.displayPrice) / year"
-        }
+        priceLine = "\(product.displayPrice) / year"
     }
 
     private func subscribe() {

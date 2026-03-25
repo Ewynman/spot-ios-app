@@ -12,8 +12,22 @@ import Testing
 
 struct DebouncerTests {
 
-    private final class BoolBox: @unchecked Sendable {
-        var value = false
+    /// Lock-backed flag: debouncer fire writes from `DispatchQueue.main` while the test polls from the async harness.
+    private final class LockedBool: Sendable {
+        private let lock = NSLock()
+        private var _value = false
+
+        func get() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return _value
+        }
+
+        func set(_ newValue: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            _value = newValue
+        }
     }
 
     /// Runs the main run loop for the given duration so DispatchQueue.main work can execute.
@@ -23,45 +37,45 @@ struct DebouncerTests {
         }
     }
 
-    private func pumpMainRunLoop(until deadline: Date, while condition: @escaping @Sendable () -> Bool) async {
-        while Date() < deadline, condition() {
+    private func pumpMainRunLoop(until deadline: Date, while shouldContinue: @escaping @Sendable () -> Bool) async {
+        while Date() < deadline, shouldContinue() {
             await runMainLoop(for: 0.05)
         }
     }
 
     @Test func scheduleRunsBlock() async throws {
         let debouncer = Debouncer(interval: 0.15)
-        let ran = BoolBox()
+        let ran = LockedBool()
         await MainActor.run {
-            debouncer.schedule { ran.value = true }
+            debouncer.schedule { ran.set(true) }
         }
         let deadline = Date().addingTimeInterval(3)
-        await pumpMainRunLoop(until: deadline) { !ran.value }
-        #expect(ran.value)
+        await pumpMainRunLoop(until: deadline) { !ran.get() }
+        #expect(ran.get())
     }
 
     @Test func cancelPreventsExecution() async throws {
         let debouncer = Debouncer(interval: 10.0)
-        let ran = BoolBox()
+        let ran = LockedBool()
         await MainActor.run {
-            debouncer.schedule { ran.value = true }
+            debouncer.schedule { ran.set(true) }
             debouncer.cancel()
         }
         await runMainLoop(for: 0.25)
-        #expect(!ran.value)
+        #expect(!ran.get())
     }
 
     @Test func scheduleReplacesPrevious() async throws {
         let debouncer = Debouncer(interval: 0.1)
-        let first = BoolBox()
-        let second = BoolBox()
+        let first = LockedBool()
+        let second = LockedBool()
         await MainActor.run {
-            debouncer.schedule { first.value = true }
-            debouncer.schedule { second.value = true }
+            debouncer.schedule { first.set(true) }
+            debouncer.schedule { second.set(true) }
         }
         let deadline = Date().addingTimeInterval(3)
-        await pumpMainRunLoop(until: deadline) { !second.value }
-        #expect(!first.value)
-        #expect(second.value)
+        await pumpMainRunLoop(until: deadline) { !second.get() }
+        #expect(!first.get())
+        #expect(second.get())
     }
 }

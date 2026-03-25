@@ -2,6 +2,18 @@ import Foundation
 import StoreKit
 import UIKit
 
+/// Thrown when StoreKit returns a `Product.PurchaseResult` case this app was not built to handle (e.g. new API in a future OS).
+enum SubscriptionPurchaseError: LocalizedError {
+    case unknownPurchaseOutcome
+
+    var errorDescription: String? {
+        switch self {
+        case .unknownPurchaseOutcome:
+            return "Unexpected purchase result from the App Store. Update Spot or try again, and contact support if it continues."
+        }
+    }
+}
+
 @MainActor
 final class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
@@ -59,7 +71,11 @@ final class SubscriptionManager: ObservableObject {
         case .pending:
             return .pending
         @unknown default:
-            return .userCancelled
+            SpotLogger.error(
+                "StoreKit: Unhandled Product.PurchaseResult",
+                details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"]
+            )
+            throw SubscriptionPurchaseError.unknownPurchaseOutcome
         }
     }
 
