@@ -306,7 +306,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				64AEC1F82F738EFA001911C1 /* SpotDev.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
