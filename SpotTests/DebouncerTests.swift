@@ -13,7 +13,9 @@ import Testing
 struct DebouncerTests {
 
     /// Lock-backed flag: debouncer fire writes from `DispatchQueue.main` while the test polls from the async harness.
-    private final class LockedBool: Sendable {
+    // `NSLock` isn't `Sendable` under Swift concurrency checking, but all access to `_value`
+    // is guarded by the lock; this helper is only used as a cross-executor synchronization primitive in tests.
+    private final class LockedBool: @unchecked Sendable {
         private let lock = NSLock()
         private var _value = false
 
