@@ -7,35 +7,21 @@
 
 import SwiftUI
 import MapKit
-import FirebaseFirestore
 
 struct ProfileView: View {
     var userId: String?
-    // If true, this screen was pushed from another screen (e.g., Feed/Search).
-    // In that case, show a custom back button and hide bottom nav.
     var fromNavigationPush: Bool = false
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var username: String? = ""
-    @State private var profileImageURL: String?
-    @State private var spots: [Spot] = []
+    @StateObject private var viewModel = ProfileViewModel()
     @State private var selectedTab = "Spots"
-    @State private var isLoading = true
     @State private var selectedSpot: Spot?
     @State private var pendingDeleteSpot: Spot?
     @State private var showDeleteConfirm: Bool = false
-    @State private var deletingSpotIds: Set<String> = []
-    @State private var isPrivateProfile: Bool = false
-    @State private var isProProfile: Bool = false
-    @State private var isFollowingUser: Bool = false
-    @State private var hasRequestedFollow: Bool = false
-    @State private var canViewContent: Bool = true
     @State private var showMenu: Bool = false
     @State private var showSettingsNav: Bool = false
     @State private var showLikesNav: Bool = false
     @State private var showBookmarksNav: Bool = false
     @State private var showFollowRequestsNav: Bool = false
-    @State private var followRequestsCount: Int = 0
-    @State private var followReqListener: ListenerRegistration?
     @State private var isMapExpanded: Bool = false
 
     @Environment(\.dismiss) private var dismiss
@@ -138,7 +124,7 @@ struct ProfileView: View {
                 .padding(.top, 8)
 
                 // MARK: — Loading State
-                if isLoading {
+                if viewModel.isLoading {
                     Spacer()
                     ProgressView()
                     Spacer()
@@ -149,7 +135,7 @@ struct ProfileView: View {
                         if selectedSpot == nil && !(selectedTab == "Map" && isMapExpanded) {
                             // Full header
                             VStack(spacing: 12) {
-                                if let url = profileImageURL {
+                                if let url = viewModel.profileImageURL {
                                     AsyncImage(url: URL(string: url)) { img in
                                         img.resizable()
                                            .aspectRatio(contentMode: .fill)
@@ -168,10 +154,10 @@ struct ProfileView: View {
                                 }
 
                                 HStack(spacing: 8) {
-                                    Text(username ?? "")
+                                    Text(viewModel.username ?? "")
                                         .font(FontManager.sectionHeader())
                                         .foregroundColor(.black)
-                                    if (userId == nil || userId == authVM.userId) ? authVM.isPro : isProProfile {
+                                    if (userId == nil || userId == authVM.userId) ? authVM.isPro : viewModel.isProProfile {
                                         Text("Pro")
                                             .font(.caption)
                                             .foregroundColor(Constants.Colors.buttonText)
@@ -182,7 +168,7 @@ struct ProfileView: View {
                                     }
                                 }
 
-                                Text("\(spots.count) spots shared")
+                                Text("\(viewModel.spots.count) spots shared")
                                     .font(FontManager.primaryText())
                                     .foregroundColor(.gray)
                             }
@@ -190,7 +176,7 @@ struct ProfileView: View {
                         } else if selectedSpot != nil && selectedTab == "Map" {
                             // Collapsed header when spot is selected on map
                             HStack(spacing: 12) {
-                                if let url = profileImageURL {
+                                if let url = viewModel.profileImageURL {
                                     AsyncImage(url: URL(string: url)) { img in
                                         img.resizable()
                                            .aspectRatio(contentMode: .fill)
@@ -208,11 +194,11 @@ struct ProfileView: View {
                                         .foregroundColor(.gray)
                                 }
                                 
-                                Text(username ?? "")
+                                Text(viewModel.username ?? "")
                                     .font(FontManager.primaryText())
                                     .foregroundColor(.black)
                                 
-                                if (userId == nil || userId == authVM.userId) ? authVM.isPro : isProProfile {
+                                if (userId == nil || userId == authVM.userId) ? authVM.isPro : viewModel.isProProfile {
                                     Text("Pro")
                                         .font(.caption2)
                                         .foregroundColor(Constants.Colors.buttonText)
@@ -231,22 +217,9 @@ struct ProfileView: View {
                         // Follow / Request actions centered under header when viewing someone else
                         if let viewedUserId = userId, viewedUserId != authVM.userId {
                             VStack {
-                                if isFollowingUser {
+                                if viewModel.isFollowingUser {
                                     Button {
-                                        // Optimistic update
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            self.isFollowingUser = false
-                                        }
-                                        UserSpotService.shared.unfollow(userId: viewedUserId) { result in
-                                            DispatchQueue.main.async {
-                                                if case .failure = result {
-                                                    // Revert on error
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                                        self.isFollowingUser = true
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        viewModel.unfollow(targetUserId: viewedUserId)
                                     } label: {
                                         Text("Unfollow")
                                             .font(FontManager.primaryText())
@@ -257,26 +230,13 @@ struct ProfileView: View {
                                             .cornerRadius(20)
                                     }
                                     .buttonStyle(PlainButtonStyle())
-                                } else if isPrivateProfile {
+                                } else if viewModel.isPrivateProfile {
                                     VStack(spacing: 8) {
                                         Button {
-                                            if hasRequestedFollow { return }
-                                            // Optimistic update
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                self.hasRequestedFollow = true
-                                            }
-                                            UserSpotService.shared.requestFollow(userId: viewedUserId) { result in
-                                                DispatchQueue.main.async {
-                                                    if case .failure = result {
-                                                        // Revert on error
-                                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                                            self.hasRequestedFollow = false
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            if viewModel.hasRequestedFollow { return }
+                                            viewModel.requestFollow(targetUserId: viewedUserId)
                                         } label: {
-                                            Text(hasRequestedFollow ? "Requested" : "Request to Follow")
+                                            Text(viewModel.hasRequestedFollow ? "Requested" : "Request to Follow")
                                                 .font(FontManager.primaryText())
                                                 .foregroundColor(Constants.Colors.buttonText)
                                                 .padding(.horizontal, 16)
@@ -284,25 +244,12 @@ struct ProfileView: View {
                                                 .background(Constants.Colors.primary)
                                                 .cornerRadius(20)
                                         }
-                                        .disabled(hasRequestedFollow)
+                                        .disabled(viewModel.hasRequestedFollow)
                                         .buttonStyle(PlainButtonStyle())
 
-                                        if hasRequestedFollow {
+                                        if viewModel.hasRequestedFollow {
                                             Button {
-                                                // Optimistic update
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    self.hasRequestedFollow = false
-                                                }
-                                                UserSpotService.shared.cancelFollowRequest(userId: viewedUserId) { result in
-                                                    DispatchQueue.main.async {
-                                                        if case .failure = result {
-                                                            // Revert on error
-                                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                                self.hasRequestedFollow = true
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                                viewModel.cancelFollowRequest(targetUserId: viewedUserId)
                                             } label: {
                                                 Text("Cancel Request")
                                                     .font(FontManager.primaryText())
@@ -313,20 +260,7 @@ struct ProfileView: View {
                                     }
                                 } else {
                                     Button {
-                                        // Optimistic update
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            self.isFollowingUser = true
-                                        }
-                                        UserSpotService.shared.follow(userId: viewedUserId) { result in
-                                            DispatchQueue.main.async {
-                                                if case .failure = result {
-                                                    // Revert on error
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                                        self.isFollowingUser = false
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        viewModel.follow(targetUserId: viewedUserId)
                                     } label: {
                                         Text("Follow")
                                             .font(FontManager.primaryText())
@@ -375,14 +309,14 @@ struct ProfileView: View {
                                 .transition(.opacity)
                                 .zIndex(1)
                             } else {
-                                SpotsGridView(spots: spots) { tapped in
+                                SpotsGridView(spots: viewModel.spots) { tapped in
                                     selectedSpot = tapped
                                 }
                                 .zIndex(0)
                             }
                         } else {
                             // Map tab
-                            ProfileMapView(spots: spots, onSpotTap: { tapped in
+                            ProfileMapView(spots: viewModel.spots, onSpotTap: { tapped in
                                 selectedSpot = tapped
                             }, onCollapseChange: { expanded in
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { isMapExpanded = expanded }
@@ -402,7 +336,7 @@ struct ProfileView: View {
                     .onTapGesture { withAnimation { showMenu = false } }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    if userId == nil || userId == authVM.userId, !isProProfile {
+                    if userId == nil || userId == authVM.userId, !viewModel.isProProfile {
                         Button {
                             withAnimation { showMenu = false }
                             SpotLogger.info("Open paywall from profile menu")
@@ -452,7 +386,7 @@ struct ProfileView: View {
 
                     Divider()
 
-                    if isPrivateProfile {
+                    if viewModel.isPrivateProfile {
                         Button {
                             withAnimation { showMenu = false }
                             showFollowRequestsNav = true
@@ -461,8 +395,8 @@ struct ProfileView: View {
                                 Image(systemName: "person.badge.plus")
                                 Text("Follow Requests")
                                     .font(FontManager.primaryText())
-                                if followRequestsCount > 0 {
-                                    Text("\(followRequestsCount)")
+                                if viewModel.followRequestsCount > 0 {
+                                    Text("\(viewModel.followRequestsCount)")
                                         .font(.caption)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -508,28 +442,17 @@ struct ProfileView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            // Only load if we haven't loaded this user yet
-            if lastLoadedUserId != userId {
-                loadUser()
-            }
-            // Start/stop pending count listener for own private profile
+            Task { await viewModel.loadUser(userId: userId) }
             let isSelf = (userId == nil) || (userId == authVM.userId)
-            if isSelf && isPrivateProfile, let uid = authVM.userId {
-                followReqListener?.remove()
-                followReqListener = FollowRequestsService.shared.listenPendingCount(for: uid) { n in
-                    followRequestsCount = n
-                }
+            if isSelf && viewModel.isPrivateProfile {
+                viewModel.startFollowRequestsListener(ownUserId: authVM.userId)
             }
         }
-        .onDisappear { 
-            followReqListener?.remove(); 
-            followReqListener = nil
-            // Clear selected spot with a small delay to ensure map cleanup completes
-            // This prevents Metal crashes when navigating away
+        .onDisappear {
+            viewModel.stopFollowRequestsListener()
             Task { @MainActor in
                 selectedSpot = nil
-                // Small delay to let Metal finish rendering before view deallocation
-                try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 seconds
+                try? await Task.sleep(nanoseconds: 150_000_000)
             }
         }
         .navigationDestination(isPresented: $showSettingsNav) {
@@ -551,55 +474,14 @@ struct ProfileView: View {
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) {
-                if let spot = pendingDeleteSpot { Task { await deleteSpotFromProfile(spot) } }
+                if let spot = pendingDeleteSpot { Task { await viewModel.deleteSpot(spot) } }
+                pendingDeleteSpot = nil
             }
             Button("Cancel", role: .cancel) { pendingDeleteSpot = nil }
         }
         .onChange(of: authVM.isPro) { _, newValue in
-            // Update isProProfile when viewing own profile
             if userId == nil || userId == authVM.userId {
-                isProProfile = newValue
-            }
-        }
-    }
-
-    @State private var isLoadingUser = false
-    @State private var lastLoadedUserId: String?
-
-    private func loadUser(forceReload: Bool = false) {
-        // Prevent multiple concurrent calls
-        guard !isLoadingUser else { return }
-
-        // Prevent reloading the same user unless forced
-        if !forceReload, let lastLoaded = lastLoadedUserId, lastLoaded == userId {
-            return
-        }
-
-        isLoadingUser = true
-        isLoading = true
-
-        Task {
-            do {
-                let data = try await ProfileService.fetchProfile(for: userId)
-                await MainActor.run {
-                    username = data.username
-                    profileImageURL = data.profileImageURL
-                    spots = data.spots
-                    isPrivateProfile = data.isPrivate
-                    isProProfile = data.isPro
-                    isFollowingUser = data.isFollowing
-                    hasRequestedFollow = data.hasRequested
-                    canViewContent = data.canView
-                    lastLoadedUserId = userId
-                    isLoading = false
-                    isLoadingUser = false
-                }
-            } catch {
-                await MainActor.run {
-                    isLoading = false
-                    isLoadingUser = false
-                }
-                SpotLogger.error("Profile loadUser failed: \(error.localizedDescription)")
+                viewModel.isProProfile = newValue
             }
         }
     }
@@ -610,26 +492,4 @@ struct ProfileView: View {
     auth.isPro = true
     return ProfileView(userId: nil, fromNavigationPush: false)
         .environmentObject(auth)
-}
-
-// MARK: - Deletion helpers
-extension ProfileView {
-    @MainActor
-    private func deleteSpotFromProfile(_ spot: Spot) async {
-        guard let id = spot.id else { return }
-        if deletingSpotIds.contains(id) { return }
-        deletingSpotIds.insert(id)
-
-        let prevSpots = spots
-        spots.removeAll { $0.id == id }
-
-        do {
-            try await SpotService.shared.deleteSpot(spot)
-            deletingSpotIds.remove(id)
-        } catch {
-            SpotLogger.error("Profile delete failed: \(error.localizedDescription)")
-            spots = prevSpots
-            deletingSpotIds.remove(id)
-        }
-    }
 }
