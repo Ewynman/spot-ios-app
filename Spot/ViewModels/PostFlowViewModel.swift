@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftUI
-import FirebaseAuth
 import FirebaseFirestore
 import UIKit
 
@@ -27,10 +26,17 @@ class PostFlowViewModel: ObservableObject {
     var onPostSuccess: ((Spot) -> Void)?
     var onShouldDismiss: (() -> Void)?
 
+    /// Injected by PostFlowView from environment; used instead of Auth.auth().
+    weak var authViewModel: AuthViewModel?
+
     let totalSteps = 3
 
     var isEmailVerified: Bool {
-        Auth.auth().currentUser?.isEmailVerified ?? false
+        authViewModel?.isEmailVerified ?? false
+    }
+
+    private var currentUserId: String? {
+        authViewModel?.userId
     }
 
     var canProceedToNextStep: Bool {
@@ -94,7 +100,7 @@ class PostFlowViewModel: ObservableObject {
                     self?.isUploading = false
                     switch result {
                     case .success:
-                        if let userId = Auth.auth().currentUser?.uid {
+                        if let userId = self?.currentUserId {
                             SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: vibe)
                         }
                         Task { await self?.awaitModerationAndFinish() }
@@ -119,7 +125,7 @@ class PostFlowViewModel: ObservableObject {
                 self?.isUploading = false
                 switch result {
                 case .success:
-                    if let userId = Auth.auth().currentUser?.uid {
+                    if let userId = self?.currentUserId {
                         SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: vibe)
                     }
                     Task { await self?.awaitModerationAndFinish() }
@@ -133,7 +139,7 @@ class PostFlowViewModel: ObservableObject {
     }
 
     private func awaitModerationAndFinish() async {
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = currentUserId else {
             await MainActor.run { isPosting = false }
             return
         }

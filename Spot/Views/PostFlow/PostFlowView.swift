@@ -3,6 +3,7 @@ import CoreLocation
 
 struct PostFlowView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var viewModel = PostFlowViewModel()
 
     var onPostSuccess: ((Spot) -> Void)?
@@ -88,6 +89,7 @@ struct PostFlowView: View {
             }
         }
         .onAppear {
+            viewModel.authViewModel = authVM
             viewModel.onPostSuccess = onPostSuccess
             viewModel.onShouldDismiss = { dismiss() }
         }
@@ -221,4 +223,5 @@ struct ToastView: View {
 
 #Preview {
     PostFlowView()
+        .environmentObject(AuthViewModel())
 }
