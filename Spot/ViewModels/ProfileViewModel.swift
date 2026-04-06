@@ -26,6 +26,7 @@ class ProfileViewModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var followReqListener: ListenerRegistration?
     private var lastLoadedUserId: String?
+    private var hasLoaded = false
 
     deinit {
         loadTask?.cancel()
@@ -35,7 +36,7 @@ class ProfileViewModel: ObservableObject {
     /// Load profile for the given user (nil = current user). Uses ProfileService.
     func loadUser(userId: String?, forceReload: Bool = false) async {
         guard !isLoading else { return }
-        if !forceReload, lastLoadedUserId == userId { return }
+        if !forceReload, hasLoaded, lastLoadedUserId == userId { return }
 
         await MainActor.run {
             isLoading = true
@@ -56,6 +57,7 @@ class ProfileViewModel: ObservableObject {
                     self.hasRequestedFollow = data.hasRequested
                     self.canViewContent = data.canView
                     self.lastLoadedUserId = userId
+                    self.hasLoaded = true
                     self.isLoading = false
                 }
                 SpotLogger.info("Loaded profile for user: \(data.username)")

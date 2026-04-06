@@ -135,14 +135,32 @@ struct ProfileView: View {
                         if selectedSpot == nil && !(selectedTab == "Map" && isMapExpanded) {
                             // Full header
                             VStack(spacing: 12) {
-                                if let url = viewModel.profileImageURL {
-                                    AsyncImage(url: URL(string: url)) { img in
-                                        img.resizable()
-                                           .aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        Image(systemName: "person.circle.fill")
-                                            .resizable()
-                                            .foregroundColor(.gray)
+                                if let urlString = viewModel.profileImageURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                                    RemoteImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                        case .failure(let failure):
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                                .onAppear {
+                                                    SpotLogger.error("Profile image failed to load", details: [
+                                                        "url": urlString,
+                                                        "statusCode": failure.statusCode as Any,
+                                                        "error": failure.underlying.localizedDescription
+                                                    ])
+                                                }
+                                        case .empty:
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                        @unknown default:
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                        }
                                     }
                                     .frame(width: 100, height: 100)
                                     .clipShape(Circle())
@@ -176,14 +194,32 @@ struct ProfileView: View {
                         } else if selectedSpot != nil && selectedTab == "Map" {
                             // Collapsed header when spot is selected on map
                             HStack(spacing: 12) {
-                                if let url = viewModel.profileImageURL {
-                                    AsyncImage(url: URL(string: url)) { img in
-                                        img.resizable()
-                                           .aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        Image(systemName: "person.circle.fill")
-                                            .resizable()
-                                            .foregroundColor(.gray)
+                                if let urlString = viewModel.profileImageURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                                    RemoteImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                        case .failure(let failure):
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                                .onAppear {
+                                                    SpotLogger.error("Profile image failed to load", details: [
+                                                        "url": urlString,
+                                                        "statusCode": failure.statusCode as Any,
+                                                        "error": failure.underlying.localizedDescription
+                                                    ])
+                                                }
+                                        case .empty:
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                        @unknown default:
+                                            Image(systemName: "person.circle.fill")
+                                                .resizable()
+                                                .foregroundColor(.gray)
+                                        }
                                     }
                                     .frame(width: 32, height: 32)
                                     .clipShape(Circle())
@@ -446,6 +482,11 @@ struct ProfileView: View {
             let isSelf = (userId == nil) || (userId == authVM.userId)
             if isSelf && viewModel.isPrivateProfile {
                 viewModel.startFollowRequestsListener(ownUserId: authVM.userId)
+            }
+        }
+        .onChange(of: showSettingsNav) { _, isShowing in
+            if !isShowing {
+                Task { await viewModel.loadUser(userId: userId, forceReload: true) }
             }
         }
         .onDisappear {
