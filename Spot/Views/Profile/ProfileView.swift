@@ -484,6 +484,11 @@ struct ProfileView: View {
                 viewModel.startFollowRequestsListener(ownUserId: authVM.userId)
             }
         }
+        .onChange(of: showSettingsNav) { _, isShowing in
+            if !isShowing {
+                Task { await viewModel.loadUser(userId: userId, forceReload: true) }
+            }
+        }
         .onDisappear {
             viewModel.stopFollowRequestsListener()
             Task { @MainActor in
