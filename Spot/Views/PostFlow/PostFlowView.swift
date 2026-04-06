@@ -5,6 +5,8 @@ struct PostFlowView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var viewModel = PostFlowViewModel()
+    @AppStorage("hasAcceptedPostingRules") private var hasAcceptedPostingRules: Bool = false
+    @State private var showRulesSheet: Bool = false
 
     var onPostSuccess: ((Spot) -> Void)?
 
@@ -12,7 +14,7 @@ struct PostFlowView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    if !viewModel.isEmailVerified {
+                    if !authVM.isEmailVerified {
                         VStack(spacing: 12) {
                             Text("Email verification required to post")
                                 .font(FontManager.primaryText())
@@ -92,6 +94,26 @@ struct PostFlowView: View {
             viewModel.authViewModel = authVM
             viewModel.onPostSuccess = onPostSuccess
             viewModel.onShouldDismiss = { dismiss() }
+            Task {
+                await authVM.checkVerificationStatus()
+                showRulesIfNeeded()
+            }
+        }
+        .onChange(of: authVM.isEmailVerified) { _, newValue in
+            if newValue { showRulesIfNeeded() }
+        }
+        .sheet(isPresented: $showRulesSheet) {
+            PostingRulesView(onAgree: {
+                hasAcceptedPostingRules = true
+                showRulesSheet = false
+            })
+            .environmentObject(authVM)
+        }
+    }
+
+    private func showRulesIfNeeded() {
+        if authVM.isEmailVerified && !hasAcceptedPostingRules {
+            showRulesSheet = true
         }
     }
 }

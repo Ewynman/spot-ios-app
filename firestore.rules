@@ -22,6 +22,9 @@ service cloud.firestore {
     // Spots collection - WITH PRIVACY
     // ============================
     match /spots/{spotId} {
+      // Owner can always read their own spots
+      allow read: if request.auth != null && resource.data.userId != null && request.auth.uid == resource.data.userId;
+
       // Public spots: anyone can read
       allow read: if resource.data.get("authorIsPrivate", false) == false;
       
