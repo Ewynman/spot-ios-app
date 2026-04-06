@@ -113,10 +113,10 @@ struct MapView: View {
         hasPerformedInitialFit = true
     }
 
-    private func debounceLoad(for region: MKCoordinateRegion) {
+    private func debounceLoad(for _: MKCoordinateRegion) {
         // Keep for region changes if needed, but initial load uses loadAllSpots
         regionLoadTask?.cancel()
-        regionLoadTask = Task { [region] in
+        regionLoadTask = Task {
             try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
             if Task.isCancelled { return }
             // Optionally reload visible region spots, but we're showing all spots now

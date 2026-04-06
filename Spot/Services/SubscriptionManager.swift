@@ -20,6 +20,7 @@ final class SubscriptionManager: ObservableObject {
     private init() {}
 
     @Published var isPurchasing: Bool = false
+    @Published var isRestoring: Bool = false
     @Published var hasProduct: Bool = false
 
     // Try current and legacy IDs to avoid config mismatches during setup
@@ -80,6 +81,8 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func restorePurchases() async throws {
+        isRestoring = true
+        defer { isRestoring = false }
         try await AppStore.sync()
     }
 

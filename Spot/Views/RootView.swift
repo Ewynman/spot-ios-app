@@ -125,10 +125,8 @@ struct RootView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: deepLinkState.showSubscriptionSuccess)
                         .onAppear {
-                            // Refresh pro status when showing success screen
-                            Task {
-                                await authViewModel.refreshUserFlags()
-                            }
+                            // Refresh pro status when showing success screen (async fetch runs inside refreshUserFlags)
+                            authViewModel.refreshUserFlags()
                         }
                     }
                 }
