@@ -83,12 +83,12 @@ Priority tested areas include feed ranking behavior, deep-link parsing, post-flo
 Use an available iPhone simulator UDID and format output with `xcbeautify` when present.
 
 ```sh
-SIM_ID=$(xcrun simctl list devices available | rg "iPhone" | head -n 1 | rg -o "[0-9A-F-]{36}")
+SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
 BEAUTIFY=$(command -v xcbeautify >/dev/null && echo "xcbeautify" || echo "cat")
 
 # Build
-xcodebuild -scheme spot -destination "id=$SIM_ID" build | $BEAUTIFY
+xcodebuild -scheme Spot -destination "id=$SIM_ID" build | $BEAUTIFY
 
 # Test
-xcodebuild -scheme spot -destination "id=$SIM_ID" test | $BEAUTIFY
+xcodebuild -scheme Spot -destination "id=$SIM_ID" test | $BEAUTIFY
 ```

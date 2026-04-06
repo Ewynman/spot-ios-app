@@ -24,15 +24,32 @@ class AuthViewModel: ObservableObject {
 
     private var handle: AuthStateDidChangeListenerHandle?
     private var userDocListener: ListenerRegistration?
+    private var storeKitProObserver: NSObjectProtocol?
 
     init() {
         listenToAuthState()
+        storeKitProObserver = NotificationCenter.default.addObserver(
+            forName: .spotStoreKitProEntitlementReady,
+            object: nil,
+            queue: OperationQueue.main
+        ) { [weak self] _ in
+            Task { await self?.syncProFromStoreKitAfterVerifiedTransaction() }
+        }
     }
 
     deinit {
         if let handle = handle {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+        if let storeKitProObserver {
+            NotificationCenter.default.removeObserver(storeKitProObserver)
+        }
+    }
+
+    /// After a Pro transaction is verified and finished via `Transaction.updates`, mirror entitlement to Firestore when signed in.
+    func syncProFromStoreKitAfterVerifiedTransaction() async {
+        guard await SubscriptionManager.shared.refreshEntitlement() else { return }
+        await setProActive(true)
     }
 
     private var previousUserId: String?
