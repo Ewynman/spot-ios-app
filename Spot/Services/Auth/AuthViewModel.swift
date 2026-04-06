@@ -213,13 +213,16 @@ class AuthViewModel: ObservableObject {
                 let vibes = data["customVibeTags"] as? [String] ?? []
                 
                 // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
-                var proUntilDate: Date? = nil
-                if let timestamp = data["proUntil"] as? Timestamp {
-                    proUntilDate = timestamp.dateValue()
-                } else if let timestamp = data["proUntil"] as? Date {
-                    proUntilDate = timestamp
-                }
-                
+                let proUntilDate: Date? = {
+                    if let timestamp = data["proUntil"] as? Timestamp {
+                        return timestamp.dateValue()
+                    }
+                    if let timestamp = data["proUntil"] as? Date {
+                        return timestamp
+                    }
+                    return nil
+                }()
+
                 // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
                 let isProValue: Bool
                 if let proUntil = proUntilDate {
@@ -228,7 +231,7 @@ class AuthViewModel: ObservableObject {
                     // Backward compatibility: check isPro boolean
                     isProValue = data["isPro"] as? Bool ?? false
                 }
-                
+
                 await MainActor.run {
                     self.isPro = isProValue
                     self.proUntil = proUntilDate

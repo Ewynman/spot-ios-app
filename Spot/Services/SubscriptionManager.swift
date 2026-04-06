@@ -2,12 +2,25 @@ import Foundation
 import StoreKit
 import UIKit
 
+/// Thrown when StoreKit returns a `Product.PurchaseResult` case this app was not built to handle (e.g. new API in a future OS).
+enum SubscriptionPurchaseError: LocalizedError {
+    case unknownPurchaseOutcome
+
+    var errorDescription: String? {
+        switch self {
+        case .unknownPurchaseOutcome:
+            return "Unexpected purchase result from the App Store. Update Spot or try again, and contact support if it continues."
+        }
+    }
+}
+
 @MainActor
 final class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
     private init() {}
 
     @Published var isPurchasing: Bool = false
+    @Published var isRestoring: Bool = false
     @Published var hasProduct: Bool = false
 
     // Try current and legacy IDs to avoid config mismatches during setup
@@ -37,7 +50,14 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
-    func purchasePro() async throws {
+    enum PurchaseProResult: Sendable {
+        case purchased
+        case pending
+        case userCancelled
+    }
+
+    /// Starts the App Store purchase flow. Returns whether a verified purchase completed on-device.
+    func purchasePro() async throws -> PurchaseProResult {
         isPurchasing = true
         defer { isPurchasing = false }
         let product = try await loadProduct()
@@ -46,21 +66,31 @@ final class SubscriptionManager: ObservableObject {
         case .success(let verification):
             let transaction = try checkVerified(verification)
             await transaction.finish()
-        case .userCancelled, .pending:
-            break
+            return .purchased
+        case .userCancelled:
+            return .userCancelled
+        case .pending:
+            return .pending
         @unknown default:
-            break
+            SpotLogger.error(
+                "StoreKit: Unhandled Product.PurchaseResult",
+                details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"]
+            )
+            throw SubscriptionPurchaseError.unknownPurchaseOutcome
         }
     }
 
     func restorePurchases() async throws {
+        isRestoring = true
+        defer { isRestoring = false }
         try await AppStore.sync()
     }
 
     func refreshEntitlement() async -> Bool {
+        let checker = ProEntitlementChecker(proProductIDs: productIds)
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
-               productIds.contains(transaction.productID) {
+               checker.grantsPro(forProductID: transaction.productID) {
                 return true
             }
         }

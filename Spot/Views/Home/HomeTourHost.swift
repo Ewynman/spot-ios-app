@@ -68,8 +68,7 @@ struct HomeTourHost<Content: View>: View {
 
 #Preview {
     let manager = HomeTourManager()
-    @State var frames: [CoachTarget: CGRect] = [:]
-    return HomeTourHost(manager: manager, coachFrames: .constant(frames), isFirstSessionAfterSignup: true) {
+    return HomeTourHost(manager: manager, coachFrames: .constant([:]), isFirstSessionAfterSignup: true) {
         VStack { Text("Home content") }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(hex: "F5F3EF"))

@@ -54,6 +54,7 @@
 		6428441A2E20429E00DC9E8A /* SpotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		642844242E20429E00DC9E8A /* SpotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		645351FE2F5671840012DDA1 /* Spot.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Spot.xctestplan; sourceTree = "<group>"; };
+		64AEC1F72F738EFA001911C1 /* SpotDev.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = SpotDev.storekit; path = Spot/StoreKit/SpotDev.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -138,6 +139,7 @@
 		642844042E20429B00DC9E8A = {
 			isa = PBXGroup;
 			children = (
+				64AEC1F72F738EFA001911C1 /* SpotDev.storekit */,
 				645351FE2F5671840012DDA1 /* Spot.xctestplan */,
 				6428440F2E20429B00DC9E8A /* Spot */,
 				6428441D2E20429E00DC9E8A /* SpotTests */,

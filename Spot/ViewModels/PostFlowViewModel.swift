@@ -185,12 +185,13 @@ class PostFlowViewModel: ObservableObject {
                 SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(String(describing: scores))")
                 if var spot = try? doc.data(as: Spot.self) {
                     spot.id = doc.documentID
+                    let postedSpot = spot
                     await MainActor.run {
                         AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID, parameters: [
-                            "vibe_tag": spot.vibeTag ?? "",
-                            "has_multiple_images": (spot.imageURLs?.count ?? 0) > 1
+                            "vibe_tag": postedSpot.vibeTag ?? "",
+                            "has_multiple_images": (postedSpot.imageURLs?.count ?? 0) > 1
                         ])
-                        onPostSuccess?(spot)
+                        onPostSuccess?(postedSpot)
                         isPosting = false
                         onShouldDismiss?()
                     }

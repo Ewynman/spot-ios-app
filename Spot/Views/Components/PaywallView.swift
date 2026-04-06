@@ -3,6 +3,24 @@ import SwiftUI
 struct PaywallView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
+
+    @State private var priceLine = ""
+    @State private var purchaseError: String?
+
+    private var isStoreBusy: Bool {
+        subscriptionManager.isPurchasing || subscriptionManager.isRestoring
+    }
+
+    private var primaryButtonTitle: String {
+        if subscriptionManager.isPurchasing {
+            return "Processing…"
+        }
+        if subscriptionManager.isRestoring {
+            return "Restoring…"
+        }
+        return priceLine.isEmpty ? "Go Pro" : "Go Pro - \(priceLine)"
+    }
 
     var body: some View {
         NavigationStack {
@@ -12,7 +30,7 @@ struct PaywallView: View {
                     .foregroundColor(Constants.Colors.primary)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("$9.99 / year")
+                    Text(priceLine.isEmpty ? "…" : priceLine)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
                     Divider()
@@ -36,7 +54,7 @@ struct PaywallView: View {
                 Spacer()
 
                 Button(action: subscribe) {
-                    Text("Go Pro - $9.99 / year")
+                    Text(primaryButtonTitle)
                         .font(FontManager.buttonText())
                         .foregroundColor(Constants.Colors.buttonText)
                         .frame(maxWidth: .infinity)
@@ -45,6 +63,15 @@ struct PaywallView: View {
                         .cornerRadius(20)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(isStoreBusy)
+                .padding(.bottom, 4)
+
+                Button(action: restorePurchases) {
+                    Text(subscriptionManager.isRestoring ? "Restoring…" : "Restore purchases")
+                }
+                .font(FontManager.primaryText())
+                .foregroundColor(Constants.Colors.primary)
+                .disabled(isStoreBusy)
                 .padding(.bottom, 8)
             }
             .padding(.top, 16)
@@ -59,13 +86,66 @@ struct PaywallView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
+            .task { await loadStorePrice() }
+            .alert("Purchase", isPresented: Binding(
+                get: { purchaseError != nil },
+                set: { if !$0 { purchaseError = nil } }
+            )) {
+                Button("OK", role: .cancel) { purchaseError = nil }
+            } message: {
+                Text(purchaseError ?? "")
+            }
         }
     }
 
+    @MainActor
+    private func loadStorePrice() async {
+        await subscriptionManager.ensureProductLoaded()
+        guard subscriptionManager.hasProduct else { return }
+        guard let product = try? await subscriptionManager.loadProduct() else { return }
+        priceLine = SubscriptionPriceLineFormatter.priceLine(for: product)
+    }
+
     private func subscribe() {
-        SpotLogger.info("PaywallView: User clicked subscribe, redirecting to website")
-        SubscriptionWebService.shared.openSubscriptionPageForCurrentUser()
-        dismiss()
+        purchaseError = nil
+        SpotLogger.info("PaywallView: User started App Store purchase")
+        Task {
+            do {
+                let outcome = try await subscriptionManager.purchasePro()
+                switch outcome {
+                case .purchased:
+                    if await subscriptionManager.refreshEntitlement() {
+                        await authVM.setProActive(true)
+                    }
+                    await MainActor.run { dismiss() }
+                case .pending:
+                    SpotLogger.info("PaywallView: Purchase pending")
+                case .userCancelled:
+                    break
+                }
+            } catch {
+                SpotLogger.error("PaywallView: Purchase failed", details: ["error": error.localizedDescription])
+                await MainActor.run { purchaseError = error.localizedDescription }
+            }
+        }
+    }
+
+    private func restorePurchases() {
+        purchaseError = nil
+        Task {
+            do {
+                try await subscriptionManager.restorePurchases()
+                if await subscriptionManager.refreshEntitlement() {
+                    await authVM.setProActive(true)
+                    await MainActor.run { dismiss() }
+                } else {
+                    await MainActor.run { purchaseError = "No active subscription found." }
+                }
+            } catch {
+                SpotLogger.error("PaywallView: Restore failed", details: ["error": error.localizedDescription])
+                await MainActor.run { purchaseError = error.localizedDescription }
+            }
+        }
     }
 }
 
