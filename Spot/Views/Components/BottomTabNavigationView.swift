@@ -80,8 +80,8 @@ struct BottomTabNavigationView: View {
                     .frame(height: 1),
                 alignment: .top
             )
-            .ignoresSafeArea(.keyboard)
         }
+        .ignoresSafeArea(.keyboard)
     }
 }
 

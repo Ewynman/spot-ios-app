@@ -287,6 +287,12 @@ final class SpotUploader {
             Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
 
             do {
+                // Force-refresh the Firebase Auth ID token so Firestore receives a
+                // guaranteed-valid credential, even if the write-stream reconnected
+                // after a network-path change during the image uploads.
+                if let currentUser = Auth.auth().currentUser {
+                    _ = try? await currentUser.getIDToken(forcingRefresh: true)
+                }
                 try await Firestore.firestore().collection("spots").document(postId).setData(data)
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))

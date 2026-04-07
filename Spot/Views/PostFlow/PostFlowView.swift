@@ -7,6 +7,9 @@ struct PostFlowView: View {
     @StateObject private var viewModel = PostFlowViewModel()
     @AppStorage("hasAcceptedPostingRules") private var hasAcceptedPostingRules: Bool = false
     @State private var showRulesSheet: Bool = false
+    /// `true` while we await a fresh `isEmailVerified` value from Firebase so we
+    /// never flash the "verification required" error on a stale cached token.
+    @State private var isVerifyingEmail: Bool = true
 
     var onPostSuccess: ((Spot) -> Void)?
 
@@ -14,7 +17,13 @@ struct PostFlowView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    if !authVM.isEmailVerified {
+                    if isVerifyingEmail {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(Constants.Colors.primary)
+                        Spacer()
+                    } else if !authVM.isEmailVerified {
                         VStack(spacing: 12) {
                             Text("Email verification required to post")
                                 .font(FontManager.primaryText())
@@ -96,6 +105,7 @@ struct PostFlowView: View {
             viewModel.onShouldDismiss = { dismiss() }
             Task {
                 await authVM.checkVerificationStatus()
+                isVerifyingEmail = false
                 showRulesIfNeeded()
             }
         }
