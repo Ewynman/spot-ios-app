@@ -163,46 +163,40 @@ struct SettingsView: View {
                         }
                     }
                     
-                    // MARK: - Account Management Section
+                    // MARK: - Subscription Management Section
                     settingsSection {
                         VStack(spacing: 12) {
-                            sectionHeader("Account Management")
-                            
-                            NavigationLink {
-                                BlockedUsersView()
-                            } label: {
-                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
+                            sectionHeader("Subscription Management")
+
                             if authVM.isPro {
+                                // Show Pro Until date prominently
+                                HStack(spacing: 12) {
+                                    Image(systemName: "star.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Constants.Colors.primary)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Pro Member")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                        if let proUntil = authVM.proUntil {
+                                            Text("Active until \(formatDate(proUntil))")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 16)
+
                                 Button {
                                     showCollectionsNav = true
                                 } label: {
                                     settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
                                 }
                                 .buttonStyle(PlainButtonStyle())
-                                
-                                // Show expiration date if available
-                                if let proUntil = authVM.proUntil {
-                                    HStack {
-                                        Image(systemName: "calendar")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(Constants.Colors.primary)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Pro expires")
-                                                .font(FontManager.primaryText())
-                                                .foregroundColor(Constants.Colors.primary)
-                                            Text(formatDate(proUntil))
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.gray)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 16)
-                                }
-                                
+
                                 Button {
                                     Task {
                                         do {
@@ -250,6 +244,20 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
+                        }
+                    }
+
+                    // MARK: - Account Privacy Section
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Account Privacy")
+
+                            NavigationLink {
+                                BlockedUsersView()
+                            } label: {
+                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     
