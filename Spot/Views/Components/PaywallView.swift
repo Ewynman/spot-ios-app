@@ -113,9 +113,11 @@ struct PaywallView: View {
             do {
                 let outcome = try await subscriptionManager.purchasePro()
                 switch outcome {
-                case .purchased:
+                case .purchased(let expirationDate):
+                    // Transaction is already verified via checkVerified in purchasePro().
+                    // refreshEntitlement() provides an additional on-device confirmation.
                     if await subscriptionManager.refreshEntitlement() {
-                        await authVM.setProActive(true)
+                        await authVM.setProActive(true, proUntil: expirationDate)
                     }
                     await MainActor.run { dismiss() }
                 case .pending:
@@ -136,7 +138,8 @@ struct PaywallView: View {
             do {
                 try await subscriptionManager.restorePurchases()
                 if await subscriptionManager.refreshEntitlement() {
-                    await authVM.setProActive(true)
+                    let expirationDate = await subscriptionManager.refreshEntitlementExpiry()
+                    await authVM.setProActive(true, proUntil: expirationDate)
                     await MainActor.run { dismiss() }
                 } else {
                     await MainActor.run { purchaseError = "No active subscription found." }
