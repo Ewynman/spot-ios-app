@@ -296,24 +296,47 @@ final class SpotUploader {
                 // Retry once on permission-denied: give the refreshed token time to
                 // propagate to the Firestore write stream before the second attempt.
                 do {
+                    SpotLogger.debug(.network, "setData attempt 1", details: [
+                        "postId": postId,
+                        "uid": Auth.auth().currentUser?.uid ?? "nil"
+                    ])
                     try await Firestore.firestore().collection("spots").document(postId).setData(data)
                 } catch let firstErr as NSError
                     where firstErr.domain == FirestoreErrorDomain
                        && firstErr.code == FirestoreErrorCode.permissionDenied.rawValue {
+                    SpotLogger.debug(.network, "setData attempt 1 failed — permission denied, will retry", details: [
+                        "postId": postId,
+                        "uid": Auth.auth().currentUser?.uid ?? "nil",
+                        "errorDomain": firstErr.domain,
+                        "errorCode": firstErr.code,
+                        "error": firstErr.localizedDescription
+                    ])
                     try await Task.sleep(for: .seconds(1.5))
                     if let currentUser = Auth.auth().currentUser {
                         do {
                             _ = try await currentUser.getIDToken(forcingRefresh: true)
+                            SpotLogger.debug(.network, "Token re-refreshed before retry", details: ["uid": currentUser.uid])
                         } catch {
                             SpotLogger.debug(.network, "Token re-refresh failed before retry", details: ["error": error.localizedDescription])
                         }
                     }
+                    SpotLogger.debug(.network, "setData attempt 2 (retry)", details: [
+                        "postId": postId,
+                        "uid": Auth.auth().currentUser?.uid ?? "nil"
+                    ])
                     try await Firestore.firestore().collection("spots").document(postId).setData(data)
                 }
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))
             } catch {
-                SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription, "postId": postId])
+                let nsErr = error as NSError
+                SpotLogger.error("Create spot document failed", details: [
+                    "postId": postId,
+                    "errorDomain": nsErr.domain,
+                    "errorCode": nsErr.code,
+                    "error": nsErr.localizedDescription,
+                    "uid": Auth.auth().currentUser?.uid ?? "nil"
+                ])
                 // Attempt to clean up uploaded images if document creation fails
                 Task {
                     var cleanedCount = 0
