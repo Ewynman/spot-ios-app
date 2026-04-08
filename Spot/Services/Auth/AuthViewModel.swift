@@ -243,14 +243,21 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func setProActive(_ active: Bool) async {
+    func setProActive(_ active: Bool, proUntil: Date? = nil) async {
         guard let userId = userId else { return }
         do {
-            // For backward compatibility, still set isPro boolean
-            // But prefer proUntil timestamp if available
-            try await Firestore.firestore().collection("users").document(userId).setData(["isPro": active], merge: true)
-            await MainActor.run { self.isPro = active }
-            SpotLogger.info("Pro status updated", details: ["active": active])
+            var fields: [String: Any] = ["isPro": active]
+            if active, let expiry = proUntil {
+                fields["proUntil"] = Timestamp(date: expiry)
+            } else if !active {
+                fields["proUntil"] = FieldValue.delete()
+            }
+            try await Firestore.firestore().collection("users").document(userId).setData(fields, merge: true)
+            await MainActor.run {
+                self.isPro = active
+                self.proUntil = active ? proUntil : nil
+            }
+            SpotLogger.info("Pro status updated", details: ["active": active, "proUntil": proUntil?.description ?? "nil"])
         } catch {
             SpotLogger.error("Failed to set pro status: \(error.localizedDescription)")
         }

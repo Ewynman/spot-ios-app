@@ -51,7 +51,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     enum PurchaseProResult: Sendable {
-        case purchased
+        case purchased(expirationDate: Date?)
         case pending
         case userCancelled
     }
@@ -65,8 +65,9 @@ final class SubscriptionManager: ObservableObject {
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
+            let expirationDate = transaction.expirationDate
             await transaction.finish()
-            return .purchased
+            return .purchased(expirationDate: expirationDate)
         case .userCancelled:
             return .userCancelled
         case .pending:
@@ -95,6 +96,18 @@ final class SubscriptionManager: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Returns the expiration date of the active Pro entitlement, or nil if not subscribed.
+    func refreshEntitlementExpiry() async -> Date? {
+        let checker = ProEntitlementChecker(proProductIDs: productIds)
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result,
+               checker.grantsPro(forProductID: transaction.productID) {
+                return transaction.expirationDate
+            }
+        }
+        return nil
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

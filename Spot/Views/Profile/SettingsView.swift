@@ -224,7 +224,8 @@ struct SettingsView: View {
                                         do {
                                             try await SubscriptionManager.shared.restorePurchases()
                                             if await SubscriptionManager.shared.refreshEntitlement() {
-                                                await authVM.setProActive(true)
+                                                let expirationDate = await SubscriptionManager.shared.refreshEntitlementExpiry()
+                                                await authVM.setProActive(true, proUntil: expirationDate)
                                                 await MainActor.run {
                                                     showToast(message: "Subscription restored", isError: false)
                                                 }
