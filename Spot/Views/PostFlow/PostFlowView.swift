@@ -104,7 +104,7 @@ struct PostFlowView: View {
             viewModel.onPostSuccess = onPostSuccess
             viewModel.onShouldDismiss = { dismiss() }
             Task {
-                await authVM.checkVerificationStatus()
+                _ = await authVM.checkVerificationStatus()
                 isVerifyingEmail = false
                 showRulesIfNeeded()
             }

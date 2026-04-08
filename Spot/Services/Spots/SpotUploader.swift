@@ -293,22 +293,42 @@ final class SpotUploader {
                 if let currentUser = Auth.auth().currentUser {
                     _ = try? await currentUser.getIDToken(forcingRefresh: true)
                 }
-                try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                // Retry once on permission-denied: give the refreshed token time to
+                // propagate to the Firestore write stream before the second attempt.
+                do {
+                    try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                } catch let firstErr as NSError
+                    where firstErr.domain == FirestoreErrorDomain
+                       && firstErr.code == FirestoreErrorCode.permissionDenied.rawValue {
+                    try await Task.sleep(for: .seconds(1.5))
+                    if let currentUser = Auth.auth().currentUser {
+                        do {
+                            _ = try await currentUser.getIDToken(forcingRefresh: true)
+                        } catch {
+                            SpotLogger.debug(.network, "Token re-refresh failed before retry", details: ["error": error.localizedDescription])
+                        }
+                    }
+                    try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                }
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))
             } catch {
                 SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription, "postId": postId])
                 // Attempt to clean up uploaded images if document creation fails
                 Task {
+                    var cleanedCount = 0
                     for (idx, _) in limited.enumerated() {
                         let filename = "spot_\(postId)_\(idx).jpg"
                         let ref = storage.reference().child("spots/\(filename)")
                         do {
                             try await ref.delete()
-                            SpotLogger.debug("Cleaned up orphaned image", details: ["postId": postId, "index": idx])
+                            cleanedCount += 1
                         } catch {
                             SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
                         }
+                    }
+                    if cleanedCount > 0 {
+                        SpotLogger.debug("Cleaned up \(cleanedCount) orphaned image(s)", details: ["postId": postId])
                     }
                 }
                 completion(.failure(error))
