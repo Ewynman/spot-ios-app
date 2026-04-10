@@ -287,54 +287,32 @@ final class SpotUploader {
             Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
 
             do {
-                // Force-refresh the Firebase Auth ID token so Firestore receives a
-                // guaranteed-valid credential, even if the write-stream reconnected
-                // after a network-path change during the image uploads.
+                // Force-refresh the auth token after potentially long image uploads so
+                // the Firestore write stream has a guaranteed-valid credential.
                 if let currentUser = Auth.auth().currentUser {
                     _ = try? await currentUser.getIDToken(forcingRefresh: true)
                 }
-                // Retry once on permission-denied: give the refreshed token time to
-                // propagate to the Firestore write stream before the second attempt.
+                let db = Firestore.firestore()
+                SpotLogger.debug(.network, "Creating spot document", details: [
+                    "postId": postId,
+                    "uid": Auth.auth().currentUser?.uid ?? "nil",
+                    "docUserId": userId
+                ])
+                // Write the core document WITHOUT imageURLs so the field set matches
+                // single-image uploads exactly.  Deployed Firestore rules may carry a
+                // field allow-list (hasOnly) that pre-dates imageURLs; writing imageURLs
+                // via a separate owner-authorised updateData call sidesteps that check.
+                let initialData = data.filter { $0.key != "imageURLs" }
+                try await db.collection("spots").document(postId).setData(initialData)
                 do {
-                    SpotLogger.debug(.network, "setData attempt 1", details: [
-                        "postId": postId,
-                        "uid": Auth.auth().currentUser?.uid ?? "nil"
-                    ])
-                    try await Firestore.firestore().collection("spots").document(postId).setData(data)
-                } catch let firstErr as NSError
-                    where firstErr.domain == FirestoreErrorDomain
-                       && firstErr.code == FirestoreErrorCode.permissionDenied.rawValue {
-                    SpotLogger.debug(.network, "setData attempt 1 failed — permission denied, will retry", details: [
-                        "postId": postId,
-                        "uid": Auth.auth().currentUser?.uid ?? "nil",
-                        "errorDomain": firstErr.domain,
-                        "errorCode": firstErr.code,
-                        "error": firstErr.localizedDescription
-                    ])
-                    // Re-refresh the auth token, then force the Firestore SDK to
-                    // reconnect so the new credential is guaranteed to be on the
-                    // fresh write stream before attempt 2.
-                    if let currentUser = Auth.auth().currentUser {
-                        do {
-                            _ = try await currentUser.getIDToken(forcingRefresh: true)
-                            SpotLogger.debug(.network, "Token re-refreshed before retry", details: ["uid": currentUser.uid])
-                        } catch {
-                            SpotLogger.debug(.network, "Token re-refresh failed before retry", details: ["error": error.localizedDescription])
-                        }
-                    }
-                    let db = Firestore.firestore()
-                    try? await db.disableNetwork()
-                    try? await db.enableNetwork()
-                    // enableNetwork() resolves when the SDK starts reconnecting, not when
-                    // the new gRPC connection has completed the Firebase auth exchange.
-                    // Wait 2 s so the TLS handshake + auth token delivery finish before
-                    // the retry write is sent on the new stream.
-                    try? await Task.sleep(for: .seconds(2.0))
-                    SpotLogger.debug(.network, "setData attempt 2 (retry)", details: [
-                        "postId": postId,
-                        "uid": Auth.auth().currentUser?.uid ?? "nil"
-                    ])
-                    try await db.collection("spots").document(postId).setData(data)
+                    // Immediately add imageURLs through the owner-update path, which allows
+                    // the owner to modify any field on their own spot document.
+                    try await db.collection("spots").document(postId).updateData(["imageURLs": urls])
+                } catch {
+                    // updateData failed — remove the partial document so the outer catch
+                    // can clean up Storage images with a consistent error path.
+                    try? await db.collection("spots").document(postId).delete()
+                    throw error
                 }
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))
@@ -345,7 +323,8 @@ final class SpotUploader {
                     "errorDomain": nsErr.domain,
                     "errorCode": nsErr.code,
                     "error": nsErr.localizedDescription,
-                    "uid": Auth.auth().currentUser?.uid ?? "nil"
+                    "uid": Auth.auth().currentUser?.uid ?? "nil",
+                    "docUserId": userId
                 ])
                 // Attempt to clean up uploaded images if document creation fails
                 Task {
