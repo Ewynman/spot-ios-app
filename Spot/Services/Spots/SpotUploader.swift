@@ -311,7 +311,9 @@ final class SpotUploader {
                         "errorCode": firstErr.code,
                         "error": firstErr.localizedDescription
                     ])
-                    try await Task.sleep(for: .seconds(1.5))
+                    // Re-refresh the auth token, then force the Firestore SDK to
+                    // reconnect so the new credential is guaranteed to be on the
+                    // fresh write stream before attempt 2.
                     if let currentUser = Auth.auth().currentUser {
                         do {
                             _ = try await currentUser.getIDToken(forcingRefresh: true)
@@ -320,11 +322,14 @@ final class SpotUploader {
                             SpotLogger.debug(.network, "Token re-refresh failed before retry", details: ["error": error.localizedDescription])
                         }
                     }
+                    let db = Firestore.firestore()
+                    try? await db.disableNetwork()
+                    try? await db.enableNetwork()
                     SpotLogger.debug(.network, "setData attempt 2 (retry)", details: [
                         "postId": postId,
                         "uid": Auth.auth().currentUser?.uid ?? "nil"
                     ])
-                    try await Firestore.firestore().collection("spots").document(postId).setData(data)
+                    try await db.collection("spots").document(postId).setData(data)
                 }
                 SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                 completion(.success(()))
