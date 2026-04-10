@@ -106,6 +106,9 @@ final class SpotLogger {
 
     // MARK: - Structured Log Entry
 
+    /// Indentation prefix applied to each key-value pair in the details block.
+    private static let detailsIndentation = "     "
+
     /// Emit a structured log defined by a `SpotLog`-conforming enum case.
     ///
     /// Output format:
@@ -120,8 +123,18 @@ final class SpotLogger {
         log(entry.level, message: body(for: entry, details: details), file: file, function: function, line: line)
     }
 
-    /// Returns the formatted body string for a log entry without emitting it.
-    /// Exposed for unit testing.
+    /// Returns the formatted body string for a structured log entry.
+    ///
+    /// The output begins with a `SpotLogger: <tag>` header line followed by the
+    /// entry's message. When `details` is non-empty, a sorted key-value block is
+    /// appended between `[` and `]` delimiters.
+    ///
+    /// - Parameters:
+    ///   - entry: A `SpotLog`-conforming value that provides the tag and message.
+    ///   - details: Optional structured metadata to attach to the log.
+    /// - Returns: The fully-formatted log body string.
+    ///
+    /// Exposed `internal` so it can be verified directly in unit tests.
     static func body(for entry: some SpotLog, details: [String: Any]) -> String {
         let header = "SpotLogger: \(entry.tag)"
         if details.isEmpty {
@@ -137,7 +150,7 @@ final class SpotLogger {
                 } else {
                     v = String(describing: value)
                 }
-                return "     \(key): \(v)"
+                return "\(detailsIndentation)\(key): \(v)"
             }
             .sorted()
             .joined(separator: "\n")

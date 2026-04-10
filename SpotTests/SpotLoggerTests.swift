@@ -96,8 +96,9 @@ struct SpotLoggerTests {
     @Test func logFormattedOutputWithDetails() {
         let output = SpotLogger.body(for: SpotUploaderLogs.spotCreated, details: ["id": "abc123", "statusCode": 200])
         #expect(output.hasPrefix("SpotLogger: SpotUploader\nSpot upload success\n[\n"))
-        #expect(output.contains("id: abc123"))
-        #expect(output.contains("statusCode: 200"))
+        // Details are sorted alphabetically, each indented with 5 spaces
+        #expect(output.contains("     id: abc123"))
+        #expect(output.contains("     statusCode: 200"))
         #expect(output.hasSuffix("\n]"))
     }
 }
