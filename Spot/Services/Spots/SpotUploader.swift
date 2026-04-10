@@ -325,6 +325,11 @@ final class SpotUploader {
                     let db = Firestore.firestore()
                     try? await db.disableNetwork()
                     try? await db.enableNetwork()
+                    // enableNetwork() resolves when the SDK starts reconnecting, not when
+                    // the new gRPC connection has completed the Firebase auth exchange.
+                    // Wait 2 s so the TLS handshake + auth token delivery finish before
+                    // the retry write is sent on the new stream.
+                    try? await Task.sleep(for: .seconds(2.0))
                     SpotLogger.debug(.network, "setData attempt 2 (retry)", details: [
                         "postId": postId,
                         "uid": Auth.auth().currentUser?.uid ?? "nil"
