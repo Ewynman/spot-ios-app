@@ -117,28 +117,31 @@ final class SpotLogger {
     /// ]
     /// ```
     static func log(_ entry: some SpotLog, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(entry.level, message: body(for: entry, details: details), file: file, function: function, line: line)
+    }
+
+    /// Returns the formatted body string for a log entry without emitting it.
+    /// Exposed for unit testing.
+    static func body(for entry: some SpotLog, details: [String: Any]) -> String {
         let header = "SpotLogger: \(entry.tag)"
-        let body: String
         if details.isEmpty {
-            body = "\(header)\n\(entry.message)"
-        } else {
-            let lines = details
-                .map { key, value -> String in
-                    let v: String
-                    if let date = value as? Date {
-                        v = date.description
-                    } else if let arr = value as? [Any] {
-                        v = arr.map { String(describing: $0) }.joined(separator: ", ")
-                    } else {
-                        v = String(describing: value)
-                    }
-                    return "     \(key): \(v)"
-                }
-                .sorted()
-                .joined(separator: "\n")
-            body = "\(header)\n\(entry.message)\n[\n\(lines)\n]"
+            return "\(header)\n\(entry.message)"
         }
-        log(entry.level, message: body, file: file, function: function, line: line)
+        let lines = details
+            .map { key, value -> String in
+                let v: String
+                if let date = value as? Date {
+                    v = date.description
+                } else if let arr = value as? [Any] {
+                    v = arr.map { String(describing: $0) }.joined(separator: ", ")
+                } else {
+                    v = String(describing: value)
+                }
+                return "     \(key): \(v)"
+            }
+            .sorted()
+            .joined(separator: "\n")
+        return "\(header)\n\(entry.message)\n[\n\(lines)\n]"
     }
 
     // MARK: - Public Logging Methods
