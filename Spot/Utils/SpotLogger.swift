@@ -1,6 +1,19 @@
 import Foundation
 import os
 
+// MARK: - SpotLog Protocol
+
+/// A structured log definition. Conform an enum to this protocol to describe
+/// all log events for a given class, then emit them with `SpotLogger.log(_:details:)`.
+protocol SpotLog {
+    /// The name of the originating class, shown as the log tag.
+    var tag: String { get }
+    /// Severity level for this log entry.
+    var level: LogLevel { get }
+    /// Human-readable description of the event.
+    var message: String { get }
+}
+
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
     case info = "INFO"
@@ -89,6 +102,43 @@ final class SpotLogger {
 
     static func setMinimumLevel(_ level: LogLevel) {
         minimumLevel = level
+    }
+
+    // MARK: - Structured Log Entry
+
+    /// Emit a structured log defined by a `SpotLog`-conforming enum case.
+    ///
+    /// Output format:
+    /// ```
+    /// SpotLogger: <tag>
+    /// <message>
+    /// [
+    ///      key: value
+    /// ]
+    /// ```
+    static func log(_ entry: some SpotLog, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        let header = "SpotLogger: \(entry.tag)"
+        let body: String
+        if details.isEmpty {
+            body = "\(header)\n\(entry.message)"
+        } else {
+            let lines = details
+                .map { key, value -> String in
+                    let v: String
+                    if let date = value as? Date {
+                        v = date.description
+                    } else if let arr = value as? [Any] {
+                        v = arr.map { String(describing: $0) }.joined(separator: ", ")
+                    } else {
+                        v = String(describing: value)
+                    }
+                    return "     \(key): \(v)"
+                }
+                .sorted()
+                .joined(separator: "\n")
+            body = "\(header)\n\(entry.message)\n[\n\(lines)\n]"
+        }
+        log(entry.level, message: body, file: file, function: function, line: line)
     }
 
     // MARK: - Public Logging Methods
