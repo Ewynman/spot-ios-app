@@ -10,6 +10,9 @@ struct PostFlowView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            Constants.Colors.background
+                .ignoresSafeArea()
+
             VStack(spacing: 0) {
                 if !viewModel.isEmailVerified {
                     VStack(spacing: 12) {
@@ -77,7 +80,6 @@ struct PostFlowView: View {
             }
             .padding(.top, 8)
         }
-        .background(Constants.Colors.background.ignoresSafeArea())
         .onAppear {
             viewModel.authViewModel = authVM
             viewModel.onPostSuccess = onPostSuccess
