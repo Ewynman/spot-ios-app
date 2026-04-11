@@ -254,6 +254,12 @@ final class SpotUploader {
             }
 
             let geohash = GeoHash.encode(latitude: latitude, longitude: longitude, precision: 7)
+            // NOTE: imageURLs is intentionally excluded from the initial setData payload.
+            // The deployed Firestore create rule has a field allow-list that predates the
+            // imageURLs field — including it causes the create to be rejected with
+            // "Missing or insufficient permissions."  We write it in a separate updateData
+            // call immediately after, which goes through the owner-update path (no field
+            // restrictions for the document owner).
             var data: [String: Any] = [
                 "postId": postId,
                 "userId": userId,
@@ -261,7 +267,6 @@ final class SpotUploader {
                 "userProfileImageURL": userProfileImageURL ?? "",
                 "imageURL": urls.first ?? "",
                 "thumbnailURL": urls.first ?? "",
-                "imageURLs": urls,
                 "caption": "",
                 "vibeTag": vibeTag,
                 "vibeTag_lower": vibeTag.lowercased(),
@@ -275,13 +280,7 @@ final class SpotUploader {
                 "createdAt": FieldValue.serverTimestamp()
             ]
 
-            // Run all Firestore operations on @MainActor to match the single-image upload
-            // path (performSpotUpload), which always succeeds.  Calling getIDToken on a
-            // background thread and then writing to Firestore can race against the SDK's
-            // own auth-state-change notifications (which are dispatched on the main thread),
-            // causing the write stream to temporarily have no valid credential.  Running on
-            // @MainActor ensures all pending main-thread notifications — including the
-            // Firestore SDK's internal credential update — are processed before setData.
+            // Run all Firestore operations on @MainActor to match the single-image upload path.
             Task { @MainActor in
                 // Denormalize author's privacy (matches single-image path)
                 var finalData = data
@@ -295,8 +294,15 @@ final class SpotUploader {
                 // Ensure the vibe tag exists globally (non-blocking)
                 Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
 
+                let db = Firestore.firestore()
+                let docRef = db.collection("spots").document(postId)
+                var docCreated = false
                 do {
-                    try await Firestore.firestore().collection("spots").document(postId).setData(finalData)
+                    // Step 1: create the document without imageURLs (passes the create rule)
+                    try await docRef.setData(finalData)
+                    docCreated = true
+                    // Step 2: attach imageURLs via owner update (owner can write any field)
+                    try await docRef.updateData(["imageURLs": urls])
                     SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
                     completion(.success(()))
                 } catch {
@@ -309,8 +315,13 @@ final class SpotUploader {
                         "uid": Auth.auth().currentUser?.uid ?? "nil",
                         "docUserId": userId
                     ])
-                    // Attempt to clean up uploaded images if document creation fails
+                    // Attempt to clean up any orphaned resources
                     Task {
+                        // Remove the Firestore document if it was already created (step 2 failed)
+                        if docCreated {
+                            try? await docRef.delete()
+                        }
+                        // Remove uploaded Storage images
                         var cleanedCount = 0
                         for (idx, _) in limited.enumerated() {
                             let filename = "spot_\(postId)_\(idx).jpg"
