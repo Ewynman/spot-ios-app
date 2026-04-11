@@ -297,10 +297,20 @@ final class SpotUploader {
                 let db = Firestore.firestore()
                 let docRef = db.collection("spots").document(postId)
                 var docCreated = false
+                let preWriteUser = Auth.auth().currentUser
+                SpotLogger.info("setData pre-write", details: [
+                    "postId": postId,
+                    "uid": preWriteUser?.uid ?? "nil",
+                    "docUserId": userId,
+                    "isEmailVerified": preWriteUser?.isEmailVerified ?? false,
+                    "isAnonymous": preWriteUser?.isAnonymous ?? true,
+                    "fieldKeys": Array(finalData.keys).sorted().joined(separator: ", ")
+                ])
                 do {
                     // Step 1: create the document without imageURLs (passes the create rule)
                     try await docRef.setData(finalData)
                     docCreated = true
+                    SpotLogger.info("setData step 1 succeeded", details: ["postId": postId])
                     // Step 2: attach imageURLs via owner update (owner can write any field)
                     try await docRef.updateData(["imageURLs": urls])
                     SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
@@ -309,11 +319,13 @@ final class SpotUploader {
                     let nsErr = error as NSError
                     SpotLogger.error("Create spot document failed", details: [
                         "postId": postId,
+                        "failedStep": docCreated ? "updateData (step 2)" : "setData (step 1)",
                         "errorDomain": nsErr.domain,
                         "errorCode": nsErr.code,
                         "error": nsErr.localizedDescription,
                         "uid": Auth.auth().currentUser?.uid ?? "nil",
-                        "docUserId": userId
+                        "docUserId": userId,
+                        "isEmailVerified": Auth.auth().currentUser?.isEmailVerified ?? false
                     ])
                     // Attempt to clean up any orphaned resources
                     Task {
