@@ -23,7 +23,7 @@ final class FeedCache {
     }
 
     func clearCache() {
-        SpotLogger.debug("Clearing feed cache")
+        SpotLogger.log(FeedCacheLogs.clearingCache)
         cachedSpots = []
         lastDocument = nil
         lastCacheTime = nil
@@ -32,12 +32,12 @@ final class FeedCache {
     func loadInitialSpots() async throws -> [Spot] {
         // If cache is valid, return cached spots
         if let cached = getCachedSpots() {
-            SpotLogger.info("Using cached feed: \(cached.count) spots")
+            SpotLogger.log(FeedCacheLogs.usingCachedFeed, details: ["count": cached.count])
             return cached
         }
 
         // Otherwise load from Firebase
-        SpotLogger.debug("Loading initial feed from Firebase")
+        SpotLogger.log(FeedCacheLogs.loadingInitialFromFirebase)
         let query = Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
             .limit(to: pageSize)
@@ -56,7 +56,7 @@ final class FeedCache {
         lastDocument = snapshot.documents.last
         lastCacheTime = Date()
 
-        SpotLogger.info("Loaded and cached \(spots.count) spots")
+        SpotLogger.log(FeedCacheLogs.loadedAndCached, details: ["count": spots.count])
         return spots
     }
 
@@ -65,7 +65,7 @@ final class FeedCache {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No more spots to load"])
         }
 
-        SpotLogger.debug("Loading more spots from Firebase")
+        SpotLogger.log(FeedCacheLogs.loadingMoreFromFirebase)
         let query = Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
             .start(afterDocument: lastDoc)
@@ -84,7 +84,7 @@ final class FeedCache {
         lastDocument = snapshot.documents.last
         lastCacheTime = Date()
 
-        SpotLogger.info("Loaded and cached \(newSpots.count) more spots")
+        SpotLogger.log(FeedCacheLogs.loadedAndCachedMore, details: ["count": newSpots.count])
         return newSpots
     }
 

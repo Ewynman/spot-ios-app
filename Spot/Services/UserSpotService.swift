@@ -164,21 +164,21 @@ class UserSpotService {
 
     func fetchLikedSpots(pageSize: Int = 24, lastCursor: DocumentSnapshot? = nil) async throws -> PaginatedSpotsResult {
         guard let userId = userId else {
-            SpotLogger.error("UserSpotService: No user ID available")
+            SpotLogger.log(UserSpotServiceLogs.noUserIdAvailable)
             throw NSError(domain: "No user", code: 0)
         }
 
-        SpotLogger.info("UserSpotService: Fetching liked spots for user: \(userId)")
+        SpotLogger.log(UserSpotServiceLogs.fetchingLikedSpots, details: ["userId": userId])
 
         // Get user's liked and bookmarked spots arrays
         let userDoc = try await db.collection("users").document(userId).getDocument()
         let likedSpotIds = userDoc.data()?["likedSpots"] as? [String] ?? []
         let bookmarkedSpotIds = userDoc.data()?["bookmarkedSpots"] as? [String] ?? []
 
-        SpotLogger.info("UserSpotService: Found \(likedSpotIds.count) liked spot IDs")
+        SpotLogger.log(UserSpotServiceLogs.foundLikedSpotIds, details: ["count": likedSpotIds.count])
 
         if likedSpotIds.isEmpty {
-            SpotLogger.info("UserSpotService: No liked spots found")
+            SpotLogger.log(UserSpotServiceLogs.noLikedSpotsFound)
             return PaginatedSpotsResult(spots: [], lastCursor: nil, hasMore: false)
         }
 
@@ -272,7 +272,7 @@ class UserSpotService {
                         spot.id = doc.documentID // Ensure ID is populated
                         return spot
                     } catch {
-                        SpotLogger.error("Failed to fetch spot \(spotId): \(error.localizedDescription)")
+                        SpotLogger.log(UserSpotServiceLogs.fetchSpotFailed, details: ["spotId": spotId, "error": error.localizedDescription])
                         return nil
                     }
                 }

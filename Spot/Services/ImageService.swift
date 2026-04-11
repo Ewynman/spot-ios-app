@@ -25,13 +25,13 @@ class ImageService {
 
         // Check if URL has failed before
         if failedURLs.contains(urlString) {
-            SpotLogger.debug(.image, "Skipping previously failed URL", details: ["url": urlString])
+            SpotLogger.log(ImageServiceLogs.skippingPreviouslyFailedUrl, details: ["url": urlString])
             return nil
         }
 
         // Ensure HTTPS URL
         guard let url = URL(string: urlString), url.scheme == "https" else {
-            SpotLogger.error("ImageService: Invalid or non-HTTPS URL: \(urlString)")
+            SpotLogger.log(ImageServiceLogs.invalidOrNonHttpsUrl, details: ["url": urlString])
             return nil
         }
 
@@ -49,17 +49,17 @@ class ImageService {
                 // Cache successful image
                 imageCache.setObject(image, forKey: urlString as NSString)
 
-                SpotLogger.debug("ImageService: Successfully loaded image from \(url.host ?? "unknown") for spot \(spotId ?? "unknown")")
+                SpotLogger.log(ImageServiceLogs.imageLoadedSuccessfully, details: ["host": url.host ?? "unknown", "spotId": spotId ?? "unknown"])
                 return image
 
             } catch {
                 let errorCode = (error as? URLError)?.code.rawValue ?? -1
-                SpotLogger.debug(.image, "Image load failed", details: ["spotId": spotId ?? "unknown", "urlHost": url.host ?? "unknown", "code": errorCode, "attempt": attempt])
+                SpotLogger.log(ImageServiceLogs.imageLoadFailed, details: ["spotId": spotId ?? "unknown", "urlHost": url.host ?? "unknown", "code": errorCode, "attempt": attempt])
 
                 if attempt == maxRetries {
                     // Final failure - mark URL as failed
                     failedURLs.insert(urlString)
-                    SpotLogger.error("\(Constants.Analytics.imageLoadFailed) spotId=\(spotId ?? "nil") urlHost=\(url.host ?? "unknown") code=\(errorCode) attempt=\(attempt)")
+                    SpotLogger.log(ImageServiceLogs.imageLoadFailedAnalytics, details: ["spotId": spotId ?? "nil", "urlHost": url.host ?? "unknown", "code": errorCode, "attempt": attempt])
                     Task { @MainActor in
                         AnalyticsService.shared.trackImageLoadFailure(spotId: spotId, urlHost: url.host, errorCode: errorCode, attempt: attempt)
                     }
@@ -117,7 +117,7 @@ class ImageService {
 
         // For now, return nil to indicate conversion needed
         // In production, you'd implement Firebase Storage download URL conversion
-        SpotLogger.debug(.image, "GS URL conversion needed", details: ["gsUrl": gsUrl])
+        SpotLogger.log(ImageServiceLogs.gsUrlConversionNeeded, details: ["gsUrl": gsUrl])
         return nil
     }
 }

@@ -27,7 +27,7 @@ struct FeedDiagnostics {
     static func logExclusion(reason: String, source: String, spot: Spot) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.debug(.feed, "Feed exclusion", details: [
+        SpotLogger.log(FeedFlagsLogs.feedExclusion, details: [
             "reason": reason,
             "source": source,
             "spotId": spot.safeId,
@@ -40,7 +40,7 @@ struct FeedDiagnostics {
     static func logFeedStats(recentCount: Int, trendingCount: Int, nilIdCount: Int, excludedByPersistentSeen: Int, excludedByBlendSeen: Int, excludedByExistingIds: Int) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.debug(.feed, "Feed stats", details: [
+        SpotLogger.log(FeedFlagsLogs.feedStats, details: [
             "recent": recentCount,
             "trending": trendingCount,
             "nilId": nilIdCount,
@@ -53,7 +53,7 @@ struct FeedDiagnostics {
     static func logColdStart(seenSetSize: Int, isApplied: Bool) {
         guard FeedFlags.enableDiagnosticLogging else { return }
 
-        SpotLogger.debug(.feed, "Feed cold start", details: [
+        SpotLogger.log(FeedFlagsLogs.feedColdStart, details: [
             "seenSetSize": seenSetSize,
             "isApplied": isApplied,
             "disablePersistentDedupe": FeedFlags.disablePersistentDedupe

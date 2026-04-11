@@ -30,7 +30,7 @@ final class FirestoreSearchDataSource {
                 return d
             }
             if items.isEmpty {
-                SpotLogger.debug("Search users: username_lower returned 0, falling back to username range")
+                SpotLogger.log(FirestoreSearchDataSourceLogs.userSearchFallback)
                 let cap = prefix
                 var q: Query = db.collection("users")
                     .order(by: "username")
@@ -110,7 +110,7 @@ final class FirestoreSearchDataSource {
                 }
             }
             let titles = Array(set).sorted()
-            SpotLogger.debug("Location suggestions (prefix=\(prefix)) -> \(titles.count)")
+            SpotLogger.log(FirestoreSearchDataSourceLogs.locationSuggestions, details: ["prefix": prefix, "count": titles.count])
             return titles
         } catch {
             let snap = try await db.collection("spots").order(by: "createdAt", descending: true).limit(to: 200).getDocuments()
@@ -120,7 +120,7 @@ final class FirestoreSearchDataSource {
                 if name.hasPrefix(lower) { set.insert(name) }
             }
             let titles = Array(set).sorted()
-            SpotLogger.debug("Location suggestions Fallback (prefix=\(prefix)) -> \(titles.count)")
+            SpotLogger.log(FirestoreSearchDataSourceLogs.locationSuggestionsFallback, details: ["prefix": prefix, "count": titles.count])
             return titles
         }
     }
@@ -143,7 +143,7 @@ final class FirestoreSearchDataSource {
                 }
             }
             let titles = Array(set).sorted()
-            SpotLogger.debug("Vibe suggestions (prefix=\(prefix)) -> \(titles.count)")
+            SpotLogger.log(FirestoreSearchDataSourceLogs.vibeSuggestions, details: ["prefix": prefix, "count": titles.count])
             return titles
         } catch {
             let snap = try await db.collection("spots").order(by: "createdAt", descending: true).limit(to: 200).getDocuments()
@@ -153,7 +153,7 @@ final class FirestoreSearchDataSource {
                 if vibe.hasPrefix(lower) { set.insert(vibe) }
             }
             let titles = Array(set).sorted()
-            SpotLogger.debug("Vibe suggestions Fallback (prefix=\(prefix)) -> \(titles.count)")
+            SpotLogger.log(FirestoreSearchDataSourceLogs.vibeSuggestionsFallback, details: ["prefix": prefix, "count": titles.count])
             return titles
         }
     }
@@ -169,7 +169,7 @@ final class FirestoreSearchDataSource {
             let snap = try await query.getDocuments()
             var items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
             if items.isEmpty {
-                SpotLogger.debug("Grid fallback: no locationName_lower matches; trying range on locationName")
+                SpotLogger.log(FirestoreSearchDataSourceLogs.gridFallbackLocationName)
                 // Fallback: range on original cased field and client-filter by exact lowercase
                 var q2: Query = db.collection("spots")
                     .order(by: "locationName")
@@ -213,7 +213,7 @@ final class FirestoreSearchDataSource {
             let snap = try await query.getDocuments()
             var items = snap.documents.compactMap { try? $0.data(as: Spot.self) }
             if items.isEmpty {
-                SpotLogger.debug("Grid fallback: no vibeTag_lower matches; trying range on vibeTag")
+                SpotLogger.log(FirestoreSearchDataSourceLogs.gridFallbackVibeTag)
                 var q2: Query = db.collection("spots")
                     .order(by: "vibeTag")
                     .start(at: [vibeLower])
