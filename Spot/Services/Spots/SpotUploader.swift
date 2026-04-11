@@ -319,7 +319,11 @@ final class SpotUploader {
                     Task {
                         // Remove the Firestore document if it was already created (step 2 failed)
                         if docCreated {
-                            try? await docRef.delete()
+                            do {
+                                try await docRef.delete()
+                            } catch {
+                                SpotLogger.debug(.network, "Failed to clean up orphaned spot document", details: ["postId": postId, "error": error.localizedDescription])
+                            }
                         }
                         // Remove uploaded Storage images
                         var cleanedCount = 0
