@@ -33,7 +33,7 @@ final class DeepLinkState: ObservableObject {
     // MARK: - Deep Link Handling
 
     func handleDeepLink(_ url: URL, origin: DeepLinkOrigin, isColdStart: Bool = false) {
-        SpotLogger.info("DeepLinkState: Handling deep link - \(url.absoluteString), origin: \(origin), coldStart: \(isColdStart)")
+        SpotLogger.log(DeepLinkStateLogs.handlingDeepLink, details: ["url": url.absoluteString, "origin": "\(origin)", "coldStart": isColdStart])
 
         let route = router.parseURL(url)
 
@@ -60,7 +60,7 @@ final class DeepLinkState: ObservableObject {
             return
         }
 
-        SpotLogger.info("DeepLinkState: Handling initial user activity - \(url.absoluteString)")
+        SpotLogger.log(DeepLinkStateLogs.handlingInitialUserActivity, details: ["url": url.absoluteString])
         handleDeepLink(url, origin: .universalLink, isColdStart: true)
     }
 
@@ -69,7 +69,7 @@ final class DeepLinkState: ObservableObject {
         if let currentSpotId = lastProcessedSpotId, currentSpotId == spotId {
             let timeSinceLastProcess = Date().timeIntervalSince(lastProcessedTimestamp)
             if timeSinceLastProcess < debounceInterval {
-                SpotLogger.info("DeepLinkState: Ignoring duplicate deep link for spot: \(spotId) (debounced)")
+                SpotLogger.log(DeepLinkStateLogs.ignoringDuplicateDeepLink, details: ["spotId": spotId])
                 return
             }
         }
@@ -81,7 +81,7 @@ final class DeepLinkState: ObservableObject {
         // If app is still starting up, store the pending deep link
         if isColdStart {
             pendingDeepLink = .spotDetail(spotId: spotId)
-            SpotLogger.info("DeepLinkState: Stored pending deep link for spot: \(spotId)")
+            SpotLogger.log(DeepLinkStateLogs.storedPendingDeepLink, details: ["spotId": spotId])
             return
         }
 
@@ -92,14 +92,14 @@ final class DeepLinkState: ObservableObject {
         } else {
             // Store for later when user authenticates
             pendingDeepLink = .spotDetail(spotId: spotId)
-            SpotLogger.info("DeepLinkState: Stored pending deep link for unauthenticated user: \(spotId)")
+            SpotLogger.log(DeepLinkStateLogs.storedPendingDeepLinkUnauthenticated, details: ["spotId": spotId])
         }
     }
 
     func processPendingDeepLinks() {
         guard let pending = pendingDeepLink else { return }
 
-        SpotLogger.info("DeepLinkState: Processing pending deep link")
+        SpotLogger.log(DeepLinkStateLogs.processingPendingDeepLink)
 
         switch pending {
         case .spotDetail(let spotId):
@@ -128,7 +128,7 @@ final class DeepLinkState: ObservableObject {
             guard let spot = try await spotService.fetchSpotById(spotId) else {
                 // Spot not found or blocked
                 let result = "not_found"
-                SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
+                SpotLogger.log(DeepLinkStateLogs.deepLinkResult, details: ["origin": "\(origin)", "spotId": spotId, "startup": isColdStart ? "cold" : "warm", "result": "\(result)"])
 
                 router.logDeepLinkEvent(
                     origin: origin,
@@ -147,7 +147,7 @@ final class DeepLinkState: ObservableObject {
 
             // Success - navigate to spot
             let result = "navigated"
-            SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
+            SpotLogger.log(DeepLinkStateLogs.deepLinkResult, details: ["origin": "\(origin)", "spotId": spotId, "startup": isColdStart ? "cold" : "warm", "result": "\(result)"])
 
             router.logDeepLinkEvent(
                 origin: origin,
@@ -163,10 +163,10 @@ final class DeepLinkState: ObservableObject {
             }
 
         } catch {
-            SpotLogger.error("DeepLinkState: Failed to fetch spot: \(error.localizedDescription)")
+            SpotLogger.log(DeepLinkStateLogs.fetchSpotFailed, details: ["error": error.localizedDescription])
 
             let result = "error:\(error.localizedDescription)"
-            SpotLogger.info("DeepLinkState: Deep link result - origin: \(origin), spotId: \(spotId), startup: \(isColdStart ? "cold" : "warm"), result: \(result)")
+            SpotLogger.log(DeepLinkStateLogs.deepLinkResult, details: ["origin": "\(origin)", "spotId": spotId, "startup": isColdStart ? "cold" : "warm", "result": "\(result)"])
 
             router.logDeepLinkEvent(
                 origin: origin,
@@ -213,18 +213,18 @@ final class DeepLinkState: ObservableObject {
         lastProcessedSpotId = nil
         lastProcessedTimestamp = Date.distantPast
 
-        SpotLogger.info("DeepLinkState: Cleared user session state")
+        SpotLogger.log(DeepLinkStateLogs.clearedUserSessionState)
     }
     
     // MARK: - Subscription Return Handling
     
     private func handleSubscriptionReturn(origin: DeepLinkOrigin, isColdStart: Bool) {
-        SpotLogger.info("DeepLinkState: Handling subscription return", details: ["origin": "\(origin)", "coldStart": isColdStart])
+        SpotLogger.log(DeepLinkStateLogs.handlingSubscriptionReturn, details: ["origin": "\(origin)", "coldStart": isColdStart])
         
         // If app is still starting up, store the pending deep link
         if isColdStart {
             pendingDeepLink = .subscriptionReturn
-            SpotLogger.info("DeepLinkState: Stored pending subscription return")
+            SpotLogger.log(DeepLinkStateLogs.storedPendingSubscriptionReturn)
             return
         }
         
@@ -234,14 +234,14 @@ final class DeepLinkState: ObservableObject {
         } else {
             // Store for later when user authenticates
             pendingDeepLink = .subscriptionReturn
-            SpotLogger.info("DeepLinkState: Stored pending subscription return for unauthenticated user")
+            SpotLogger.log(DeepLinkStateLogs.storedPendingSubscriptionReturnUnauthenticated)
         }
     }
     
     private func checkProStatusAndShowSuccess() {
         Task {
             guard let userId = Auth.auth().currentUser?.uid else {
-                SpotLogger.error("DeepLinkState: No user ID for subscription check")
+                SpotLogger.log(DeepLinkStateLogs.noUserIdForSubscriptionCheck)
                 return
             }
             
@@ -255,15 +255,15 @@ final class DeepLinkState: ObservableObject {
                 
                 await MainActor.run {
                     if isPro {
-                        SpotLogger.info("DeepLinkState: User is Pro, showing success screen")
+                        SpotLogger.log(DeepLinkStateLogs.userIsProShowingSuccess)
                         showSubscriptionSuccess = true
                     } else {
-                        SpotLogger.info("DeepLinkState: User is not Pro, dismissing")
+                        SpotLogger.log(DeepLinkStateLogs.userIsNotProDismissing)
                         // User didn't complete subscription, just close
                     }
                 }
             } catch {
-                SpotLogger.error("DeepLinkState: Failed to check pro status", details: ["error": error.localizedDescription])
+                SpotLogger.log(DeepLinkStateLogs.checkProStatusFailed, details: ["error": error.localizedDescription])
             }
         }
     }

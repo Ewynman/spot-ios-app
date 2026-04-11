@@ -7,13 +7,13 @@ final class SearchViewModel: ObservableObject {
     @Published var query: String = "" {
         didSet {
             let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            SpotLogger.debug("Search query changed", details: ["query": q])
+            SpotLogger.log(SearchViewModelLogs.searchQueryChanged, details: ["query": q])
             debouncer.schedule { Task { await self.performSearch() } }
         }
     }
     @Published var segment: Segment = .users {
         didSet {
-            SpotLogger.info("Search segment switched", details: ["segment": segment.rawValue])
+            SpotLogger.log(SearchViewModelLogs.searchSegmentSwitched, details: ["segment": segment.rawValue])
             // Clear current results and any open grid when switching tabs
             users = []
             locations = []
@@ -60,17 +60,17 @@ final class SearchViewModel: ObservableObject {
         case .users:
             do {
                 users = try await service.searchUsers(prefix: q).items
-                SpotLogger.info("Search users results", details: ["count": users.count])
+                SpotLogger.log(SearchViewModelLogs.searchUsersResults, details: ["count": users.count])
             } catch { }
         case .locations:
             do {
                 locations = try await service.searchLocationSuggestions(prefix: q)
-                SpotLogger.info("Search locations suggestions", details: ["count": locations.count])
+                SpotLogger.log(SearchViewModelLogs.searchLocationsSuggestions, details: ["count": locations.count])
             } catch { }
         case .vibes:
             do {
                 vibes = try await service.searchVibeSuggestions(prefix: q)
-                SpotLogger.info("Search vibes suggestions", details: ["count": vibes.count])
+                SpotLogger.log(SearchViewModelLogs.searchVibesSuggestions, details: ["count": vibes.count])
             } catch { }
         }
     }
@@ -88,7 +88,7 @@ final class SearchViewModel: ObservableObject {
         gridSpots = []
         lastGridDoc = nil
         hasMoreGrid = true
-        SpotLogger.debug("Open location grid", details: ["name": name])
+        SpotLogger.log(SearchViewModelLogs.openLocationGrid, details: ["name": name])
         await loadMoreGrid()
     }
 
@@ -102,7 +102,7 @@ final class SearchViewModel: ObservableObject {
         lastGridDoc = nil
         hasMoreGrid = true
         gridVibeFilters = nil
-        SpotLogger.debug("Open vibe grid", details: ["tag": tag])
+        SpotLogger.log(SearchViewModelLogs.openVibeGrid, details: ["tag": tag])
         await loadMoreGrid(isVibe: true)
     }
 
@@ -117,7 +117,7 @@ final class SearchViewModel: ObservableObject {
         lastGridDoc = nil
         hasMoreGrid = true
         gridVibeFilters = tags
-        SpotLogger.debug("Open multi-vibe grid", details: ["count": tags.count])
+        SpotLogger.log(SearchViewModelLogs.openMultiVibeGrid, details: ["count": tags.count])
         await loadMoreGrid(isVibe: true)
     }
 
@@ -155,14 +155,14 @@ final class SearchViewModel: ObservableObject {
             gridSpots.append(contentsOf: accumulated)
             lastGridDoc = nextCursor
             hasMoreGrid = !(accumulated.isEmpty && nextCursor == nil)
-            SpotLogger.info("Grid loaded page", details: [
+            SpotLogger.log(SearchViewModelLogs.gridLoadedPage, details: [
                 "pageCount": accumulated.count,
                 "total": gridSpots.count,
                 "hasMore": hasMoreGrid
             ])
         } catch {
             hasMoreGrid = false
-            SpotLogger.error("Grid load failed", details: ["error": error.localizedDescription])
+            SpotLogger.log(SearchViewModelLogs.gridLoadFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -174,7 +174,7 @@ final class SearchViewModel: ObservableObject {
         // Combine defaults + custom tags, remove duplicates, and sort
         let allTags = Array(Set(Constants.VibeTags.defaultTags + customTags)).sorted { $0.lowercased() < $1.lowercased() }
         allVibeTags = allTags
-        SpotLogger.info("Loaded all vibe tags for filters", details: ["defaultCount": Constants.VibeTags.defaultTags.count, "customCount": customTags.count, "total": allTags.count])
+        SpotLogger.log(SearchViewModelLogs.loadedAllVibeTags, details: ["defaultCount": Constants.VibeTags.defaultTags.count, "customCount": customTags.count, "total": allTags.count])
     }
 
     func applySelectedVibeFilters() async {
@@ -185,7 +185,7 @@ final class SearchViewModel: ObservableObject {
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
-            SpotLogger.debug("Apply vibe filters to location", details: ["location": locationFilter, "vibes": tags])
+            SpotLogger.log(SearchViewModelLogs.applyVibeFiltersToLocation, details: ["location": locationFilter, "vibes": tags])
             await loadMoreGrid(isVibe: false) // Not a pure vibe grid, but uses location+vibe combo
         } else if !tags.isEmpty {
             await openVibeFilters(tags)
@@ -204,14 +204,14 @@ final class SearchViewModel: ObservableObject {
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
-            SpotLogger.debug("Clear vibe filters, reloading location", details: ["location": locationFilter])
+            SpotLogger.log(SearchViewModelLogs.clearVibeFilters, details: ["location": locationFilter])
             await loadMoreGrid(isVibe: false)
         } else if gridIsVibe, let title = gridTitle {
             // If we're viewing a vibe grid, reload without multi-vibe filters
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
-            SpotLogger.debug("Clear filters, reloading vibe", details: ["vibe": title])
+            SpotLogger.log(SearchViewModelLogs.clearFiltersReloadingVibe, details: ["vibe": title])
             await loadMoreGrid(isVibe: true)
         }
         // Otherwise, grid will remain as-is (no filters were active)
