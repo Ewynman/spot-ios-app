@@ -275,75 +275,59 @@ final class SpotUploader {
                 "createdAt": FieldValue.serverTimestamp()
             ]
 
-            // Denormalize author's privacy
-            do {
-                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool { data["authorIsPrivate"] = isPrivate }
-            } catch {
-                SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
-            }
-
-            // Ensure the vibe tag exists globally (non-blocking)
-            Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
-
-            do {
-                // Force-refresh the auth token after potentially long image uploads so
-                // the Firestore write stream has a guaranteed-valid credential.
-                if let currentUser = Auth.auth().currentUser {
-                    _ = try? await currentUser.getIDToken(forcingRefresh: true)
-                }
-                let db = Firestore.firestore()
-                SpotLogger.debug(.network, "Creating spot document", details: [
-                    "postId": postId,
-                    "uid": Auth.auth().currentUser?.uid ?? "nil",
-                    "docUserId": userId
-                ])
-                // Write the core document WITHOUT imageURLs so the field set matches
-                // single-image uploads exactly.  Deployed Firestore rules may carry a
-                // field allow-list (hasOnly) that pre-dates imageURLs; writing imageURLs
-                // via a separate owner-authorised updateData call sidesteps that check.
-                let initialData = data.filter { $0.key != "imageURLs" }
-                try await db.collection("spots").document(postId).setData(initialData)
+            // Run all Firestore operations on @MainActor to match the single-image upload
+            // path (performSpotUpload), which always succeeds.  Calling getIDToken on a
+            // background thread and then writing to Firestore can race against the SDK's
+            // own auth-state-change notifications (which are dispatched on the main thread),
+            // causing the write stream to temporarily have no valid credential.  Running on
+            // @MainActor ensures all pending main-thread notifications — including the
+            // Firestore SDK's internal credential update — are processed before setData.
+            Task { @MainActor in
+                // Denormalize author's privacy (matches single-image path)
+                var finalData = data
                 do {
-                    // Immediately add imageURLs through the owner-update path, which allows
-                    // the owner to modify any field on their own spot document.
-                    try await db.collection("spots").document(postId).updateData(["imageURLs": urls])
+                    let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                    if let isPrivate = userDoc.data()?["isPrivate"] as? Bool { finalData["authorIsPrivate"] = isPrivate }
                 } catch {
-                    // updateData failed — remove the partial document so the outer catch
-                    // can clean up Storage images with a consistent error path.
-                    try? await db.collection("spots").document(postId).delete()
-                    throw error
+                    SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                 }
-                SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
-                completion(.success(()))
-            } catch {
-                let nsErr = error as NSError
-                SpotLogger.error("Create spot document failed", details: [
-                    "postId": postId,
-                    "errorDomain": nsErr.domain,
-                    "errorCode": nsErr.code,
-                    "error": nsErr.localizedDescription,
-                    "uid": Auth.auth().currentUser?.uid ?? "nil",
-                    "docUserId": userId
-                ])
-                // Attempt to clean up uploaded images if document creation fails
-                Task {
-                    var cleanedCount = 0
-                    for (idx, _) in limited.enumerated() {
-                        let filename = "spot_\(postId)_\(idx).jpg"
-                        let ref = storage.reference().child("spots/\(filename)")
-                        do {
-                            try await ref.delete()
-                            cleanedCount += 1
-                        } catch {
-                            SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+
+                // Ensure the vibe tag exists globally (non-blocking)
+                Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
+
+                do {
+                    try await Firestore.firestore().collection("spots").document(postId).setData(finalData)
+                    SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
+                    completion(.success(()))
+                } catch {
+                    let nsErr = error as NSError
+                    SpotLogger.error("Create spot document failed", details: [
+                        "postId": postId,
+                        "errorDomain": nsErr.domain,
+                        "errorCode": nsErr.code,
+                        "error": nsErr.localizedDescription,
+                        "uid": Auth.auth().currentUser?.uid ?? "nil",
+                        "docUserId": userId
+                    ])
+                    // Attempt to clean up uploaded images if document creation fails
+                    Task {
+                        var cleanedCount = 0
+                        for (idx, _) in limited.enumerated() {
+                            let filename = "spot_\(postId)_\(idx).jpg"
+                            let ref = storage.reference().child("spots/\(filename)")
+                            do {
+                                try await ref.delete()
+                                cleanedCount += 1
+                            } catch {
+                                SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+                            }
+                        }
+                        if cleanedCount > 0 {
+                            SpotLogger.debug("Cleaned up \(cleanedCount) orphaned image(s)", details: ["postId": postId])
                         }
                     }
-                    if cleanedCount > 0 {
-                        SpotLogger.debug("Cleaned up \(cleanedCount) orphaned image(s)", details: ["postId": postId])
-                    }
+                    completion(.failure(error))
                 }
-                completion(.failure(error))
             }
         }
     }
