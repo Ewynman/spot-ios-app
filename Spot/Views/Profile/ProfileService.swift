@@ -33,7 +33,7 @@ enum ProfileService {
             id = currentId
         }
 
-        SpotLogger.debug("Fetching profile data for userId: \(id)")
+        SpotLogger.log(ProfileServiceLogs.fetchingProfileData, details: ["userId": id])
 
         let userDoc = try await Firestore.firestore()
             .collection("users")

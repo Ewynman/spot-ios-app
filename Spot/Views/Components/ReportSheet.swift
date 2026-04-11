@@ -185,7 +185,7 @@ struct ReportSheet: View {
               let reporterId = authVM.userId,
               let ownerId = spot.userId,
               let spotId = spot.id else {
-            SpotLogger.error("Report submission missing required data")
+            SpotLogger.log(ReportSheetLogs.submissionMissingRequiredData)
             return
         }
 
@@ -209,14 +209,14 @@ struct ReportSheet: View {
             // Block user if requested
             if shouldBlockUser {
                 try await authVM.blockUser(userId: ownerId)
-                SpotLogger.info("User blocked during report: \(ownerId)")
+                SpotLogger.log(ReportSheetLogs.userBlockedDuringReport, details: ["ownerId": ownerId])
             }
 
-            SpotLogger.info("Report submitted: spotId=\(spotId), reason=\(reason.rawValue), blocked=\(shouldBlockUser)")
+            SpotLogger.log(ReportSheetLogs.reportSubmitted, details: ["spotId": spotId, "reason": reason.rawValue, "blocked": shouldBlockUser])
             showSuccessMessage = true
 
         } catch {
-            SpotLogger.error("Failed to submit report: \(error.localizedDescription)")
+            SpotLogger.log(ReportSheetLogs.submitFailed, details: ["error": error.localizedDescription])
             isSubmitting = false
         }
     }
