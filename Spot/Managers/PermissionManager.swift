@@ -48,7 +48,7 @@ class PermissionManager: NSObject, ObservableObject {
     func requestLocationPermission() {
         updatePermissionStatuses()
         if locationStatus == .notDetermined {
-            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location action=explicit")
+            SpotLogger.log(PermissionManagerLogs.locationPermissionRequestedExplicit)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "location", action: "explicit")
             }
@@ -66,19 +66,19 @@ class PermissionManager: NSObject, ObservableObject {
                 self.notificationStatus = status
                 switch status {
                 case .notDetermined:
-                    SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push action=explicit")
+                    SpotLogger.log(PermissionManagerLogs.pushPermissionRequestedExplicit)
                     Task { @MainActor in
                         AnalyticsService.shared.trackPermissionRequest(type: "push", action: "explicit")
                     }
                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
                         DispatchQueue.main.async {
                             if granted {
-                                SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=granted")
+                                SpotLogger.log(PermissionManagerLogs.pushPermissionGranted)
                                 Task { @MainActor in
                                     AnalyticsService.shared.trackPermissionRequest(type: "push", action: "explicit", result: "granted")
                                 }
                             } else {
-                                SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=denied")
+                                SpotLogger.log(PermissionManagerLogs.pushPermissionDenied)
                                 Task { @MainActor in
                                     AnalyticsService.shared.trackPermissionRequest(type: "push", action: "explicit", result: "denied")
                                 }
@@ -104,7 +104,7 @@ class PermissionManager: NSObject, ObservableObject {
         let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
 
         if !hasRequested && locationStatus == .notDetermined {
-            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=requesting")
+        SpotLogger.log(PermissionManagerLogs.locationPermissionRequesting)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "location", action: "auto")
             }
@@ -118,7 +118,7 @@ class PermissionManager: NSObject, ObservableObject {
         let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.notificationsRequested)
 
         if !hasRequested && notificationStatus == .notDetermined {
-            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=requesting")
+            SpotLogger.log(PermissionManagerLogs.pushPermissionRequesting)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto")
             }
@@ -126,12 +126,12 @@ class PermissionManager: NSObject, ObservableObject {
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
                 DispatchQueue.main.async {
                     if granted {
-                        SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=granted")
+                        SpotLogger.log(PermissionManagerLogs.pushPermissionGranted)
                         Task { @MainActor in
                             AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto", result: "granted")
                         }
                     } else {
-                        SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=push result=denied")
+                        SpotLogger.log(PermissionManagerLogs.pushPermissionDenied)
                         Task { @MainActor in
                             AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto", result: "denied")
                         }
@@ -177,13 +177,13 @@ extension PermissionManager: CLLocationManagerDelegate {
 
         switch newStatus {
         case .authorizedWhenInUse, .authorizedAlways:
-            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=granted")
+            SpotLogger.log(PermissionManagerLogs.locationPermissionGranted)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "location", action: "system_change", result: "granted")
             }
             showLocationBanner = false
         case .denied, .restricted:
-            SpotLogger.info("\(Constants.Analytics.permissionsRequested) type=location result=denied")
+            SpotLogger.log(PermissionManagerLogs.locationPermissionDenied)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "location", action: "system_change", result: "denied")
             }

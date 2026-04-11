@@ -102,7 +102,7 @@ extension LocationManager: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        SpotLogger.error("Location update failed: \(error.localizedDescription)")
+        SpotLogger.log(LocationManagerLogs.locationUpdateFailed, details: ["error": error.localizedDescription])
     }
 
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {

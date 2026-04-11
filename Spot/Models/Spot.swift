@@ -89,13 +89,13 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
                         }
                     }
                 } catch {
-                    SpotLogger.error("Geocoding failed for spot: \(error.localizedDescription)")
+                    SpotLogger.log(SpotModelLogs.geocodingFailed, details: ["error": error.localizedDescription])
                 }
             }
 
             return spot
         } catch {
-            SpotLogger.error("Failed to decode spot: \(error.localizedDescription)")
+            SpotLogger.log(SpotModelLogs.decodeFailed, details: ["error": error.localizedDescription])
             return nil
         }
     }

@@ -39,7 +39,7 @@ final class AnalyticsService {
         }
         
         Analytics.logEvent(name, parameters: cleanParams)
-        SpotLogger.debug("Analytics: \(name)", details: cleanParams ?? [:])
+        SpotLogger.log(AnalyticsServiceLogs.eventTracked, details: (cleanParams ?? [:]).merging(["name": name]) { _, new in new })
     }
     
     // MARK: - User Properties
