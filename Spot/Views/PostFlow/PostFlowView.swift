@@ -9,84 +9,78 @@ struct PostFlowView: View {
     var onPostSuccess: ((Spot) -> Void)?
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    if !viewModel.isEmailVerified {
-                        VStack(spacing: 12) {
-                            Text("Email verification required to post")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.primary)
-                            Button(action: { dismiss() }) {
-                                Text("Close")
-                                    .font(FontManager.buttonText())
-                                    .foregroundColor(Constants.Colors.buttonText)
-                                    .padding()
-                                    .frame(maxWidth: .infinity)
-                                    .background(Constants.Colors.primary)
-                                    .cornerRadius(20)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        .padding(16)
-                        .background(Constants.Colors.background)
-                    } else {
-                        ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
+        ZStack(alignment: .top) {
+            Constants.Colors.background
+                .ignoresSafeArea()
 
-                        Group {
-                            switch viewModel.currentStep {
-                            case 1:
-                                PhotoSelectionView(selectedImages: $viewModel.selectedImages)
-                            case 2:
-                                LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
-                            case 3:
-                                VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
-                            default:
-                                EmptyView()
-                            }
+            VStack(spacing: 0) {
+                if !viewModel.isEmailVerified {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Text("Email verification required to post")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                        Button(action: { dismiss() }) {
+                            Text("Close")
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Constants.Colors.primary)
+                                .cornerRadius(20)
                         }
-                        .transition(.asymmetric(
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(16)
+                    Spacer()
+                } else {
+                    ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
+
+                    Group {
+                        switch viewModel.currentStep {
+                        case 1:
+                            PhotoSelectionView(selectedImages: $viewModel.selectedImages)
+                        case 2:
+                            LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
+                        case 3:
+                            VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
+                        default:
+                            EmptyView()
+                        }
+                    }
+                    .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
 
-                        NavigationButtonsView(
-                            currentStep: $viewModel.currentStep,
-                            totalSteps: viewModel.totalSteps,
-                            canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
-                            isPosting: viewModel.isPosting,
-                            onBack: { viewModel.goBack() },
-                            onNext: { viewModel.goNext() },
-                            onFinish: { viewModel.submitPost() }
-                        )
-                    }
+                    NavigationButtonsView(
+                        currentStep: $viewModel.currentStep,
+                        totalSteps: viewModel.totalSteps,
+                        canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
+                        isPosting: viewModel.isPosting,
+                        onBack: { viewModel.goBack() },
+                        onNext: { viewModel.goNext() },
+                        onFinish: { viewModel.submitPost() }
+                    )
                 }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
 
-                VStack(spacing: 8) {
-                    if viewModel.isUploading {
-                        ProgressBarView()
-                            .transition(.move(edge: .top))
-                    }
-                    if viewModel.showToast {
-                        ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
-                            .transition(.move(edge: .top))
-                    }
-                    if viewModel.showSuccessBanner {
-                        SuccessToastView(message: "Spot posted!")
-                            .transition(.move(edge: .top))
-                    }
+            VStack(spacing: 8) {
+                if viewModel.isUploading {
+                    ProgressBarView()
+                        .transition(.move(edge: .top))
                 }
-                .padding(.top, 8)
-            }
-            .background(Constants.Colors.background.ignoresSafeArea())
-        }
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                CustomBackButton {
-                    dismiss()
+                if viewModel.showToast {
+                    ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
+                        .transition(.move(edge: .top))
+                }
+                if viewModel.showSuccessBanner {
+                    SuccessToastView(message: "Spot posted!")
+                        .transition(.move(edge: .top))
                 }
             }
+            .padding(.top, 8)
         }
         .onAppear {
             viewModel.authViewModel = authVM
