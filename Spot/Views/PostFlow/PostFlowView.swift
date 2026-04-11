@@ -15,6 +15,7 @@ struct PostFlowView: View {
 
             VStack(spacing: 0) {
                 if !viewModel.isEmailVerified {
+                    Spacer()
                     VStack(spacing: 12) {
                         Text("Email verification required to post")
                             .font(FontManager.primaryText())
@@ -31,7 +32,7 @@ struct PostFlowView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding(16)
-                    .background(Constants.Colors.background)
+                    Spacer()
                 } else {
                     ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
@@ -63,6 +64,7 @@ struct PostFlowView: View {
                     )
                 }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
 
             VStack(spacing: 8) {
                 if viewModel.isUploading {
