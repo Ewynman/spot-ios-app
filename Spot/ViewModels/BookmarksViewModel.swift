@@ -43,10 +43,10 @@ class BookmarksViewModel: ObservableObject {
             lastCursor = result.lastCursor
             hasMore = result.hasMore
 
-            SpotLogger.info("BookmarksViewModel: Loaded \(newSpots.count) spots, hasMore: \(hasMore)")
+            SpotLogger.log(BookmarksViewModelLogs.loadedSpots, details: ["count": newSpots.count, "hasMore": hasMore])
         } catch {
             errorMessage = "Failed to load bookmarked spots"
-            SpotLogger.error("BookmarksViewModel loadInitial failed: \(error.localizedDescription)")
+            SpotLogger.log(BookmarksViewModelLogs.loadInitialFailed, details: ["error": error.localizedDescription])
         }
 
         isLoading = false

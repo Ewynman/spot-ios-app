@@ -50,36 +50,36 @@ final class SpotService {
     func fetchSpotsForMap(forceRefresh: Bool = false, completion: @escaping (Result<[Spot], Error>) -> Void) {
         // Return cached spots if available and cache is still valid
         if !forceRefresh && !cachedSpots.isEmpty && isCacheValid {
-            SpotLogger.info("Returning cached spots", details: ["count": cachedSpots.count])
+            SpotLogger.log(SpotServiceLogs.cachedSpotsReturned, details: ["count": cachedSpots.count])
             completion(.success(cachedSpots))
             return
         }
 
-        SpotLogger.debug("Fetch spots for map", details: ["orderBy": "createdAt", "desc": true])
+        SpotLogger.log(SpotServiceLogs.fetchSpotsStarted, details: ["orderBy": "createdAt", "desc": true])
         Firestore.firestore().collection("spots")
             .order(by: "createdAt", descending: true)
             .limit(to: 1000)
             .getDocuments { [weak self] snapshot, error in
                 if let error = error {
-                    SpotLogger.error("fetchSpotsForMap error", details: ["error": error.localizedDescription])
+                    SpotLogger.log(SpotServiceLogs.fetchSpotsError, details: ["error": error.localizedDescription])
                     completion(.failure(error))
                     return
                 }
 
                 guard let documents = snapshot?.documents else {
-                    SpotLogger.debug(.network, "fetchSpotsForMap returned no documents")
+                    SpotLogger.log(SpotServiceLogs.fetchSpotsEmpty)
                     completion(.success([]))
                     return
                 }
 
                 let spots = documents.compactMap { document -> Spot? in
                     let data = document.data()
-                    SpotLogger.debug("Parsing spot doc", details: ["docId": document.documentID])
+                    SpotLogger.log(SpotServiceLogs.spotDocParsed, details: ["docId": document.documentID])
                     guard let userId = data["userId"] as? String,
                           let imageURL = data["imageURL"] as? String,
                           let latitude = data["latitude"] as? Double,
                           let longitude = data["longitude"] as? Double else {
-                        SpotLogger.debug(.network, "Skipping doc due to missing fields", details: ["docId": document.documentID])
+                        SpotLogger.log(SpotServiceLogs.spotDocSkipped, details: ["docId": document.documentID])
                         return nil
                     }
                     return Spot(
@@ -106,7 +106,7 @@ final class SpotService {
                         let filtered = await AuthorPrivacyCache.shared.filter(spots: spots)
                         self?.cachedSpots = filtered
                         self?.lastFetchTime = Date()
-                        SpotLogger.info("Parsed and cached spots (map)", details: ["count": filtered.count])
+                        SpotLogger.log(SpotServiceLogs.spotsCachedForMap, details: ["count": filtered.count])
                         completion(.success(filtered))
                     }
                 }
@@ -116,7 +116,7 @@ final class SpotService {
     // MARK: - Fetch Single Spot
 
     func fetchSpotById(_ spotId: String, completion: @escaping (Result<Spot?, Error>) -> Void) {
-        SpotLogger.debug("Fetch spot by ID", details: ["spotId": spotId])
+        SpotLogger.log(SpotServiceLogs.fetchSpotByIdStarted, details: ["spotId": spotId])
 
         let docRef = Firestore.firestore().collection("spots").document(spotId)
         docRef.getDocument { [weak self] document, error in
@@ -126,7 +126,7 @@ final class SpotService {
             }
 
             guard let document = document, document.exists else {
-                SpotLogger.debug(.network, "Spot not found", details: ["spotId": spotId])
+                SpotLogger.log(SpotServiceLogs.spotNotFound, details: ["spotId": spotId])
                 completion(.success(nil))
                 return
             }
@@ -137,7 +137,7 @@ final class SpotService {
             if let userId = data["userId"] as? String {
                 self?.checkIfUserIsBlocked(userId) { isBlocked in
                     if isBlocked {
-                        SpotLogger.info("Spot owner blocked (returning nil)", details: ["spotId": spotId])
+                        SpotLogger.log(SpotServiceLogs.spotOwnerBlocked, details: ["spotId": spotId])
                         completion(.success(nil))
                         return
                     }
@@ -164,7 +164,7 @@ final class SpotService {
               let imageURL = data["imageURL"] as? String,
               let latitude = data["latitude"] as? Double,
               let longitude = data["longitude"] as? Double else {
-            SpotLogger.error("Invalid spot data", details: ["spotId": spotId])
+            SpotLogger.log(SpotServiceLogs.invalidSpotData, details: ["spotId": spotId])
             completion(.success(nil))
             return
         }
@@ -186,7 +186,7 @@ final class SpotService {
             authorIsPrivate: data["authorIsPrivate"] as? Bool
         )
 
-        SpotLogger.info("Fetched spot", details: ["spotId": spotId])
+        SpotLogger.log(SpotServiceLogs.spotFetched, details: ["spotId": spotId])
         completion(.success(spot))
     }
 
@@ -198,7 +198,7 @@ final class SpotService {
 
         Firestore.firestore().collection("users").document(currentUserId).getDocument { document, error in
             if let error = error {
-                SpotLogger.error("Failed to check blocked users", details: ["error": error.localizedDescription])
+                SpotLogger.log(SpotServiceLogs.blockedUsersCheckFailed, details: ["error": error.localizedDescription])
                 completion(false)
                 return
             }
@@ -262,9 +262,9 @@ final class SpotService {
         let ref = Storage.storage().reference(withPath: rawPath)
         ref.delete { error in
             if let error = error {
-                SpotLogger.error("Storage delete failed", details: ["path": rawPath, "error": error.localizedDescription])
+                SpotLogger.log(SpotServiceLogs.storageDeleteFailed, details: ["path": rawPath, "error": error.localizedDescription])
             } else {
-                SpotLogger.info("Storage deleted", details: ["path": rawPath])
+                SpotLogger.log(SpotServiceLogs.storageDeleted, details: ["path": rawPath])
             }
         }
     }

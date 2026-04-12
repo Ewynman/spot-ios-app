@@ -192,7 +192,7 @@ struct SignupView: View {
                         case .reserved:
                             errorMessage = "That username is reserved"; return
                         case .blocked:
-                            SpotLogger.debug(.auth, "Username blocked", details: ["raw": username, "norm": validator.normalized(username), "reason": "blocked"])
+                            SpotLogger.log(SignupViewLogs.usernameBlocked, details: ["raw": username, "norm": validator.normalized(username), "reason": "blocked"])
                             errorMessage = "That username isn’t allowed"; return
                         }
 

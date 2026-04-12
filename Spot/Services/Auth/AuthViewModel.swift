@@ -40,7 +40,7 @@ class AuthViewModel: ObservableObject {
     private func listenToAuthState() {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             if let user = user {
-                SpotLogger.debug("Auth state changed - user signed in: \(user.uid)")
+                SpotLogger.log(AuthViewModelLogs.authStateSignedIn, details: ["uid": user.uid])
                 DispatchQueue.main.async {
                     let isNewLogin = self?.previousUserId == nil && self?.userId == nil
                     self?.userId = user.uid
@@ -66,7 +66,7 @@ class AuthViewModel: ObservableObject {
                     self?.refreshUserFlags()
                     // On first login after a fresh install, trigger permission prompts once.
                     if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
-                        SpotLogger.info("Perms.AutoPrompt reason=freshInstallLogin")
+                        SpotLogger.log(AuthViewModelLogs.autoPromptPermissions)
                         PermissionManager.shared.requestPermissionsIfNeeded()
                     }
                     self?.previousUserId = user.uid
@@ -105,7 +105,7 @@ class AuthViewModel: ObservableObject {
                     }
             } else {
                 DispatchQueue.main.async {
-                    SpotLogger.debug("Auth state changed - no user")
+                    SpotLogger.log(AuthViewModelLogs.authStateSignedOut)
                     // Clear analytics user ID on sign out
                     AnalyticsService.shared.setUserId(nil)
                     
@@ -172,7 +172,7 @@ class AuthViewModel: ObservableObject {
             // Clear privacy session cache (actor)
             Task { await AuthorPrivacyCache.shared.clear() }
         } catch {
-            SpotLogger.error("Failed to signout:\(error.localizedDescription)")
+            SpotLogger.log(AuthViewModelLogs.signOutFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -198,7 +198,7 @@ class AuthViewModel: ObservableObject {
                     self.blockedUsers = blocked
                 }
             } catch {
-                SpotLogger.error("Failed to refresh blocked users: \(error.localizedDescription)")
+                SpotLogger.log(AuthViewModelLogs.refreshBlockedUsersFailed, details: ["error": error.localizedDescription])
             }
         }
     }
@@ -238,7 +238,7 @@ class AuthViewModel: ObservableObject {
                     self.customVibeTags = vibes
                 }
             } catch {
-                SpotLogger.error("Failed to refresh user flags: \(error.localizedDescription)")
+                SpotLogger.log(AuthViewModelLogs.refreshUserFlagsFailed, details: ["error": error.localizedDescription])
             }
         }
     }
@@ -257,9 +257,9 @@ class AuthViewModel: ObservableObject {
                 self.isPro = active
                 self.proUntil = active ? proUntil : nil
             }
-            SpotLogger.info("Pro status updated", details: ["active": active, "proUntil": proUntil?.description ?? "nil"])
+            SpotLogger.log(AuthViewModelLogs.proStatusUpdated, details: ["active": active, "proUntil": proUntil?.description ?? "nil"])
         } catch {
-            SpotLogger.error("Failed to set pro status: \(error.localizedDescription)")
+            SpotLogger.log(AuthViewModelLogs.proStatusUpdateFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -286,7 +286,7 @@ class AuthViewModel: ObservableObject {
     func bookmarkSpot(_ spotId: String) {
         // Free users capped at 50 bookmarks
         if !isPro && bookmarkedSpots.count >= 50 {
-            SpotLogger.info("Bookmark cap reached", details: ["cap": 50])
+            SpotLogger.log(AuthViewModelLogs.bookmarkCapReached, details: ["cap": 50])
             NotificationCenter.default.post(name: .showPaywall, object: nil)
             return
         }
@@ -377,7 +377,7 @@ class AuthViewModel: ObservableObject {
             switch result {
             case .failure(let error):
                 // Fallback: mirror to Firestore only
-                SpotLogger.debug(.auth, "Email update failed, falling back to Firestore-only sync", details: ["error": error.localizedDescription])
+                SpotLogger.log(AuthViewModelLogs.emailUpdateFallingBackToFirestore, details: ["error": error.localizedDescription])
                 Task {
                     do {
                         try await Firestore.firestore()
@@ -386,7 +386,7 @@ class AuthViewModel: ObservableObject {
                             .updateData(["email": newEmail])
                         await MainActor.run { completion(.success(())) }
                     } catch {
-                        SpotLogger.error("AuthViewModel.updateEmail Firestore fallback failed: \(error.localizedDescription)")
+                        SpotLogger.log(AuthViewModelLogs.emailUpdateFirestoreFallbackFailed, details: ["error": error.localizedDescription])
                         await MainActor.run { completion(.failure(error)) }
                     }
                 }
@@ -401,7 +401,7 @@ class AuthViewModel: ObservableObject {
                             .updateData(["email": newEmail])
                         await MainActor.run { completion(.success(())) }
                     } catch {
-                        SpotLogger.debug(.auth, "FirebaseAuth updated but Firestore email sync failed", details: ["error": error.localizedDescription])
+                        SpotLogger.log(AuthViewModelLogs.firebaseAuthUpdatedFirestoreSyncFailed, details: ["error": error.localizedDescription])
                         await MainActor.run { completion(.success(())) } // keep your original behavior
                     }
                 }
@@ -436,10 +436,10 @@ class AuthViewModel: ObservableObject {
         guard let user = Auth.auth().currentUser else { return }
         do {
             try await user.sendEmailVerification()
-            SpotLogger.info("Auth.EmailVerify.Sent")
+            SpotLogger.log(AuthViewModelLogs.verificationEmailSent)
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
         } catch {
-            SpotLogger.error("sendVerificationEmail failed: \(error.localizedDescription)")
+            SpotLogger.log(AuthViewModelLogs.sendVerificationEmailFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -458,7 +458,7 @@ class AuthViewModel: ObservableObject {
         do {
             try await user.reload()
             let verified = user.isEmailVerified
-            if verified { SpotLogger.info("Auth.EmailVerify.Verified") }
+            if verified { SpotLogger.log(AuthViewModelLogs.emailVerified) }
             await MainActor.run { self.isEmailVerified = verified }
             if verified, let uid = user.uid as String? {
                 // Persist server-side marker for analytics and visibility
@@ -466,7 +466,7 @@ class AuthViewModel: ObservableObject {
             }
             return verified
         } catch {
-            SpotLogger.error("checkVerificationStatus failed: \(error.localizedDescription)")
+            SpotLogger.log(AuthViewModelLogs.checkVerificationStatusFailed, details: ["error": error.localizedDescription])
             return false
         }
     }
@@ -476,14 +476,14 @@ class AuthViewModel: ObservableObject {
         do {
             // Prefer new API if available; fallback to generate link on backend if needed
             try await user.sendEmailVerification(beforeUpdatingEmail: newEmail)
-            SpotLogger.info("Auth.ChangeEmail.VerifySent")
+            SpotLogger.log(AuthViewModelLogs.changeEmailVerifySent)
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
         } catch {
             let ns = error as NSError
             if ns.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                SpotLogger.debug(.auth, "Email change requires reauthentication")
+                SpotLogger.log(AuthViewModelLogs.emailChangeRequiresReauth)
             } else {
-                SpotLogger.error("Auth.ChangeEmail.Error(\(ns.code))")
+                SpotLogger.log(AuthViewModelLogs.changeEmailError, details: ["code": ns.code])
             }
             throw error
         }
@@ -542,7 +542,7 @@ class AuthViewModel: ObservableObject {
             }
         }
 
-        SpotLogger.info("User blocked: \(targetUserId)")
+        SpotLogger.log(AuthViewModelLogs.userBlocked, details: ["targetUserId": targetUserId])
     }
 
     func unblockUser(userId targetUserId: String) async throws {
@@ -556,7 +556,7 @@ class AuthViewModel: ObservableObject {
             blockedUsers.removeAll { $0 == targetUserId }
         }
 
-        SpotLogger.info("User unblocked: \(targetUserId)")
+        SpotLogger.log(AuthViewModelLogs.userUnblocked, details: ["targetUserId": targetUserId])
     }
 }
 

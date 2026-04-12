@@ -106,7 +106,7 @@ struct SpotCard: View {
             let currentUserId = userId ?? authVM.userId ?? ""
             let ownerId = spot.userId ?? ""
             let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
-            SpotLogger.debug(.ui, "SpotCard appear", details: [
+            SpotLogger.log(SpotCardLogs.spotCardAppear, details: [
                 "source": source,
                 "spotId": spot.safeId,
                 "ownerId": ownerId.isEmpty ? "nil" : ownerId,
@@ -114,7 +114,7 @@ struct SpotCard: View {
                 "isOwner": isOwner
             ])
             if currentUserId.isEmpty || ownerId.isEmpty {
-                SpotLogger.error("SpotCard owner-gate inputs missing", details: ["source": source, "spotId": spot.safeId])
+                SpotLogger.log(SpotCardLogs.ownerGateMissingInputs, details: ["source": source, "spotId": spot.safeId])
             }
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
@@ -168,7 +168,7 @@ struct SpotCard: View {
                 .cornerRadius(8)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    SpotLogger.debug(.ui, "Back button tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.backButtonTapped, details: ["spotId": spot.safeId, "source": source])
                     backAction()
                 }
                 .zIndex(10)
@@ -278,7 +278,7 @@ struct SpotCard: View {
                         .cornerRadius(12)
                         .onAppear {
                             let host = URL(string: thumb)?.host ?? "unknown"
-                            SpotLogger.error("Image thumbnail failed to load", details: [
+                            SpotLogger.log(SpotCardLogs.imageThumbnailLoadFailed, details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "thumbHost": host,
@@ -337,7 +337,7 @@ struct SpotCard: View {
                        .clipped()
                        .cornerRadius(12)
                         .onAppear {
-                            SpotLogger.debug(.image, "Spot image loaded", details: [
+                            SpotLogger.log(SpotCardLogs.spotImageLoaded, details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "hasThumb": false,
@@ -354,7 +354,7 @@ struct SpotCard: View {
                         .cornerRadius(12)
                         .onAppear {
                             let host = url.host ?? "unknown"
-                            SpotLogger.error("Image full size failed to load", details: [
+                            SpotLogger.log(SpotCardLogs.imageFullSizeLoadFailed, details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
@@ -399,7 +399,7 @@ struct SpotCard: View {
                 .clipped()
                 .cornerRadius(12)
                 .onAppear {
-                    SpotLogger.debug(.image, "Image placeholder used", details: [
+                    SpotLogger.log(SpotCardLogs.imagePlaceholderUsed, details: [
                         "spotId": spot.safeId,
                         "source": source,
                         "hasThumb": false,
@@ -427,7 +427,7 @@ struct SpotCard: View {
                                 if let tFirst = PerfMetrics.shared.measure("t_first_item") {
                                     PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
                                 }
-                                SpotLogger.debug(.image, "Spot image loaded", details: [
+                                SpotLogger.log(SpotCardLogs.spotImageLoaded, details: [
                                     "spotId": spot.safeId,
                                     "source": source,
                                     "hasThumb": true,
@@ -437,7 +437,7 @@ struct SpotCard: View {
                     case .failure(let failure):
                         Color.clear.onAppear {
                             let host = URL(string: full)?.host ?? "unknown"
-                            SpotLogger.error("Image full size failed to load", details: [
+                            SpotLogger.log(SpotCardLogs.imageFullSizeLoadFailed, details: [
                                 "spotId": spot.safeId,
                                 "source": source,
                                 "fullHost": host,
@@ -515,7 +515,7 @@ struct SpotCard: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button {
-                    SpotLogger.debug(.ui, "Menu tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.menuTapped, details: ["spotId": spot.safeId, "source": source])
                     showCustomMenu = true
                 } label: {
                     Text("⋮")
@@ -588,7 +588,7 @@ struct SpotCard: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
-                SpotLogger.debug(.ui, "Share tapped", details: ["spotId": spot.safeId, "source": source])
+                SpotLogger.log(SpotCardLogs.shareTapped, details: ["spotId": spot.safeId, "source": source])
                 showShareSheet = true
             } label: {
                 HStack {
@@ -622,7 +622,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug(.ui, "Report tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.reportTapped, details: ["spotId": spot.safeId, "source": source])
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -643,9 +643,9 @@ struct SpotCard: View {
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)
-                                SpotLogger.info("User blocked", details: ["targetUserId": targetUserId])
+                                SpotLogger.log(SpotCardLogs.userBlocked, details: ["targetUserId": targetUserId])
                             } catch {
-                                SpotLogger.error("Failed to block user", details: ["error": error.localizedDescription])
+                                SpotLogger.log(SpotCardLogs.blockUserFailed, details: ["error": error.localizedDescription])
                             }
                         }
                     }
@@ -680,7 +680,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.debug(.ui, "Delete tapped", details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.deleteTapped, details: ["spotId": spot.safeId, "source": source])
                     showDeleteConfirm = true
                 } label: {
                     HStack {

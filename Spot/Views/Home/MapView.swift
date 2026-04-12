@@ -88,7 +88,7 @@ struct MapView: View {
     }
 
     private func closePanel() {
-        SpotLogger.info("Map.Home.SheetClose")
+        SpotLogger.log(MapViewLogs.homeSheetClose)
         selectedSpot = nil
         // no-op; cluster map maintains region
     }

@@ -24,7 +24,7 @@ class AuthService {
             if let error = error {
                 let nsError = error as NSError
                 if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
-                    SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=detected")
+                    SpotLogger.log(AuthServiceLogs.emailInUseDetected)
                     Task { @MainActor in
                         AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "detected"])
                     }
@@ -89,7 +89,7 @@ class AuthService {
             if let error = error {
                 completion(.failure(error))
             } else {
-                SpotLogger.info("\(Constants.Analytics.authEmailInUse) action=reset")
+                SpotLogger.log(AuthServiceLogs.emailInUseReset)
                 Task { @MainActor in
                     AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "reset"])
                 }
@@ -152,20 +152,20 @@ class AuthService {
     /// Verify Firestore user document exists for current auth user
     func verifyUserExists(completion: @escaping (Bool) -> Void) {
         guard let uid = Auth.auth().currentUser?.uid else {
-            SpotLogger.debug("AuthService.verifyUserExists: no current user")
+            SpotLogger.log(AuthServiceLogs.verifyUserExistsNoCurrentUser)
             completion(false)
             return
         }
-        SpotLogger.debug("AuthService.verifyUserExists: checking uid=\(uid)")
+        SpotLogger.log(AuthServiceLogs.verifyUserExistsChecking, details: ["uid": uid])
         Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
             if let error = error {
-                SpotLogger.error("verifyUserExists error: \(error.localizedDescription)")
+                SpotLogger.log(AuthServiceLogs.verifyUserExistsError, details: ["error": error.localizedDescription])
                 completion(false)
                 return
             }
             let exists = snapshot?.exists ?? false
             if !exists {
-                SpotLogger.error("Missing Firestore user doc, signing out", details: ["userId": uid])
+                SpotLogger.log(AuthServiceLogs.missingFirestoreUserDoc, details: ["userId": uid])
                 try? Auth.auth().signOut()
             }
             completion(exists)
@@ -248,7 +248,7 @@ class AuthService {
                 completion(.failure(error))
             } else {
                 // An email verification has been sent to the new address. The email will be updated after verification.
-                SpotLogger.info("AuthService.updateEmail: verification email sent to new address")
+                SpotLogger.log(AuthServiceLogs.verificationEmailSentToNewAddress)
                 completion(.success(()))
             }
         }
@@ -320,14 +320,14 @@ class AuthService {
     #if DEBUG
     /// Delete Auth user by email (DEBUG only)
     func deleteAuthUserByEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).requested email=\(email)")
+        SpotLogger.log(AuthServiceLogs.deleteByEmailRequested, details: ["email": email])
         Task { @MainActor in
             AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authDeleteByEmail, parameters: ["action": "requested", "email": email])
         }
 
         // This would call a Cloud Function in production
         // For now, just log the request and complete successfully
-        SpotLogger.debug(.auth, "deleteAuthUserByEmail called - implement Cloud Function")
+        SpotLogger.log(AuthServiceLogs.deleteAuthUserByEmailPlaceholder)
 
         // In production, this would be:
         // let functions = Functions.functions()
@@ -340,7 +340,7 @@ class AuthService {
         //     }
         // }
 
-        SpotLogger.info("\(Constants.Analytics.authDeleteByEmail).result=ok")
+        SpotLogger.log(AuthServiceLogs.deleteByEmailSuccess)
         Task { @MainActor in
             AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authDeleteByEmail, parameters: ["action": "result", "status": "ok"])
         }

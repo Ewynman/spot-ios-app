@@ -59,7 +59,7 @@ actor AuthorPrivacyCache {
 
         guard !missing.isEmpty else { return }
 
-        SpotLogger.info("Privacy.Cache warm authors=\(missing.count)")
+        SpotLogger.log(AuthorPrivacyCacheLogs.cacheWarm, details: ["authors": missing.count])
 
         // Batch in chunks of up to 10 using documentId 'in' queries to avoid N+1
         let chunks: [[String]] = stride(from: 0, to: missing.count, by: 10).map {
@@ -85,7 +85,7 @@ actor AuthorPrivacyCache {
                             map[uid] = Entry(isPrivate: true, isFollowedByViewer: false, lastCheckedAt: Date())
                         }
                     } catch {
-                        SpotLogger.error("AuthorPrivacyCache warm failed for chunk count=\(chunk.count): \(error.localizedDescription)")
+                        SpotLogger.log(AuthorPrivacyCacheLogs.cacheWarmFailed, details: ["count": chunk.count, "error": error.localizedDescription])
                     }
                     return map
                 }
@@ -118,7 +118,7 @@ actor AuthorPrivacyCache {
             return entry.isFollowedByViewer
         }
 
-        SpotLogger.debug("Privacy.Cache miss authorId=\(authorId)")
+        SpotLogger.log(AuthorPrivacyCacheLogs.cacheMiss, details: ["authorId": authorId])
         return nil
     }
 
@@ -134,16 +134,16 @@ actor AuthorPrivacyCache {
             guard let author = s.userId else { continue }
             if let v = viewerId, v == author { filtered.append(s); continue }
             if cachedBlockedUsers.contains(author) {
-                SpotLogger.debug(.privacy, "Privacy drop - blocked user", details: ["spotId": s.id ?? "nil", "authorId": author])
+                SpotLogger.log(AuthorPrivacyCacheLogs.privacyDropBlockedUser, details: ["spotId": s.id ?? "nil", "authorId": author])
                 continue
             }
             if let allowed = isAllowed(authorId: author) {
                 if allowed { filtered.append(s) } else {
-                    SpotLogger.debug(.privacy, "Privacy drop - private not followed", details: ["spotId": s.id ?? "nil", "authorId": author])
+                    SpotLogger.log(AuthorPrivacyCacheLogs.privacyDropPrivateNotFollowed, details: ["spotId": s.id ?? "nil", "authorId": author])
                 }
             } else {
                 // Unknown author after warm should be rare; default-hide
-                SpotLogger.debug(.privacy, "Privacy drop - unknown author", details: ["spotId": s.id ?? "nil", "authorId": author])
+                SpotLogger.log(AuthorPrivacyCacheLogs.privacyDropUnknownAuthor, details: ["spotId": s.id ?? "nil", "authorId": author])
             }
         }
         return filtered
@@ -160,7 +160,7 @@ actor AuthorPrivacyCache {
             cachedFollowing = Set(arr)
             followingFetchedAt = Date()
         } catch {
-            SpotLogger.error("AuthorPrivacyCache: failed to refresh following: \(error.localizedDescription)")
+            SpotLogger.log(AuthorPrivacyCacheLogs.refreshFollowingFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -173,7 +173,7 @@ actor AuthorPrivacyCache {
             cachedBlockedUsers = Set(arr)
             blockedFetchedAt = Date()
         } catch {
-            SpotLogger.error("AuthorPrivacyCache: failed to refresh blocked users: \(error.localizedDescription)")
+            SpotLogger.log(AuthorPrivacyCacheLogs.refreshBlockedUsersFailed, details: ["error": error.localizedDescription])
         }
     }
 }

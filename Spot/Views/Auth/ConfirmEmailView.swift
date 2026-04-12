@@ -101,7 +101,7 @@ struct ConfirmEmailView: View {
                 let ok = await authVM.checkVerificationStatus()
                 if ok { await proceed() }
             }
-            if elapsed >= max { SpotLogger.debug(.auth, "Email verification timeout"); timer.invalidate() }
+            if elapsed >= max { SpotLogger.log(ConfirmEmailViewLogs.verificationTimeout); timer.invalidate() }
         }
     }
 
@@ -116,7 +116,7 @@ struct ConfirmEmailView: View {
         guard authVM.canResendVerification() else { return }
         await authVM.sendVerificationEmail()
         showToast = "Verification email sent"
-        SpotLogger.info("Auth.EmailVerify.Resent")
+        SpotLogger.log(ConfirmEmailViewLogs.verificationEmailResent)
     }
 
     private func proceed() {

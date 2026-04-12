@@ -1,6 +1,19 @@
 import Foundation
 import os
 
+// MARK: - SpotLog Protocol
+
+/// A structured log definition. Conform an enum to this protocol to describe
+/// all log events for a given class, then emit them with `SpotLogger.log(_:details:)`.
+protocol SpotLog {
+    /// The name of the originating class, shown as the log tag.
+    var tag: String { get }
+    /// Severity level for this log entry.
+    var level: LogLevel { get }
+    /// Human-readable description of the event.
+    var message: String { get }
+}
+
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
     case info = "INFO"
@@ -91,6 +104,59 @@ final class SpotLogger {
         minimumLevel = level
     }
 
+    // MARK: - Structured Log Entry
+
+    /// Indentation prefix applied to each key-value pair in the details block.
+    private static let detailsIndentation = "     "
+
+    /// Emit a structured log defined by a `SpotLog`-conforming enum case.
+    ///
+    /// Output format:
+    /// ```
+    /// SpotLogger: <tag>
+    /// <message>
+    /// [
+    ///      key: value
+    /// ]
+    /// ```
+    static func log(_ entry: some SpotLog, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        log(entry.level, message: body(for: entry, details: details), file: file, function: function, line: line)
+    }
+
+    /// Returns the formatted body string for a structured log entry.
+    ///
+    /// The output begins with a `SpotLogger: <tag>` header line followed by the
+    /// entry's message. When `details` is non-empty, a sorted key-value block is
+    /// appended between `[` and `]` delimiters.
+    ///
+    /// - Parameters:
+    ///   - entry: A `SpotLog`-conforming value that provides the tag and message.
+    ///   - details: Optional structured metadata to attach to the log.
+    /// - Returns: The fully-formatted log body string.
+    ///
+    /// Exposed `internal` so it can be verified directly in unit tests.
+    static func body(for entry: some SpotLog, details: [String: Any]) -> String {
+        let header = "SpotLogger: \(entry.tag)"
+        if details.isEmpty {
+            return "\(header)\n\(entry.message)"
+        }
+        let lines = details
+            .map { key, value -> String in
+                let v: String
+                if let date = value as? Date {
+                    v = date.description
+                } else if let arr = value as? [Any] {
+                    v = arr.map { String(describing: $0) }.joined(separator: ", ")
+                } else {
+                    v = String(describing: value)
+                }
+                return "\(detailsIndentation)\(key): \(v)"
+            }
+            .sorted()
+            .joined(separator: "\n")
+        return "\(header)\n\(entry.message)\n[\n\(lines)\n]"
+    }
+
     // MARK: - Public Logging Methods
     
     // INFO - Always enabled for important events
@@ -175,7 +241,9 @@ final class SpotLogger {
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let logMessage = "[SpotLogger][\(level.rawValue)] \(fileName):\(line) | \(function) | \(message)"
 
-        // Use unified logging so each call is a distinct record with proper level filtering
+        // Use unified logging so Xcode's Type filter (Debug / Info / Error) works correctly.
+        // Do NOT add a print() fallback here — print() bypasses OSLog type metadata and
+        // would appear in the Xcode console even when the Type filter excludes that level.
         switch level {
         case .debug:
             logger.debug("\(logMessage, privacy: .public)")
@@ -184,11 +252,6 @@ final class SpotLogger {
         case .error:
             logger.error("\(logMessage, privacy: .public)")
         }
-
-        // Optional: also print to Xcode console as a fallback
-        #if DEBUG
-        print(logMessage)
-        #endif
     }
 
     // MARK: - Compose message with JSON details

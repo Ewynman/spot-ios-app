@@ -212,14 +212,14 @@ struct PhotoSelectionView: View {
                 }
             }
             if !newImages.isEmpty {
-                SpotLogger.info("User selected \(newImages.count) photo(s) from gallery")
+                SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
                 // Append up to the max allowed count
                 let available = max(0, (authVM.isPro ? 5 : 1) - selectedImages.count)
                 if available > 0 {
                     selectedImages.append(contentsOf: newImages.prefix(available))
                 }
             } else {
-                SpotLogger.error("Failed to load selected photos from gallery")
+                SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
             }
         }
         .sheet(isPresented: $showCamera) {
@@ -280,7 +280,7 @@ struct CameraView: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             if let image = info[.originalImage] as? UIImage {
-                SpotLogger.info("User captured photo with camera")
+                SpotLogger.log(PhotoSelectionViewLogs.photoCapturedWithCamera)
                 var imgs = parent.selectedImages
                 if parent.maxCount <= 1 {
                     imgs = [image]
@@ -289,13 +289,13 @@ struct CameraView: UIViewControllerRepresentable {
                 }
                 parent.selectedImages = imgs
             } else {
-                SpotLogger.error("Failed to capture photo with camera")
+                SpotLogger.log(PhotoSelectionViewLogs.capturePhotoFailed)
             }
             parent.dismiss()
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            SpotLogger.debug("User cancelled camera capture")
+            SpotLogger.log(PhotoSelectionViewLogs.cameraCancelled)
             parent.dismiss()
         }
     }

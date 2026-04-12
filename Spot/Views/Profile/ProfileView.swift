@@ -146,7 +146,7 @@ struct ProfileView: View {
                                                 .resizable()
                                                 .foregroundColor(.gray)
                                                 .onAppear {
-                                                    SpotLogger.error("Profile image failed to load", details: [
+                                                    SpotLogger.log(ProfileViewLogs.profileImageLoadFailed, details: [
                                                         "url": urlString,
                                                         "statusCode": failure.statusCode as Any,
                                                         "error": failure.underlying.localizedDescription
@@ -205,7 +205,7 @@ struct ProfileView: View {
                                                 .resizable()
                                                 .foregroundColor(.gray)
                                                 .onAppear {
-                                                    SpotLogger.error("Profile image failed to load", details: [
+                                                    SpotLogger.log(ProfileViewLogs.profileImageLoadFailed, details: [
                                                         "url": urlString,
                                                         "statusCode": failure.statusCode as Any,
                                                         "error": failure.underlying.localizedDescription
@@ -375,7 +375,7 @@ struct ProfileView: View {
                     if userId == nil || userId == authVM.userId, !viewModel.isProProfile {
                         Button {
                             withAnimation { showMenu = false }
-                            SpotLogger.info("Open paywall from profile menu")
+                            SpotLogger.log(ProfileViewLogs.openPaywallFromProfileMenu)
                             NotificationCenter.default.post(name: .showPaywall, object: nil)
                         } label: {
                             HStack {

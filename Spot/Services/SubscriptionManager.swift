@@ -32,7 +32,7 @@ final class SubscriptionManager: ObservableObject {
         if let p = cachedProduct { return p }
         let products = try await Product.products(for: productIds)
         guard let product = products.first else {
-            SpotLogger.error("StoreKit: No matching product found", details: ["ids": productIds])
+            SpotLogger.log(SubscriptionManagerLogs.noMatchingProduct, details: ["ids": productIds])
             throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "No products found. Select a .storekit file in Scheme > Run > Options or finish subscription setup in App Store Connect."])
         }
         cachedProduct = product
@@ -46,7 +46,7 @@ final class SubscriptionManager: ObservableObject {
             _ = try await loadProduct()
         } catch {
             hasProduct = false
-            SpotLogger.error("StoreKit ensureProductLoaded failed: \(error.localizedDescription)")
+            SpotLogger.log(SubscriptionManagerLogs.ensureProductLoadedFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -73,10 +73,7 @@ final class SubscriptionManager: ObservableObject {
         case .pending:
             return .pending
         @unknown default:
-            SpotLogger.error(
-                "StoreKit: Unhandled Product.PurchaseResult",
-                details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"]
-            )
+            SpotLogger.log(SubscriptionManagerLogs.unhandledPurchaseResult, details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"])
             throw SubscriptionPurchaseError.unknownPurchaseOutcome
         }
     }

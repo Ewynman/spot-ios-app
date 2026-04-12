@@ -60,13 +60,13 @@ class ProfileViewModel: ObservableObject {
                     self.hasLoaded = true
                     self.isLoading = false
                 }
-                SpotLogger.info("Loaded profile for user: \(data.username)")
+                SpotLogger.log(ProfileViewModelLogs.profileLoaded, details: ["username": data.username])
             } catch {
                 await MainActor.run {
                     self.error = error
                     self.isLoading = false
                 }
-                SpotLogger.error("Profile loadUser failed: \(error.localizedDescription)")
+                SpotLogger.log(ProfileViewModelLogs.loadUserFailed, details: ["error": error.localizedDescription])
             }
         }
         await loadTask?.value
@@ -85,7 +85,7 @@ class ProfileViewModel: ObservableObject {
             try await SpotService.shared.deleteSpot(spot)
             deletingSpotIds.remove(id)
         } catch {
-            SpotLogger.error("Profile delete failed: \(error.localizedDescription)")
+            SpotLogger.log(ProfileViewModelLogs.profileDeleteFailed, details: ["error": error.localizedDescription])
             spots = prevSpots
             deletingSpotIds.remove(id)
         }

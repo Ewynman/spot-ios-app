@@ -86,7 +86,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
     ) -> Bool {
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb {
-            SpotLogger.info("AppDelegate: Received Universal Link on app launch")
+            SpotLogger.log(AppDelegateLogs.universalLinkOnLaunch)
             DeepLinkState.shared.handleInitialUserActivity(userActivity)
             return true
         }
@@ -98,7 +98,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
-        SpotLogger.info("AppDelegate: Received custom scheme URL on app launch: \(url.absoluteString)")
+        SpotLogger.log(AppDelegateLogs.customSchemeUrlOnLaunch, details: ["url": url.absoluteString])
         DeepLinkState.shared.handleDeepLink(url, origin: .customScheme, isColdStart: true)
         return true
     }

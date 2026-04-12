@@ -58,7 +58,7 @@ struct TopNavigationView: View {
                     }
                 case .plus:
                     Button(action: {
-                        SpotLogger.info("User tapped + button to start post flow")
+                        SpotLogger.log(TopNavigationViewLogs.userTappedPostButton)
                         if let onPlusTapped { onPlusTapped() } else { showUploadView = true }
                     }) {
                         Image(systemName: "plus")

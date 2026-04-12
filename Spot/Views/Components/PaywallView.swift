@@ -108,7 +108,7 @@ struct PaywallView: View {
 
     private func subscribe() {
         purchaseError = nil
-        SpotLogger.info("PaywallView: User started App Store purchase")
+        SpotLogger.log(PaywallViewLogs.purchaseStarted)
         Task {
             do {
                 let outcome = try await subscriptionManager.purchasePro()
@@ -121,12 +121,12 @@ struct PaywallView: View {
                     }
                     await MainActor.run { dismiss() }
                 case .pending:
-                    SpotLogger.info("PaywallView: Purchase pending")
+                    SpotLogger.log(PaywallViewLogs.purchasePending)
                 case .userCancelled:
                     break
                 }
             } catch {
-                SpotLogger.error("PaywallView: Purchase failed", details: ["error": error.localizedDescription])
+                SpotLogger.log(PaywallViewLogs.purchaseFailed, details: ["error": error.localizedDescription])
                 await MainActor.run { purchaseError = error.localizedDescription }
             }
         }
@@ -145,7 +145,7 @@ struct PaywallView: View {
                     await MainActor.run { purchaseError = "No active subscription found." }
                 }
             } catch {
-                SpotLogger.error("PaywallView: Restore failed", details: ["error": error.localizedDescription])
+                SpotLogger.log(PaywallViewLogs.restoreFailed, details: ["error": error.localizedDescription])
                 await MainActor.run { purchaseError = error.localizedDescription }
             }
         }
