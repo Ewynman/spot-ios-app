@@ -241,7 +241,9 @@ final class SpotLogger {
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let logMessage = "[SpotLogger][\(level.rawValue)] \(fileName):\(line) | \(function) | \(message)"
 
-        // Use unified logging so each call is a distinct record with proper level filtering
+        // Use unified logging so Xcode's Type filter (Debug / Info / Error) works correctly.
+        // Do NOT add a print() fallback here — print() bypasses OSLog type metadata and
+        // would appear in the Xcode console even when the Type filter excludes that level.
         switch level {
         case .debug:
             logger.debug("\(logMessage, privacy: .public)")
@@ -250,11 +252,6 @@ final class SpotLogger {
         case .error:
             logger.error("\(logMessage, privacy: .public)")
         }
-
-        // Optional: also print to Xcode console as a fallback
-        #if DEBUG
-        print(logMessage)
-        #endif
     }
 
     // MARK: - Compose message with JSON details
