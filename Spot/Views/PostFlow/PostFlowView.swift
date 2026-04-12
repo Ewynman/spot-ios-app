@@ -91,6 +91,7 @@ struct PostFlowView: View {
             }
             .background(Constants.Colors.background.ignoresSafeArea())
         }
+        .ignoresSafeArea(.keyboard)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

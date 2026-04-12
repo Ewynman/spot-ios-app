@@ -297,12 +297,32 @@ final class SpotUploader {
                 let db = Firestore.firestore()
                 let docRef = db.collection("spots").document(postId)
                 var docCreated = false
+
+                // Force-refresh the Firebase ID token on MainActor so the Firestore write
+                // stream picks up the latest auth credentials (including email_verified claim)
+                // before the write.  Multi-image uploads take significantly longer than
+                // single-image ones, creating a window where the SDK's cached token can
+                // become stale or be mid-refresh when setData is called.
+                var tokenEmailVerified: Bool = false
+                if let user = Auth.auth().currentUser {
+                    do {
+                        let tokenResult = try await user.getIDTokenResult(forcingRefresh: true)
+                        tokenEmailVerified = tokenResult.claims["email_verified"] as? Bool ?? false
+                    } catch {
+                        SpotLogger.error("Token refresh failed before Firestore write", details: [
+                            "postId": postId,
+                            "uid": Auth.auth().currentUser?.uid ?? "nil",
+                            "error": error.localizedDescription
+                        ])
+                    }
+                }
                 let preWriteUser = Auth.auth().currentUser
                 SpotLogger.info("setData pre-write", details: [
                     "postId": postId,
                     "uid": preWriteUser?.uid ?? "nil",
                     "docUserId": userId,
                     "isEmailVerified": preWriteUser?.isEmailVerified ?? false,
+                    "tokenEmailVerified": tokenEmailVerified,
                     "isAnonymous": preWriteUser?.isAnonymous ?? true,
                     "fieldKeys": Array(finalData.keys).sorted().joined(separator: ", ")
                 ])
