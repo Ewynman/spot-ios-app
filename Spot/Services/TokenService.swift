@@ -24,7 +24,7 @@ class TokenService {
     func getToken(completion: @escaping (Result<String, Error>) -> Void) {
         // Check if we have a cached token that's still valid
         if let cachedToken = getCachedToken(), !isTokenExpired() {
-            SpotLogger.debug("TokenService: Using cached token")
+            SpotLogger.log(TokenServiceLogs.usingCachedToken)
             completion(.success(cachedToken))
             return
         }
@@ -35,7 +35,7 @@ class TokenService {
 
     /// Force refresh the token
     func refreshToken(completion: @escaping (Result<String, Error>) -> Void) {
-        SpotLogger.debug("TokenService: Forcing token refresh")
+        SpotLogger.log(TokenServiceLogs.forcingTokenRefresh)
         getFreshToken(completion: completion)
     }
 
@@ -43,7 +43,7 @@ class TokenService {
     func clearTokens() {
         deleteFromKeychain(key: tokenKey)
         deleteFromKeychain(key: expirationKey)
-        SpotLogger.debug("TokenService: Cleared stored tokens")
+        SpotLogger.log(TokenServiceLogs.clearedStoredTokens)
     }
 
     // MARK: - Private Methods
@@ -51,28 +51,28 @@ class TokenService {
     private func getFreshToken(completion: @escaping (Result<String, Error>) -> Void) {
         guard let currentUser = Auth.auth().currentUser else {
             let error = NSError(domain: "TokenService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])
-            SpotLogger.error("TokenService: No authenticated user")
+            SpotLogger.log(TokenServiceLogs.noAuthenticatedUser)
             completion(.failure(error))
             return
         }
 
         currentUser.getIDToken { [weak self] token, error in
             if let error = error {
-                SpotLogger.error("TokenService: Failed to get ID token: \(error.localizedDescription)")
+                SpotLogger.log(TokenServiceLogs.failedToGetIdToken, details: ["error": error.localizedDescription])
                 completion(.failure(error))
                 return
             }
 
             guard let token = token else {
                 let error = NSError(domain: "TokenService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No token received"])
-                SpotLogger.error("TokenService: No token received from Firebase")
+                SpotLogger.log(TokenServiceLogs.noTokenReceived)
                 completion(.failure(error))
                 return
             }
 
             // Cache the token with expiration
             self?.cacheToken(token)
-            SpotLogger.debug("TokenService: Got fresh token from Firebase")
+            SpotLogger.log(TokenServiceLogs.gotFreshToken)
             completion(.success(token))
         }
     }
@@ -116,7 +116,7 @@ class TokenService {
         // Add new item
         let status = SecItemAdd(query as CFDictionary, nil)
         if status != errSecSuccess {
-            SpotLogger.error("Failed to save to keychain", details: ["key": key, "status": status])
+            SpotLogger.log(TokenServiceLogs.failedToSaveToKeychain, details: ["key": key, "status": status])
         }
     }
 

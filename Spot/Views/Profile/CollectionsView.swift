@@ -73,6 +73,8 @@ struct CollectionsView: View {
         }
         .background(Constants.Colors.background.ignoresSafeArea())
         .onAppear { Task { await load() } }
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
     }
 
     private func load() async {

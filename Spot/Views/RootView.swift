@@ -144,17 +144,17 @@ struct RootView: View {
         .environmentObject(authViewModel)
         .onOpenURL { url in
             // Handle custom scheme URLs
-            SpotLogger.info("RootView: Received custom scheme URL: \(url.absoluteString)")
+            SpotLogger.log(RootViewLogs.receivedCustomSchemeUrl, details: ["url": url.absoluteString])
             deepLinkState.handleDeepLink(url, origin: .customScheme, isColdStart: false)
         }
         .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
             // Handle Universal Links
             guard let url = userActivity.webpageURL else {
-                SpotLogger.debug(.deepLink, "Universal link without webpage URL")
+                SpotLogger.log(RootViewLogs.universalLinkWithoutWebpageUrl)
                 return
             }
 
-            SpotLogger.info("RootView: Received Universal Link: \(url.absoluteString)")
+            SpotLogger.log(RootViewLogs.receivedUniversalLink, details: ["url": url.absoluteString])
             deepLinkState.handleDeepLink(url, origin: .universalLink, isColdStart: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: .showPaywall)) { _ in

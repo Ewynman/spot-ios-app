@@ -42,9 +42,9 @@ final class VibeTagService {
             try await db.collection("users").document(userId).setData([
                 "customVibeTags": FieldValue.arrayUnion([name])
             ], merge: true)
-            SpotLogger.info("VibeTag saved", details: ["name": name])
+            SpotLogger.log(VibeTagServiceLogs.vibeTagSaved, details: ["name": name])
         } catch {
-            SpotLogger.error("Failed saving vibe tag: \(error.localizedDescription)")
+            SpotLogger.log(VibeTagServiceLogs.savingVibeTagFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -56,7 +56,7 @@ final class VibeTagService {
                 .getDocuments()
             return snap.documents.compactMap { try? $0.data(as: VibeTag.self) }
         } catch {
-            SpotLogger.error("Failed to fetch vibe tags: \(error.localizedDescription)")
+            SpotLogger.log(VibeTagServiceLogs.fetchVibeTagsFailed, details: ["error": error.localizedDescription])
             return []
         }
     }

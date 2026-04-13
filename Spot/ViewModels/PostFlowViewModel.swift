@@ -50,7 +50,7 @@ class PostFlowViewModel: ObservableObject {
 
     func goBack() {
         guard currentStep > 1 else { return }
-        SpotLogger.debug("User went back from step \(currentStep) to step \(currentStep - 1)")
+        SpotLogger.log(PostFlowViewModelLogs.userWentBack, details: ["from": currentStep, "to": currentStep - 1])
         withAnimation(.easeInOut(duration: 0.3)) {
             currentStep -= 1
         }
@@ -58,7 +58,7 @@ class PostFlowViewModel: ObservableObject {
 
     func goNext() {
         guard currentStep < totalSteps else { return }
-        SpotLogger.debug("User progressed from step \(currentStep) to step \(currentStep + 1)")
+        SpotLogger.log(PostFlowViewModelLogs.userProgressed, details: ["from": currentStep, "to": currentStep + 1])
         withAnimation(.easeInOut(duration: 0.3)) {
             currentStep += 1
         }
@@ -67,8 +67,8 @@ class PostFlowViewModel: ObservableObject {
     func submitPost() {
         guard !isPosting else { return }
         isPosting = true
-        SpotLogger.info("User completed post flow")
-        SpotLogger.debug("Post data - Images: \(selectedImages.count), Location: \(selectedLocation?.placeName ?? "None"), Vibe: \(selectedVibe)")
+        SpotLogger.log(PostFlowViewModelLogs.userCompletedPostFlow)
+        SpotLogger.log(PostFlowViewModelLogs.postData, details: ["images": selectedImages.count, "location": selectedLocation?.placeName ?? "None", "vibe": selectedVibe])
 
         guard let location = selectedLocation,
               !selectedVibe.isEmpty,
@@ -106,7 +106,7 @@ class PostFlowViewModel: ObservableObject {
                         Task { await self?.awaitModerationAndFinish() }
                     case .failure(let error):
                         self?.showToastWith(message: error.localizedDescription, isError: true)
-                        SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
+                        SpotLogger.log(PostFlowViewModelLogs.spotUploadFailed, details: ["error": error.localizedDescription])
                         self?.isPosting = false
                     }
                 }
@@ -131,7 +131,7 @@ class PostFlowViewModel: ObservableObject {
                     Task { await self?.awaitModerationAndFinish() }
                 case .failure(let error):
                     self?.showToastWith(message: error.localizedDescription, isError: true)
-                    SpotLogger.error("Spot upload failed: \(error.localizedDescription)")
+                    SpotLogger.log(PostFlowViewModelLogs.spotUploadFailed, details: ["error": error.localizedDescription])
                     self?.isPosting = false
                 }
             }
@@ -155,20 +155,20 @@ class PostFlowViewModel: ObservableObject {
                 return
             }
             let spotRef = doc.reference
-            SpotLogger.info("Moderation.Check.Begin spotId=\(doc.documentID)")
+            SpotLogger.log(PostFlowViewModelLogs.moderationCheckBegin, details: ["spotId": doc.documentID])
 
             for _ in 0..<20 {
                 let latest = try await spotRef.getDocument()
                 if await evaluateModeration(doc: latest) { return }
                 try await Task.sleep(nanoseconds: 1_000_000_000)
             }
-            SpotLogger.error("Moderation check timeout", details: ["spotId": doc.documentID])
+            SpotLogger.log(PostFlowViewModelLogs.moderationCheckTimeout, details: ["spotId": doc.documentID])
             await MainActor.run {
                 showToastWith(message: "We couldn't verify your image yet. Please retry.", isError: true)
                 isPosting = false
             }
         } catch {
-            SpotLogger.error("Moderation gate error: \(error.localizedDescription)")
+            SpotLogger.log(PostFlowViewModelLogs.moderationGateError, details: ["error": error.localizedDescription])
             await MainActor.run { isPosting = false }
         }
     }
@@ -182,7 +182,7 @@ class PostFlowViewModel: ObservableObject {
         if status == "approved" {
             let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
             if ok {
-                SpotLogger.info("Moderation.Check.Approved spotId=\(doc.documentID) scores=\(String(describing: scores))")
+                SpotLogger.log(PostFlowViewModelLogs.moderationCheckApproved, details: ["spotId": doc.documentID, "scores": String(describing: scores)])
                 if var spot = try? doc.data(as: Spot.self) {
                     spot.id = doc.documentID
                     let postedSpot = spot
@@ -205,7 +205,7 @@ class PostFlowViewModel: ObservableObject {
                 }
                 return true
             } else {
-                SpotLogger.error("Post blocked by moderation", details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
+                SpotLogger.log(PostFlowViewModelLogs.postBlockedByModeration, details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
                 await MainActor.run {
                     showToastWith(message: "This photo violates our guidelines and can't be posted.", isError: true)
                     isPosting = false
@@ -213,7 +213,7 @@ class PostFlowViewModel: ObservableObject {
                 return true
             }
         } else if status == "rejected" {
-            SpotLogger.error("Moderation check rejected", details: ["spotId": doc.documentID, "scores": String(describing: scores)])
+            SpotLogger.log(PostFlowViewModelLogs.moderationCheckRejected, details: ["spotId": doc.documentID, "scores": String(describing: scores)])
             try? await doc.reference.delete()
             await MainActor.run {
                 showToastWith(message: "This photo violates our guidelines and can't be posted.", isError: true)
@@ -221,7 +221,7 @@ class PostFlowViewModel: ObservableObject {
             }
             return true
         } else {
-            SpotLogger.debug("Moderation.Check.Pending spotId=\(doc.documentID)")
+            SpotLogger.log(PostFlowViewModelLogs.moderationCheckPending, details: ["spotId": doc.documentID])
             return false
         }
     }

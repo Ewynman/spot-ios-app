@@ -163,46 +163,40 @@ struct SettingsView: View {
                         }
                     }
                     
-                    // MARK: - Account Management Section
+                    // MARK: - Subscription Management Section
                     settingsSection {
                         VStack(spacing: 12) {
-                            sectionHeader("Account Management")
-                            
-                            NavigationLink {
-                                BlockedUsersView()
-                            } label: {
-                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
+                            sectionHeader("Subscription Management")
+
                             if authVM.isPro {
+                                // Show Pro Until date prominently
+                                HStack(spacing: 12) {
+                                    Image(systemName: "star.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Constants.Colors.primary)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Pro Member")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                        if let proUntil = authVM.proUntil {
+                                            Text("Active until \(formatDate(proUntil))")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 16)
+
                                 Button {
                                     showCollectionsNav = true
                                 } label: {
                                     settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
                                 }
                                 .buttonStyle(PlainButtonStyle())
-                                
-                                // Show expiration date if available
-                                if let proUntil = authVM.proUntil {
-                                    HStack {
-                                        Image(systemName: "calendar")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(Constants.Colors.primary)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Pro expires")
-                                                .font(FontManager.primaryText())
-                                                .foregroundColor(Constants.Colors.primary)
-                                            Text(formatDate(proUntil))
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.gray)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 16)
-                                }
-                                
+
                                 Button {
                                     Task {
                                         do {
@@ -230,7 +224,8 @@ struct SettingsView: View {
                                         do {
                                             try await SubscriptionManager.shared.restorePurchases()
                                             if await SubscriptionManager.shared.refreshEntitlement() {
-                                                await authVM.setProActive(true)
+                                                let expirationDate = await SubscriptionManager.shared.refreshEntitlementExpiry()
+                                                await authVM.setProActive(true, proUntil: expirationDate)
                                                 await MainActor.run {
                                                     showToast(message: "Subscription restored", isError: false)
                                                 }
@@ -250,6 +245,20 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
+                        }
+                    }
+
+                    // MARK: - Account Privacy Section
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Account Privacy")
+
+                            NavigationLink {
+                                BlockedUsersView()
+                            } label: {
+                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     
@@ -361,7 +370,7 @@ struct SettingsView: View {
                     profileImageURL = data["profileImageURL"] as? String
                 }
             } catch {
-                SpotLogger.error("Settings.LoadProfile.failed", details: ["userId": userId, "error": error.localizedDescription])
+                SpotLogger.log(SettingsViewLogs.loadProfileFailed, details: ["userId": userId, "error": error.localizedDescription])
                 await MainActor.run { errorMessage = error.localizedDescription }
             }
         }
@@ -414,7 +423,7 @@ struct SettingsView: View {
         case .invalidChars: isSaving = false; errorMessage = "Username has invalid characters"; return
         case .reserved: isSaving = false; errorMessage = "That username is reserved"; return
         case .blocked:
-            SpotLogger.debug(.auth, "Username blocked", details: ["raw": username, "norm": validator.normalized(username)])
+            SpotLogger.log(SettingsViewLogs.usernameBlocked, details: ["raw": username, "norm": validator.normalized(username)])
             isSaving = false; errorMessage = "That username isn’t allowed"; return
         }
 
@@ -448,7 +457,7 @@ struct SettingsView: View {
                             // Fallback: show a lightweight toast to prompt user to check inbox
                             successMessage = "Verification email sent. Check your inbox."
                         } catch {
-                            SpotLogger.error("Settings.VerifyBeforeUpdateEmail.failed", details: ["newEmail": newEmail, "error": error.localizedDescription])
+                            SpotLogger.log(SettingsViewLogs.verifyBeforeUpdateEmailFailed, details: ["newEmail": newEmail, "error": error.localizedDescription])
                             firstError = firstError ?? error
                         }
                     }
@@ -476,10 +485,10 @@ struct SettingsView: View {
         group.notify(queue: .main) {
             isSaving = false
             if let err = firstError {
-                SpotLogger.error("Settings.Save.failed", details: ["error": err.localizedDescription])
+                SpotLogger.log(SettingsViewLogs.saveFailed, details: ["error": err.localizedDescription])
                 showToast(message: err.localizedDescription, isError: true)
             } else {
-                SpotLogger.info("Settings.Save.success", details: [
+                SpotLogger.log(SettingsViewLogs.saveSuccess, details: [
                     "usernameChanged": username != originalUsername,
                     "emailChanged": email != Auth.auth().currentUser?.email ?? "",
                     "isPrivate": isPrivate
@@ -513,7 +522,7 @@ struct SettingsView: View {
     }
     
     private func uploadProfilePhoto(_ image: UIImage) {
-        SpotLogger.info("Settings.ProfilePhoto.Upload.start", details: [:])
+        SpotLogger.log(SettingsViewLogs.profilePhotoUploadStart)
         isUploadingPhoto = true
         errorMessage = nil
         successMessage = nil
@@ -525,25 +534,25 @@ struct SettingsView: View {
                     guard let uid = Auth.auth().currentUser?.uid else {
                         self.isUploadingPhoto = false
                         self.showToast(message: "No user session", isError: true)
-                        SpotLogger.error("Settings.ProfilePhoto.Upload.noUser", details: [:])
+                        SpotLogger.log(SettingsViewLogs.profilePhotoUploadNoUser)
                         return
                     }
                     Firestore.firestore().collection("users").document(uid).updateData(["profileImageURL": imageURL]) { err in
                         self.isUploadingPhoto = false
                         if let err = err {
                             self.showToast(message: "Failed to update profile picture: \(err.localizedDescription)", isError: true)
-                            SpotLogger.error("Settings.ProfilePhoto.UpdateFirestore.failed", details: ["error": err.localizedDescription])
+                            SpotLogger.log(SettingsViewLogs.profilePhotoUpdateFirestoreFailed, details: ["error": err.localizedDescription])
                         } else {
                             self.profileImageURL = imageURL
                             self.selectedProfileImage = nil
                             self.showToast(message: "Profile photo updated", isError: false)
-                            SpotLogger.info("Settings.ProfilePhoto.Updated", details: [:])
+                            SpotLogger.log(SettingsViewLogs.profilePhotoUpdated)
                         }
                     }
                 case .failure(let error):
                     self.isUploadingPhoto = false
                     self.showToast(message: "Failed to upload photo: \(error.localizedDescription)", isError: true)
-                    SpotLogger.error("Settings.ProfilePhoto.Upload.failed", details: ["error": error.localizedDescription])
+                    SpotLogger.log(SettingsViewLogs.profilePhotoUploadFailed, details: ["error": error.localizedDescription])
                 }
             }
         }

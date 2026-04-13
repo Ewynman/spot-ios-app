@@ -65,7 +65,7 @@ class PrivacyFilter {
 
             return followingCache
         } catch {
-            SpotLogger.error("Failed to fetch following list: \(error.localizedDescription)")
+            SpotLogger.log(PrivacyFilterLogs.fetchFollowingListFailed, details: ["error": error.localizedDescription])
             return []
         }
     }
@@ -106,7 +106,7 @@ class PrivacyFilter {
                     privateUsersCache[userId] = isPrivate
                 }
             } catch {
-                SpotLogger.error("Failed to fetch private status: \(error.localizedDescription)")
+                SpotLogger.log(PrivacyFilterLogs.fetchPrivateStatusFailed, details: ["error": error.localizedDescription])
             }
         }
 

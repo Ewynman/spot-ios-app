@@ -87,10 +87,10 @@ struct LoginView: View {
                             Task {
                                 do {
                                     try await AuthService.shared.resetPassword(email: trimmed)
-                                    SpotLogger.info("Auth.ResetPassword.Requested email=\(trimmed)")
+                                    SpotLogger.log(LoginViewLogs.passwordResetRequested, details: ["email": trimmed])
                                     await MainActor.run { resetMessage = "Password reset link sent. Check your email." }
                                 } catch {
-                                    SpotLogger.error("Auth.ResetPassword.Error: \(error.localizedDescription)")
+                                    SpotLogger.log(LoginViewLogs.passwordResetError, details: ["error": error.localizedDescription])
                                     await MainActor.run { errorMessage = "Could not send reset email. Please try again." }
                                 }
                             }
@@ -118,11 +118,11 @@ struct LoginView: View {
                                 isLoading = false
                                 switch result {
                                 case .success:
-                                    SpotLogger.info("User logged in successfully")
+                                    SpotLogger.log(LoginViewLogs.loginSuccess)
                                     isLoggedIn = true
                                 case .failure(let error):
                                     errorMessage = handleLoginError(error)
-                                    SpotLogger.error("Login failed: \(error.localizedDescription)")
+                                    SpotLogger.log(LoginViewLogs.loginFailed, details: ["error": error.localizedDescription])
                                 }
                             }
                         }

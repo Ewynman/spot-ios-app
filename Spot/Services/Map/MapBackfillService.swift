@@ -15,9 +15,9 @@ enum MapBackfillService {
                     try await db.collection("spots").document(doc.documentID).updateData(["geohash": gh])
                 }
             }
-            SpotLogger.info("Backfill geohash complete")
+            SpotLogger.log(MapBackfillServiceLogs.backfillGeohashComplete)
         } catch {
-            SpotLogger.error("Backfill geohash failed", details: ["error": error.localizedDescription])
+            SpotLogger.log(MapBackfillServiceLogs.backfillGeohashFailed, details: ["error": error.localizedDescription])
         }
     }
 }

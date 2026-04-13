@@ -205,7 +205,7 @@ struct BlockedUsersView: View {
                     self.isLoading = false
                 }
             } catch {
-                SpotLogger.error("Failed to load blocked user details: \(error.localizedDescription)")
+                SpotLogger.log(BlockedUsersViewLogs.loadBlockedUserDetailsFailed, details: ["error": error.localizedDescription])
                 await MainActor.run {
                     self.isLoading = false
                 }
@@ -219,9 +219,9 @@ struct BlockedUsersView: View {
             try await authVM.unblockUser(userId: user.id)
             blockedUserDetails.removeAll { $0.id == user.id }
             userToUnblock = nil
-            SpotLogger.info("User unblocked from settings: \(user.id)")
+            SpotLogger.log(BlockedUsersViewLogs.userUnblocked, details: ["userId": user.id])
         } catch {
-            SpotLogger.error("Failed to unblock user: \(error.localizedDescription)")
+            SpotLogger.log(BlockedUsersViewLogs.unblockUserFailed, details: ["error": error.localizedDescription])
             userToUnblock = nil
         }
     }

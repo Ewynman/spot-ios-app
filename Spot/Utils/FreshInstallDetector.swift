@@ -26,7 +26,7 @@ class FreshInstallDetector {
 
             // Check if Firebase Auth has a persisted user
             if Auth.auth().currentUser != nil {
-                SpotLogger.info("\(Constants.Analytics.authReinstall) hadKeychainUser=true action=autoSignOut")
+                SpotLogger.log(FreshInstallDetectorLogs.reinstallWithKeychainUser)
                 Task { @MainActor in
                     AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authReinstall, parameters: ["had_keychain_user": true, "action": "auto_sign_out"])
                 }
@@ -40,10 +40,10 @@ class FreshInstallDetector {
 
                     return true
                 } catch {
-                    SpotLogger.error("Failed to auto sign out on fresh install: \(error.localizedDescription)")
+                    SpotLogger.log(FreshInstallDetectorLogs.autoSignOutFailed, details: ["error": error.localizedDescription])
                 }
             } else {
-                SpotLogger.info("\(Constants.Analytics.authReinstall) hadKeychainUser=false action=none")
+                SpotLogger.log(FreshInstallDetectorLogs.reinstallWithoutKeychainUser)
                 Task { @MainActor in
                     AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authReinstall, parameters: ["had_keychain_user": false, "action": "none"])
                 }
@@ -76,6 +76,6 @@ class FreshInstallDetector {
         UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.lastKnownLocationStatus)
         UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.lastKnownNotificationStatus)
 
-        SpotLogger.info("FreshInstallDetector: Cleared all caches and session data")
+        SpotLogger.log(FreshInstallDetectorLogs.clearedAllCaches)
     }
 }

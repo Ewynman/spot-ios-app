@@ -18,11 +18,11 @@ final class FollowRequestsService {
 
     // MARK: Count Listener
     func listenPendingCount(for targetUid: String, onChange: @escaping (Int) -> Void) -> ListenerRegistration {
-        SpotLogger.debug("FollowRequestsService: start count listener for target=\(targetUid)")
+        SpotLogger.log(FollowRequestsServiceLogs.startCountListener, details: ["targetUid": targetUid])
         return db.collection("users").document(targetUid).collection("followRequests")
             .addSnapshotListener { snapshot, _ in
                 let count = snapshot?.documents.count ?? 0
-                SpotLogger.info("Follow.Requests.Count n=\(count)")
+                SpotLogger.log(FollowRequestsServiceLogs.followRequestsCount, details: ["count": count])
                 onChange(count)
             }
     }
@@ -52,7 +52,7 @@ final class FollowRequestsService {
 
     // MARK: Actions
     func accept(requesterUid: String, targetUid: String) async throws {
-        SpotLogger.info("Follow.Request.Accepted requesterUid=\(requesterUid)")
+        SpotLogger.log(FollowRequestsServiceLogs.followRequestAccepted, details: ["requesterUid": requesterUid])
         let batch = db.batch()
 
         // 1) Add to requester's following array (idempotent)
@@ -74,7 +74,7 @@ final class FollowRequestsService {
     }
 
     func deny(requesterUid: String, targetUid: String) async throws {
-        SpotLogger.info("Follow.Request.Denied requesterUid=\(requesterUid)")
+        SpotLogger.log(FollowRequestsServiceLogs.followRequestDenied, details: ["requesterUid": requesterUid])
         let reqRef = db.collection("users").document(targetUid).collection("followRequests").document(requesterUid)
         try await reqRef.delete()
     }

@@ -288,7 +288,7 @@ final class SpotUploader {
                     let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
                     if let isPrivate = userDoc.data()?["isPrivate"] as? Bool { finalData["authorIsPrivate"] = isPrivate }
                 } catch {
-                    SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
+                    SpotLogger.log(SpotUploaderLogs.authorIsPrivateDenormalizationFailed, details: ["error": error.localizedDescription])
                 }
 
                 // Ensure the vibe tag exists globally (non-blocking)
@@ -366,7 +366,7 @@ final class SpotUploader {
                                 try await ref.delete()
                                 cleanedCount += 1
                             } catch {
-                                SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+                                SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "index": idx, "error": error.localizedDescription])
                             }
                         }
                         if cleanedCount > 0 {
@@ -495,9 +495,9 @@ final class SpotUploader {
                             Task {
                                 do {
                                     try await storageRef.delete()
-                                    SpotLogger.info("Cleaned up orphaned image after document creation failure", details: ["postId": postId])
+                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleaned, details: ["postId": postId, "index": 0])
                                 } catch {
-                                    SpotLogger.debug(.network, "Failed to clean up orphaned image", details: ["postId": postId, "error": error.localizedDescription])
+                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "index": 0, "error": error.localizedDescription])
                                 }
                             }
                             completion(.failure(error))

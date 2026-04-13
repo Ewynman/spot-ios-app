@@ -112,10 +112,10 @@ struct SpotGridScreen: View {
             HStack {
                 Button {
                     if selectedSpot != nil {
-                        SpotLogger.debug(.navigation, "Header back clears inline spot", details: ["context": String(describing: context)])
+                        SpotLogger.log(SpotGridScreenLogs.headerBackClearsInlineSpot, details: ["context": String(describing: context)])
                         withAnimation { selectedSpot = nil }
                     } else {
-                        SpotLogger.debug(.navigation, "Back button tapped - dismiss", details: ["context": String(describing: context)])
+                        SpotLogger.log(SpotGridScreenLogs.backButtonTapped, details: ["context": String(describing: context)])
                         dismiss()
                     }
                 } label: {
@@ -207,7 +207,7 @@ struct SpotGridScreen: View {
                     SpotsGridView(
                         spots: spots,
                         onSpotTapped: { spot in
-                            SpotLogger.debug(.ui, "Open spot from grid", details: [
+                            SpotLogger.log(SpotGridScreenLogs.openSpotFromGrid, details: [
                                 "context": String(describing: context),
                                 "spotId": spot.safeId
                             ])
@@ -227,7 +227,7 @@ struct SpotGridScreen: View {
         .background(Color(hex: "F5F3EF"))
         .navigationBarBackButtonHidden(true)
         .onAppear {
-            SpotLogger.debug(.ui, "SpotGridScreen onAppear", details: ["context": String(describing: context)])
+            SpotLogger.log(SpotGridScreenLogs.onAppear, details: ["context": String(describing: context)])
 
             Task {
                 await loadData()
@@ -271,7 +271,7 @@ struct SpotGridScreen: View {
     }
 
     private func loadData() async {
-        SpotLogger.debug(.feed, "SpotGridScreen load data", details: ["context": String(describing: context)])
+        SpotLogger.log(SpotGridScreenLogs.loadData, details: ["context": String(describing: context)])
 
         do {
             switch context {
@@ -280,7 +280,7 @@ struct SpotGridScreen: View {
             case .bookmarks:
                 await bookmarksViewModel.loadInitial()
             }
-            SpotLogger.debug(.feed, "SpotGridScreen data loaded", details: ["context": String(describing: context)])
+            SpotLogger.log(SpotGridScreenLogs.dataLoaded, details: ["context": String(describing: context)])
         }
     }
 }

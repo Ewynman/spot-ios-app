@@ -42,7 +42,7 @@ struct VibeSelectionView: View {
                                     vibe: vibe,
                                     isSelected: selectedVibe == vibe,
                                     onTap: {
-                                        SpotLogger.info("User selected vibe: \(vibe)")
+                                        SpotLogger.log(VibeSelectionViewLogs.vibeSelected, details: ["vibe": vibe])
                                         selectedVibe = vibe
                                     }
                                 )
@@ -61,7 +61,7 @@ struct VibeSelectionView: View {
                             vibe: vibe,
                             isSelected: selectedVibe == vibe,
                             onTap: {
-                                SpotLogger.info("User selected vibe: \(vibe)")
+                                SpotLogger.log(VibeSelectionViewLogs.vibeSelected, details: ["vibe": vibe])
                                 selectedVibe = vibe
                             }
                         )

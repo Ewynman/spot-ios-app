@@ -22,22 +22,22 @@ class LikesViewModel: ObservableObject {
 
     func loadInitial() async {
         guard !isLoading else {
-            SpotLogger.debug("LikesViewModel: Already loading, skipping")
+            SpotLogger.log(LikesViewModelLogs.alreadyLoading)
             return
         }
 
-        SpotLogger.info("LikesViewModel: Starting loadInitial")
+        SpotLogger.log(LikesViewModelLogs.startingLoadInitial)
         isLoading = true
         errorMessage = nil
 
         do {
             let result = try await UserSpotService.shared.fetchLikedSpots(pageSize: pageSize)
-            SpotLogger.info("LikesViewModel: Fetched \(result.spots.count) spots from service")
+            SpotLogger.log(LikesViewModelLogs.fetchedSpotsFromService, details: ["count": result.spots.count])
 
             // Filter out duplicates within session
             let newSpots = result.spots.filter { spot in
                 guard let spotId = spot.id else {
-                    SpotLogger.debug(.feed, "Spot without ID found in likes")
+                    SpotLogger.log(LikesViewModelLogs.spotWithoutIdFound)
                     return false
                 }
                 let isNew = !loadedSpotIds.contains(spotId)
@@ -51,14 +51,14 @@ class LikesViewModel: ObservableObject {
             lastCursor = result.lastCursor
             hasMore = result.hasMore
 
-            SpotLogger.info("LikesViewModel: Loaded \(newSpots.count) spots, hasMore: \(hasMore)")
+            SpotLogger.log(LikesViewModelLogs.loadedSpots, details: ["count": newSpots.count, "hasMore": hasMore])
         } catch {
             errorMessage = "Failed to load liked spots"
-            SpotLogger.error("LikesViewModel loadInitial failed: \(error.localizedDescription)")
+            SpotLogger.log(LikesViewModelLogs.loadInitialFailed, details: ["error": error.localizedDescription])
         }
 
         isLoading = false
-        SpotLogger.info("LikesViewModel: loadInitial completed")
+        SpotLogger.log(LikesViewModelLogs.loadInitialCompleted)
     }
 
     func loadMore() async {

@@ -16,7 +16,7 @@ struct TabNavigationView: View {
         HStack(spacing: 32) {
             ForEach(tabs, id: \.self) { tab in
                 TabItemView(tab: tab, isSelected: selectedTab == tab) {
-                    SpotLogger.debug("User switched to tab: \(tab)")
+                    SpotLogger.log(TabNavigationViewLogs.userSwitchedTab, details: ["tab": "\(tab)"])
                     withAnimation(.easeInOut(duration: 0.2)) {
                         selectedTab = tab
                     }

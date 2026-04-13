@@ -72,6 +72,7 @@ struct PostFlowView: View {
                         )
                     }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
 
                 VStack(spacing: 8) {
                     if viewModel.isUploading {

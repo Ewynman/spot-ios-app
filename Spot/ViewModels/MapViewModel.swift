@@ -24,9 +24,9 @@ final class MapViewModel: ObservableObject {
                 switch result {
                 case .success(let spots):
                     self.visibleSpots = spots
-                    SpotLogger.info("Map loaded all spots", details: ["count": spots.count])
+                    SpotLogger.log(MapViewModelLogs.mapLoadedAllSpots, details: ["count": spots.count])
                 case .failure(let error):
-                    SpotLogger.error("Failed to load all spots for map", details: ["error": error.localizedDescription])
+                    SpotLogger.log(MapViewModelLogs.loadAllSpotsFailed, details: ["error": error.localizedDescription])
                 }
             }
         }

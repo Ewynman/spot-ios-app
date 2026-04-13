@@ -71,7 +71,7 @@ struct ShareSheet: View {
                         metadata.imageProvider = NSItemProvider(object: image)
                     }
                 } catch {
-                    SpotLogger.debug(.image, "Failed to load image for share preview", details: ["error": error.localizedDescription])
+                    SpotLogger.log(ShareSheetLogs.imageLoadFailed, details: ["error": error.localizedDescription])
                 }
             }
 
@@ -80,7 +80,7 @@ struct ShareSheet: View {
             await MainActor.run {
                 shareItems = [linkItem, spotUrl]
                 isLoading = false
-                SpotLogger.info("Share prepared for spot id=\(spot.safeId)")
+                SpotLogger.log(ShareSheetLogs.sharePrepared, details: ["spotId": spot.safeId])
             }
         }
     }

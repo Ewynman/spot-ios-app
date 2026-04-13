@@ -215,15 +215,15 @@ struct LocationSelectionView: View {
     }
 
     private func loadNearbyPlaces() {
-        SpotLogger.debug("Loading nearby places")
+        SpotLogger.log(LocationSelectionViewLogs.loadingNearbyPlaces)
         guard let location = locationManager.location else {
-            SpotLogger.debug(.location, "No current location available, using default region")
+            SpotLogger.log(LocationSelectionViewLogs.noCurrentLocationAvailable)
             // If no location, use default region
             searchNearbyPlaces(in: region)
             return
         }
 
-        SpotLogger.info("Got current location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        SpotLogger.log(LocationSelectionViewLogs.gotCurrentLocation, details: ["latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude])
         // Update region to current location
         region = MKCoordinateRegion(
             center: location.coordinate,
@@ -245,9 +245,9 @@ struct LocationSelectionView: View {
             DispatchQueue.main.async {
                 self.isLoadingNearby = false
                 if let error = error {
-                    SpotLogger.error("Failed to search nearby places: \(error.localizedDescription)")
+                    SpotLogger.log(LocationSelectionViewLogs.nearbyPlaceSearchFailed, details: ["error": error.localizedDescription])
                 } else if let response = response {
-                    SpotLogger.info("Found \(response.mapItems.count) nearby places")
+                    SpotLogger.log(LocationSelectionViewLogs.foundNearbyPlaces, details: ["count": response.mapItems.count])
                     self.nearbyPlaces = Array(response.mapItems.prefix(10)) // Limit to 10 nearby places
                 }
             }
@@ -260,7 +260,7 @@ struct LocationSelectionView: View {
             return
         }
 
-        SpotLogger.debug("Searching for places with query: \(query)")
+        SpotLogger.log(LocationSelectionViewLogs.searchingPlaces, details: ["query": query])
 
         // User-created canonical places stored in Firestore 'places'
         Task {
@@ -278,11 +278,11 @@ struct LocationSelectionView: View {
                         self.selectedLocation = LocationData(coordinate: coord, placeName: p.name, address: p.address, isCustomName: true)
                         self.showingMap = true
                     }
-                    SpotLogger.info("Anchored place matched: \(p.name)")
+                    SpotLogger.log(LocationSelectionViewLogs.anchoredPlaceMatched, details: ["name": p.name])
                     return
                 }
             } catch {
-                SpotLogger.debug(.network, "Places query failed", details: ["error": error.localizedDescription])
+                SpotLogger.log(LocationSelectionViewLogs.placesQueryFailed, details: ["error": error.localizedDescription])
             }
         }
         func runSearch(with span: MKCoordinateSpan, completion: @escaping ([MKMapItem]) -> Void) {
@@ -293,7 +293,7 @@ struct LocationSelectionView: View {
             let search = MKLocalSearch(request: request)
             search.start { response, error in
                 if let error = error {
-                    SpotLogger.error("Failed to search places: \(error.localizedDescription)")
+                    SpotLogger.log(LocationSelectionViewLogs.searchPlacesFailed, details: ["error": error.localizedDescription])
                     completion([])
                 } else {
                     completion(response?.mapItems ?? [])
@@ -305,13 +305,13 @@ struct LocationSelectionView: View {
         runSearch(with: region.span) { first in
             DispatchQueue.main.async {
                 if !first.isEmpty {
-                    SpotLogger.info("Found \(first.count) search results for '\(query)' (local)")
+                    SpotLogger.log(LocationSelectionViewLogs.foundLocalSearchResults, details: ["count": first.count, "query": query])
                     self.searchResults = first
                 } else {
-                    SpotLogger.debug("No local results; retrying with global span")
+                    SpotLogger.log(LocationSelectionViewLogs.noLocalResultsRetryingGlobal)
                     runSearch(with: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)) { global in
                         DispatchQueue.main.async {
-                            SpotLogger.info("Found \(global.count) search results for '\(query)' (global)")
+                            SpotLogger.log(LocationSelectionViewLogs.foundGlobalSearchResults, details: ["count": global.count, "query": query])
                             self.searchResults = global
                         }
                     }
@@ -405,7 +405,7 @@ struct LocationResultRow: View {
                 address: parts.isEmpty ? nil : parts,
                 isCustomName: false
             )
-            SpotLogger.info("User selected location: \(locationData.placeName)")
+            SpotLogger.log(LocationSelectionViewLogs.userSelectedLocation, details: ["placeName": locationData.placeName])
             onSelect(locationData)
         }) {
             HStack(spacing: 12) {
@@ -458,7 +458,7 @@ struct NearbyPlaceRow: View {
                 address: parts.isEmpty ? nil : parts,
                 isCustomName: false
             )
-            SpotLogger.info("User selected location: \(locationData.placeName)")
+            SpotLogger.log(LocationSelectionViewLogs.userSelectedLocation, details: ["placeName": locationData.placeName])
             onSelect(locationData)
         }) {
             HStack(spacing: 12) {
@@ -622,7 +622,7 @@ struct LocationMapView: View {
                     if let ns = error as NSError? {
                         // Ignore cancellation and transient errors
                         if ns.code == CLError.Code.network.rawValue || ns.code == CLError.Code.geocodeFoundNoResult.rawValue { }
-                        SpotLogger.debug(.location, "Reverse geocode failed", details: ["error": ns.localizedDescription])
+                        SpotLogger.log(LocationSelectionViewLogs.reverseGeocodeFailed, details: ["error": ns.localizedDescription])
                         return
                     }
                     guard let placemark = placemarks?.first else { return }
@@ -685,10 +685,10 @@ struct LocationMapView: View {
                         _ = try await db.collection("places").addDocument(data: data)
                     }
                 } catch {
-                    SpotLogger.debug(.network, "Upsert place failed", details: ["error": error.localizedDescription])
+                    SpotLogger.log(LocationSelectionViewLogs.upsertPlaceFailed, details: ["error": error.localizedDescription])
                 }
             case .tooShort, .tooLong, .blocked:
-                SpotLogger.debug(.network, "Blocked custom place at confirm, skipping upsert")
+                SpotLogger.log(LocationSelectionViewLogs.blockedCustomPlaceSkipUpsert)
             }
         }
         onConfirm(selected)

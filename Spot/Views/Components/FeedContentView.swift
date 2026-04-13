@@ -66,7 +66,7 @@ struct FeedContentView: View {
                             }
                             .onAppear {
                                 if (spot.imageURL ?? "").isEmpty {
-                                    SpotLogger.error("Feed missing imageURL for spot id=\(spot.safeId) — rendering placeholder")
+                                    SpotLogger.log(FeedContentViewLogs.missingImageUrl, details: ["spotId": spot.safeId])
                                 }
                                 if !firstItemRecorded {
                                     onFirstItemAppeared?()

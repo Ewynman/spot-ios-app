@@ -74,21 +74,21 @@ struct ConfirmNewEmailView: View {
         do {
             try await Auth.auth().currentUser?.reload()
             if let user = Auth.auth().currentUser, let email = user.email, email.lowercased() == newEmail.lowercased() {
-                SpotLogger.info("Auth.ChangeEmail.Verified")
+                SpotLogger.log(ConfirmNewEmailViewLogs.changeEmailVerified)
                 dismiss()
             }
-        } catch { SpotLogger.error("checkNow failed: \(error.localizedDescription)") }
+        } catch { SpotLogger.log(ConfirmNewEmailViewLogs.checkNowFailed, details: ["error": error.localizedDescription]) }
     }
 
     private func resend() async {
         guard authVM.canResendVerification() else { return }
         do {
             try await Auth.auth().currentUser?.sendEmailVerification(beforeUpdatingEmail: newEmail)
-            SpotLogger.info("Auth.ChangeEmail.VerifySent")
+            SpotLogger.log(ConfirmNewEmailViewLogs.changeEmailVerifySent)
             await MainActor.run { authVM.emailResendAvailableAt = Date().addingTimeInterval(30) }
             showToast = "Verification email sent"
         } catch {
-            SpotLogger.error("resend failed: \(error.localizedDescription)")
+            SpotLogger.log(ConfirmNewEmailViewLogs.resendFailed, details: ["error": error.localizedDescription])
         }
     }
 }

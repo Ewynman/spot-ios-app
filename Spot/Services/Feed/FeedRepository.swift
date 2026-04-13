@@ -66,7 +66,7 @@ final class FeedRepository: ObservableObject {
 
             let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
 
-            SpotLogger.debug(.feed, "Feed loadInitial", details: [
+            SpotLogger.log(FeedRepositoryLogs.loadInitial, details: [
                 "followees": rankedFollowees.count,
                 "global": rankedGlobal.count,
                 "blended": blended.count
@@ -74,7 +74,7 @@ final class FeedRepository: ObservableObject {
             await MainActor.run { self.spots = blended }
             isColdStart = false
         } catch {
-            SpotLogger.error("Feed loadInitial failed: \(error.localizedDescription)")
+            SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -111,14 +111,14 @@ final class FeedRepository: ObservableObject {
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
-            SpotLogger.debug(.feed, "Feed loadMore", details: [
+            SpotLogger.log(FeedRepositoryLogs.loadMore, details: [
                 "followees": rankedFollowees.count,
                 "global": rankedGlobal.count,
                 "appending": newUnique.count
             ])
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
         } catch {
-            SpotLogger.error("Feed loadMore failed: \(error.localizedDescription)")
+            SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: ["error": error.localizedDescription])
         }
     }
 

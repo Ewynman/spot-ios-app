@@ -142,10 +142,10 @@ struct FollowRequestsView: View {
         do {
             let page = try await service.fetchPage(for: uid, last: nil, pageSize: pageSize)
             await MainActor.run { items = page.items; last = page.last; hasMore = (page.items.count == pageSize); isLoading = false }
-            SpotLogger.info("Follow.Requests.Opened")
+            SpotLogger.log(FollowRequestsViewLogs.followRequestsOpened)
         } catch {
             await MainActor.run { isLoading = false }
-            SpotLogger.error("FollowRequestsView refresh failed: \(error.localizedDescription)")
+            SpotLogger.log(FollowRequestsViewLogs.refreshFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -162,7 +162,7 @@ struct FollowRequestsView: View {
             }
         } catch {
             await MainActor.run { isLoading = false }
-            SpotLogger.error("FollowRequestsView loadMore failed: \(error.localizedDescription)")
+            SpotLogger.log(FollowRequestsViewLogs.loadMoreFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -179,7 +179,7 @@ struct FollowRequestsView: View {
             await MainActor.run {
                 _ = processing.remove(req.id)
             }
-            SpotLogger.error("Accept failed: \(error.localizedDescription)")
+            SpotLogger.log(FollowRequestsViewLogs.acceptFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -196,7 +196,7 @@ struct FollowRequestsView: View {
             await MainActor.run {
                 _ = processing.remove(req.id)
             }
-            SpotLogger.error("Deny failed: \(error.localizedDescription)")
+            SpotLogger.log(FollowRequestsViewLogs.denyFailed, details: ["error": error.localizedDescription])
         }
     }
 }

@@ -32,7 +32,7 @@ final class SubscriptionManager: ObservableObject {
         if let p = cachedProduct { return p }
         let products = try await Product.products(for: productIds)
         guard let product = products.first else {
-            SpotLogger.error("StoreKit: No matching product found", details: ["ids": productIds])
+            SpotLogger.log(SubscriptionManagerLogs.noMatchingProduct, details: ["ids": productIds])
             throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "No products found. Select a .storekit file in Scheme > Run > Options or finish subscription setup in App Store Connect."])
         }
         cachedProduct = product
@@ -46,12 +46,12 @@ final class SubscriptionManager: ObservableObject {
             _ = try await loadProduct()
         } catch {
             hasProduct = false
-            SpotLogger.error("StoreKit ensureProductLoaded failed: \(error.localizedDescription)")
+            SpotLogger.log(SubscriptionManagerLogs.ensureProductLoadedFailed, details: ["error": error.localizedDescription])
         }
     }
 
     enum PurchaseProResult: Sendable {
-        case purchased
+        case purchased(expirationDate: Date?)
         case pending
         case userCancelled
     }
@@ -65,17 +65,15 @@ final class SubscriptionManager: ObservableObject {
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
+            let expirationDate = transaction.expirationDate
             await transaction.finish()
-            return .purchased
+            return .purchased(expirationDate: expirationDate)
         case .userCancelled:
             return .userCancelled
         case .pending:
             return .pending
         @unknown default:
-            SpotLogger.error(
-                "StoreKit: Unhandled Product.PurchaseResult",
-                details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"]
-            )
+            SpotLogger.log(SubscriptionManagerLogs.unhandledPurchaseResult, details: ["hint": "Future StoreKit may add cases; update SubscriptionManager.purchasePro"])
             throw SubscriptionPurchaseError.unknownPurchaseOutcome
         }
     }
@@ -95,6 +93,18 @@ final class SubscriptionManager: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Returns the expiration date of the active Pro entitlement, or nil if not subscribed.
+    func refreshEntitlementExpiry() async -> Date? {
+        let checker = ProEntitlementChecker(proProductIDs: productIds)
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result,
+               checker.grantsPro(forProductID: transaction.productID) {
+                return transaction.expirationDate
+            }
+        }
+        return nil
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

@@ -91,11 +91,11 @@ class FeedViewModel: ObservableObject {
     func insertNewSpot(_ spot: Spot) {
         spots.removeAll { $0.id == spot.id }
         spots.insert(spot, at: 0)
-        SpotLogger.info("Inserted new spot at top of feed", details: ["spotId": spot.safeId])
+        SpotLogger.log(FeedViewModelLogs.insertedNewSpotAtTop, details: ["spotId": spot.safeId])
     }
 
     func loadMapSpots(forceRefresh: Bool = false) {
-        SpotLogger.debug("Map spots warm disabled; viewport loader handles fetching", details: [:])
+        SpotLogger.log(FeedViewModelLogs.mapSpotsWarmDisabled)
         self.mapSpots = []
     }
 
@@ -103,7 +103,7 @@ class FeedViewModel: ObservableObject {
     @MainActor
     func delete(spot: Spot) async {
         guard let id = spot.id else {
-            SpotLogger.error("Delete requested for spot without id", details: [:])
+            SpotLogger.log(FeedViewModelLogs.deleteRequestedWithoutId)
             return
         }
         if deletingSpotIds.contains(id) { return }
@@ -115,12 +115,12 @@ class FeedViewModel: ObservableObject {
         mapSpots.removeAll { $0.id == id }
 
         do {
-            SpotLogger.info("Deleting spot", details: ["spotId": id])
+            SpotLogger.log(FeedViewModelLogs.deletingSpot, details: ["spotId": id])
             try await SpotService.shared.deleteSpot(spot)
             deletingSpotIds.remove(id)
             loadMapSpots(forceRefresh: true)
         } catch {
-            SpotLogger.error("Delete failed", details: ["spotId": id, "error": error.localizedDescription])
+            SpotLogger.log(FeedViewModelLogs.deleteFailed, details: ["spotId": id, "error": error.localizedDescription])
             spots = prevSpots
             mapSpots = prevMap
             deletingSpotIds.remove(id)

@@ -108,23 +108,25 @@ struct PaywallView: View {
 
     private func subscribe() {
         purchaseError = nil
-        SpotLogger.info("PaywallView: User started App Store purchase")
+        SpotLogger.log(PaywallViewLogs.purchaseStarted)
         Task {
             do {
                 let outcome = try await subscriptionManager.purchasePro()
                 switch outcome {
-                case .purchased:
+                case .purchased(let expirationDate):
+                    // Transaction is already verified via checkVerified in purchasePro().
+                    // refreshEntitlement() provides an additional on-device confirmation.
                     if await subscriptionManager.refreshEntitlement() {
-                        await authVM.setProActive(true)
+                        await authVM.setProActive(true, proUntil: expirationDate)
                     }
                     await MainActor.run { dismiss() }
                 case .pending:
-                    SpotLogger.info("PaywallView: Purchase pending")
+                    SpotLogger.log(PaywallViewLogs.purchasePending)
                 case .userCancelled:
                     break
                 }
             } catch {
-                SpotLogger.error("PaywallView: Purchase failed", details: ["error": error.localizedDescription])
+                SpotLogger.log(PaywallViewLogs.purchaseFailed, details: ["error": error.localizedDescription])
                 await MainActor.run { purchaseError = error.localizedDescription }
             }
         }
@@ -136,13 +138,14 @@ struct PaywallView: View {
             do {
                 try await subscriptionManager.restorePurchases()
                 if await subscriptionManager.refreshEntitlement() {
-                    await authVM.setProActive(true)
+                    let expirationDate = await subscriptionManager.refreshEntitlementExpiry()
+                    await authVM.setProActive(true, proUntil: expirationDate)
                     await MainActor.run { dismiss() }
                 } else {
                     await MainActor.run { purchaseError = "No active subscription found." }
                 }
             } catch {
-                SpotLogger.error("PaywallView: Restore failed", details: ["error": error.localizedDescription])
+                SpotLogger.log(PaywallViewLogs.restoreFailed, details: ["error": error.localizedDescription])
                 await MainActor.run { purchaseError = error.localizedDescription }
             }
         }
