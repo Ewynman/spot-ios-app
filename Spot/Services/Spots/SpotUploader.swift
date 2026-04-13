@@ -17,17 +17,17 @@ final class SpotUploader {
     private init() {}
 
     static func incrementUserVibeStat(userId: String, vibeTag: String) {
-        SpotLogger.log(SpotUploaderLogs.vibeStatIncrement, details: ["userId": userId, "vibe": vibeTag])
+        SpotLogger.debug("Increment vibe stat", details: ["userId": userId, "vibe": vibeTag])
         let userRef = Firestore.firestore().collection("users").document(userId)
 
         userRef.getDocument { snapshot, error in
             if let error = error {
-                SpotLogger.log(SpotUploaderLogs.vibeStatFetchFailed, details: ["error": error.localizedDescription])
+                SpotLogger.error("Vibe stats: failed to get user doc", details: ["error": error.localizedDescription])
                 return
             }
 
             guard let data = snapshot?.data() else {
-                SpotLogger.log(SpotUploaderLogs.vibeStatUserDataMissing, details: ["userId": userId])
+                SpotLogger.error("Vibe stats: no user data", details: ["userId": userId])
                 return
             }
 
@@ -42,9 +42,9 @@ final class SpotUploader {
                 "vibeStats": vibeStats
             ]) { error in
                 if let error = error {
-                    SpotLogger.log(SpotUploaderLogs.vibeStatUpdateFailed, details: ["userId": userId, "vibe": vibeTag, "error": error.localizedDescription])
+                    SpotLogger.error("Vibe stats update failed", details: ["userId": userId, "vibe": vibeTag, "error": error.localizedDescription])
                 } else {
-                    SpotLogger.log(SpotUploaderLogs.vibeStatUpdated, details: ["userId": userId, "vibe": vibeTag, "count": vibeStats[vibeTag] ?? 1])
+                    SpotLogger.info("Vibe stats updated", details: ["userId": userId, "vibe": vibeTag, "count": vibeStats[vibeTag] ?? 1])
                 }
             }
         }
@@ -58,14 +58,14 @@ final class SpotUploader {
 
         Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
             if let error = error {
-                SpotLogger.log(SpotUploaderLogs.fetchUserDataFailed, details: ["error": error.localizedDescription])
+                SpotLogger.error("Fetch user data failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
                 return
             }
 
             guard let data = snapshot?.data(),
                   let username = data["username"] as? String else {
-                SpotLogger.log(SpotUploaderLogs.invalidUserDataFormat, details: ["uid": uid])
+                SpotLogger.error("Invalid user data format", details: ["uid": uid])
                 completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.badRequest, userInfo: [NSLocalizedDescriptionKey: "Invalid user data"])))
                 return
             }
@@ -85,7 +85,7 @@ final class SpotUploader {
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
-            SpotLogger.log(SpotUploaderLogs.notAuthenticated)
+            SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
         }
 
@@ -106,7 +106,7 @@ final class SpotUploader {
                     completion: completion
                 )
             case .failure(let error):
-                SpotLogger.log(SpotUploaderLogs.getUserDataFailed, details: ["error": error.localizedDescription])
+                SpotLogger.error("Get user data failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
             }
         }
@@ -122,7 +122,7 @@ final class SpotUploader {
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
-            SpotLogger.log(SpotUploaderLogs.notAuthenticated)
+            SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
         }
 
@@ -143,7 +143,7 @@ final class SpotUploader {
                     completion: completion
                 )
             case .failure(let error):
-                SpotLogger.log(SpotUploaderLogs.getUserDataFailed, details: ["error": error.localizedDescription])
+                SpotLogger.error("Get user data failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
             }
         }
@@ -197,7 +197,7 @@ final class SpotUploader {
         }
 
         try await db.collection("spots").document(spotId).setData(updates, merge: true)
-        SpotLogger.log(SpotUploaderLogs.spotUpdated, details: ["spotId": spotId])
+        SpotLogger.info("Spot updated", details: ["spotId": spotId])
     }
 
     private func performMultiSpotUpload(
@@ -237,7 +237,7 @@ final class SpotUploader {
                     let url = try await storageRef.downloadURL()
                     urls.append(url.absoluteString)
                 } catch {
-                    SpotLogger.log(SpotUploaderLogs.multiImageUploadError, details: ["error": error.localizedDescription])
+                    SpotLogger.error("Multi upload error", details: ["error": error.localizedDescription])
                     completion(.failure(error))
                     return
                 }
@@ -254,6 +254,12 @@ final class SpotUploader {
             }
 
             let geohash = GeoHash.encode(latitude: latitude, longitude: longitude, precision: 7)
+            // NOTE: imageURLs is intentionally excluded from the initial setData payload.
+            // The deployed Firestore create rule has a field allow-list that predates the
+            // imageURLs field — including it causes the create to be rejected with
+            // "Missing or insufficient permissions."  We write it in a separate updateData
+            // call immediately after, which goes through the owner-update path (no field
+            // restrictions for the document owner).
             var data: [String: Any] = [
                 "postId": postId,
                 "userId": userId,
@@ -261,7 +267,6 @@ final class SpotUploader {
                 "userProfileImageURL": userProfileImageURL ?? "",
                 "imageURL": urls.first ?? "",
                 "thumbnailURL": urls.first ?? "",
-                "imageURLs": urls,
                 "caption": "",
                 "vibeTag": vibeTag,
                 "vibeTag_lower": vibeTag.lowercased(),
@@ -275,37 +280,101 @@ final class SpotUploader {
                 "createdAt": FieldValue.serverTimestamp()
             ]
 
-            // Denormalize author's privacy
-            do {
-                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                if let isPrivate = userDoc.data()? ["isPrivate"] as? Bool { data["authorIsPrivate"] = isPrivate }
-            } catch {
-                SpotLogger.log(SpotUploaderLogs.authorIsPrivateDenormalizationFailed, details: ["error": error.localizedDescription])
-            }
+            // Run all Firestore operations on @MainActor to match the single-image upload path.
+            Task { @MainActor in
+                // Denormalize author's privacy (matches single-image path)
+                var finalData = data
+                do {
+                    let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+                    if let isPrivate = userDoc.data()?["isPrivate"] as? Bool { finalData["authorIsPrivate"] = isPrivate }
+                } catch {
+                    SpotLogger.log(SpotUploaderLogs.authorIsPrivateDenormalizationFailed, details: ["error": error.localizedDescription])
+                }
 
-            // Ensure the vibe tag exists globally (non-blocking)
-            Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
+                // Ensure the vibe tag exists globally (non-blocking)
+                Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
 
-            do {
-                try await Firestore.firestore().collection("spots").document(postId).setData(data)
-                SpotLogger.log(SpotUploaderLogs.spotCreatedMulti, details: ["postId": postId, "count": urls.count])
-                completion(.success(()))
-            } catch {
-                SpotLogger.log(SpotUploaderLogs.spotDocumentCreationFailed, details: ["error": error.localizedDescription, "postId": postId])
-                // Attempt to clean up uploaded images if document creation fails
-                Task {
-                    for (idx, _) in limited.enumerated() {
-                        let filename = "spot_\(postId)_\(idx).jpg"
-                        let ref = storage.reference().child("spots/\(filename)")
-                        do {
-                            try await ref.delete()
-                            SpotLogger.log(SpotUploaderLogs.orphanedImageCleaned, details: ["postId": postId, "index": idx])
-                        } catch {
-                            SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "index": idx, "error": error.localizedDescription])
-                        }
+                let db = Firestore.firestore()
+                let docRef = db.collection("spots").document(postId)
+                var docCreated = false
+
+                // Force-refresh the Firebase ID token on MainActor so the Firestore write
+                // stream picks up the latest auth credentials (including email_verified claim)
+                // before the write.  Multi-image uploads take significantly longer than
+                // single-image ones, creating a window where the SDK's cached token can
+                // become stale or be mid-refresh when setData is called.
+                var tokenEmailVerified: Bool = false
+                if let user = Auth.auth().currentUser {
+                    do {
+                        let tokenResult = try await user.getIDTokenResult(forcingRefresh: true)
+                        tokenEmailVerified = tokenResult.claims["email_verified"] as? Bool ?? false
+                    } catch {
+                        SpotLogger.error("Token refresh failed before Firestore write", details: [
+                            "postId": postId,
+                            "uid": Auth.auth().currentUser?.uid ?? "nil",
+                            "error": error.localizedDescription
+                        ])
                     }
                 }
-                completion(.failure(error))
+                let preWriteUser = Auth.auth().currentUser
+                SpotLogger.info("setData pre-write", details: [
+                    "postId": postId,
+                    "uid": preWriteUser?.uid ?? "nil",
+                    "docUserId": userId,
+                    "isEmailVerified": preWriteUser?.isEmailVerified ?? false,
+                    "tokenEmailVerified": tokenEmailVerified,
+                    "isAnonymous": preWriteUser?.isAnonymous ?? true,
+                    "fieldKeys": Array(finalData.keys).sorted().joined(separator: ", ")
+                ])
+                do {
+                    // Step 1: create the document without imageURLs (passes the create rule)
+                    try await docRef.setData(finalData)
+                    docCreated = true
+                    SpotLogger.info("setData step 1 succeeded", details: ["postId": postId])
+                    // Step 2: attach imageURLs via owner update (owner can write any field)
+                    try await docRef.updateData(["imageURLs": urls])
+                    SpotLogger.info("Spot created (multi)", details: ["postId": postId, "count": urls.count])
+                    completion(.success(()))
+                } catch {
+                    let nsErr = error as NSError
+                    SpotLogger.error("Create spot document failed", details: [
+                        "postId": postId,
+                        "failedStep": docCreated ? "updateData (step 2)" : "setData (step 1)",
+                        "errorDomain": nsErr.domain,
+                        "errorCode": nsErr.code,
+                        "error": nsErr.localizedDescription,
+                        "uid": Auth.auth().currentUser?.uid ?? "nil",
+                        "docUserId": userId,
+                        "isEmailVerified": Auth.auth().currentUser?.isEmailVerified ?? false
+                    ])
+                    // Attempt to clean up any orphaned resources
+                    Task {
+                        // Remove the Firestore document if it was already created (step 2 failed)
+                        if docCreated {
+                            do {
+                                try await docRef.delete()
+                            } catch {
+                                SpotLogger.debug(.network, "Failed to clean up orphaned spot document", details: ["postId": postId, "error": error.localizedDescription])
+                            }
+                        }
+                        // Remove uploaded Storage images
+                        var cleanedCount = 0
+                        for (idx, _) in limited.enumerated() {
+                            let filename = "spot_\(postId)_\(idx).jpg"
+                            let ref = storage.reference().child("spots/\(filename)")
+                            do {
+                                try await ref.delete()
+                                cleanedCount += 1
+                            } catch {
+                                SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "index": idx, "error": error.localizedDescription])
+                            }
+                        }
+                        if cleanedCount > 0 {
+                            SpotLogger.debug("Cleaned up \(cleanedCount) orphaned image(s)", details: ["postId": postId])
+                        }
+                    }
+                    completion(.failure(error))
+                }
             }
         }
     }
@@ -324,7 +393,7 @@ final class SpotUploader {
         // Compress the image to JPEG
         guard let imageData = image.jpegData(compressionQuality: 0.7) else {
             completion(.failure(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."])))
-            SpotLogger.log(SpotUploaderLogs.imageConversionFailed)
+            SpotLogger.error("Image conversion failed for spot upload", details: [:])
             return
         }
 
@@ -332,7 +401,7 @@ final class SpotUploader {
         let filename = "spot_\(postId).jpg"
         let storageRef = Storage.storage().reference().child("spots/\(filename)")
 
-        SpotLogger.log(SpotUploaderLogs.imageUploadStarted, details: ["filename": filename])
+        SpotLogger.info("Uploading spot image to Firebase Storage", details: ["filename": filename])
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         metadata.customMetadata = [
@@ -343,25 +412,25 @@ final class SpotUploader {
         ]
         storageRef.putData(imageData, metadata: metadata) { _, error in
             if let error = error {
-                SpotLogger.log(SpotUploaderLogs.imageUploadFailed, details: ["error": error.localizedDescription])
+                SpotLogger.error("Upload spot image failed", details: ["error": error.localizedDescription])
                 completion(.failure(error))
                 return
             }
 
             storageRef.downloadURL { url, error in
                 if let error = error {
-                    SpotLogger.log(SpotUploaderLogs.downloadURLFailed, details: ["error": error.localizedDescription])
+                    SpotLogger.error("Get download URL failed", details: ["error": error.localizedDescription])
                     completion(.failure(error))
                     return
                 }
 
                 guard let imageUrl = url?.absoluteString else {
-                    SpotLogger.log(SpotUploaderLogs.downloadURLNil)
+                    SpotLogger.error("Download URL nil after image upload", details: [:])
                     completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.internalServerError, userInfo: [NSLocalizedDescriptionKey: "URL not found."])))
                     return
                 }
 
-                SpotLogger.log(SpotUploaderLogs.imageUploadedGeocodingStarted, details: ["postId": postId])
+                SpotLogger.info("Image uploaded; generating thumbnail and reverse geocoding", details: ["postId": postId])
                 // Generate a simple client-side thumbnail URL alias (server/CDN can replace later)
                 let thumbURL = imageUrl // Placeholder: same URL for now
                 let geocoder = CLGeocoder()
@@ -412,23 +481,23 @@ final class SpotUploader {
                                 data["authorIsPrivate"] = isPrivate
                             }
                         } catch {
-                            SpotLogger.log(SpotUploaderLogs.authorIsPrivateDenormalizationFailed, details: ["error": error.localizedDescription])
+                            SpotLogger.debug(.network, "Failed to denormalize authorIsPrivate", details: ["error": error.localizedDescription])
                         }
                         // Ensure the vibe tag exists globally (non-blocking)
                         Task { try? await VibeTagService.shared.ensureTagExists(name: vibeTag) }
                         do {
                             try await Firestore.firestore().collection("spots").document(postId).setData(data)
-                            SpotLogger.log(SpotUploaderLogs.spotCreated, details: ["postId": postId, "statusCode": 200])
+                            SpotLogger.info("Spot created", details: ["postId": postId])
                             completion(.success(()))
                         } catch {
-                            SpotLogger.log(SpotUploaderLogs.spotDocumentCreationFailed, details: ["error": error.localizedDescription, "postId": postId])
+                            SpotLogger.error("Create spot document failed", details: ["error": error.localizedDescription, "postId": postId])
                             // Attempt to clean up uploaded image if document creation fails
                             Task {
                                 do {
                                     try await storageRef.delete()
-                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleaned, details: ["postId": postId])
+                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleaned, details: ["postId": postId, "index": 0])
                                 } catch {
-                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "error": error.localizedDescription])
+                                    SpotLogger.log(SpotUploaderLogs.orphanedImageCleanupFailed, details: ["postId": postId, "index": 0, "error": error.localizedDescription])
                                 }
                             }
                             completion(.failure(error))

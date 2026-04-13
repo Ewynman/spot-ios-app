@@ -5,87 +5,127 @@ struct PostFlowView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var viewModel = PostFlowViewModel()
+    @AppStorage("hasAcceptedPostingRules") private var hasAcceptedPostingRules: Bool = false
+    @State private var showRulesSheet: Bool = false
+    /// `true` while we await a fresh `isEmailVerified` value from Firebase so we
+    /// never flash the "verification required" error on a stale cached token.
+    @State private var isVerifyingEmail: Bool = true
 
     var onPostSuccess: ((Spot) -> Void)?
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Constants.Colors.background
-                .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                if !viewModel.isEmailVerified {
-                    Spacer()
-                    VStack(spacing: 12) {
-                        Text("Email verification required to post")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                        Button(action: { dismiss() }) {
-                            Text("Close")
-                                .font(FontManager.buttonText())
-                                .foregroundColor(Constants.Colors.buttonText)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Constants.Colors.primary)
-                                .cornerRadius(20)
+        NavigationStack {
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    if isVerifyingEmail {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(Constants.Colors.primary)
+                        Spacer()
+                    } else if !authVM.isEmailVerified {
+                        VStack(spacing: 12) {
+                            Text("Email verification required to post")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                            Button(action: { dismiss() }) {
+                                Text("Close")
+                                    .font(FontManager.buttonText())
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(20)
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    .padding(16)
-                    Spacer()
-                } else {
-                    ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
+                        .padding(16)
+                        .background(Constants.Colors.background)
+                    } else {
+                        ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
-                    Group {
-                        switch viewModel.currentStep {
-                        case 1:
-                            PhotoSelectionView(selectedImages: $viewModel.selectedImages)
-                        case 2:
-                            LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
-                        case 3:
-                            VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
-                        default:
-                            EmptyView()
+                        Group {
+                            switch viewModel.currentStep {
+                            case 1:
+                                PhotoSelectionView(selectedImages: $viewModel.selectedImages)
+                            case 2:
+                                LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
+                            case 3:
+                                VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
+                            default:
+                                EmptyView()
+                            }
                         }
-                    }
-                    .transition(.asymmetric(
+                        .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
 
-                    NavigationButtonsView(
-                        currentStep: $viewModel.currentStep,
-                        totalSteps: viewModel.totalSteps,
-                        canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
-                        isPosting: viewModel.isPosting,
-                        onBack: { viewModel.goBack() },
-                        onNext: { viewModel.goNext() },
-                        onFinish: { viewModel.submitPost() }
-                    )
+                        NavigationButtonsView(
+                            currentStep: $viewModel.currentStep,
+                            totalSteps: viewModel.totalSteps,
+                            canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
+                            isPosting: viewModel.isPosting,
+                            onBack: { viewModel.goBack() },
+                            onNext: { viewModel.goNext() },
+                            onFinish: { viewModel.submitPost() }
+                        )
+                    }
                 }
-            }
-            .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .top)
 
-            VStack(spacing: 8) {
-                if viewModel.isUploading {
-                    ProgressBarView()
-                        .transition(.move(edge: .top))
+                VStack(spacing: 8) {
+                    if viewModel.isUploading {
+                        ProgressBarView()
+                            .transition(.move(edge: .top))
+                    }
+                    if viewModel.showToast {
+                        ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
+                            .transition(.move(edge: .top))
+                    }
+                    if viewModel.showSuccessBanner {
+                        SuccessToastView(message: "Spot posted!")
+                            .transition(.move(edge: .top))
+                    }
                 }
-                if viewModel.showToast {
-                    ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
-                        .transition(.move(edge: .top))
-                }
-                if viewModel.showSuccessBanner {
-                    SuccessToastView(message: "Spot posted!")
-                        .transition(.move(edge: .top))
+                .padding(.top, 8)
+            }
+            .background(Constants.Colors.background.ignoresSafeArea())
+        }
+        .ignoresSafeArea(.keyboard)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                CustomBackButton {
+                    dismiss()
                 }
             }
-            .padding(.top, 8)
         }
         .onAppear {
             viewModel.authViewModel = authVM
             viewModel.onPostSuccess = onPostSuccess
             viewModel.onShouldDismiss = { dismiss() }
+            Task {
+                _ = await authVM.checkVerificationStatus()
+                isVerifyingEmail = false
+                showRulesIfNeeded()
+            }
+        }
+        .onChange(of: authVM.isEmailVerified) { _, newValue in
+            if newValue { showRulesIfNeeded() }
+        }
+        .sheet(isPresented: $showRulesSheet) {
+            PostingRulesView(onAgree: {
+                hasAcceptedPostingRules = true
+                showRulesSheet = false
+            })
+            .environmentObject(authVM)
+        }
+    }
+
+    private func showRulesIfNeeded() {
+        if authVM.isEmailVerified && !hasAcceptedPostingRules {
+            showRulesSheet = true
         }
     }
 }
