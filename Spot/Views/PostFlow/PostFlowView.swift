@@ -7,9 +7,9 @@ struct PostFlowView: View {
     @StateObject private var viewModel = PostFlowViewModel()
     @AppStorage("hasAcceptedPostingRules") private var hasAcceptedPostingRules: Bool = false
     @State private var showRulesSheet: Bool = false
-    /// `true` while we await a fresh `isEmailVerified` value from Firebase so we
-    /// never flash the "verification required" error on a stale cached token.
     @State private var isVerifyingEmail: Bool = true
+    @State private var showVerifyEmailAlert: Bool = false
+    @State private var showConfirmEmailSheet: Bool = false
 
     var onPostSuccess: ((Spot) -> Void)?
 
@@ -18,29 +18,42 @@ struct PostFlowView: View {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     if isVerifyingEmail {
-                        Spacer()
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(Constants.Colors.primary)
-                        Spacer()
-                    } else if !authVM.isEmailVerified {
-                        VStack(spacing: 12) {
-                            Text("Email verification required to post")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.primary)
-                            Button(action: { dismiss() }) {
-                                Text("Close")
-                                    .font(FontManager.buttonText())
-                                    .foregroundColor(Constants.Colors.buttonText)
-                                    .padding()
-                                    .frame(maxWidth: .infinity)
-                                    .background(Constants.Colors.primary)
-                                    .cornerRadius(20)
-                            }
-                            .buttonStyle(PlainButtonStyle())
+                        ZStack {
+                            Constants.Colors.background
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(Constants.Colors.primary)
+                                .controlSize(.large)
                         }
-                        .padding(16)
-                        .background(Constants.Colors.background)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if !authVM.isEmailVerified {
+                        VStack(spacing: 0) {
+                            Spacer()
+                            VStack(spacing: 16) {
+                                Text("Verify your email to post")
+                                    .font(FontManager.sectionHeader())
+                                    .foregroundColor(Constants.Colors.primary)
+                                    .multilineTextAlignment(.center)
+                                Text("We sent a link to your inbox. After you verify, tap \"I've verified\" on the next screen.")
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 24)
+                                Button(action: { showConfirmEmailSheet = true }) {
+                                    Text("Open verification")
+                                        .font(FontManager.buttonText())
+                                        .foregroundColor(Constants.Colors.buttonText)
+                                        .padding()
+                                        .frame(maxWidth: .infinity)
+                                        .background(Constants.Colors.primary)
+                                        .cornerRadius(20)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.horizontal, 24)
+                            }
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
@@ -72,7 +85,7 @@ struct PostFlowView: View {
                         )
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 VStack(spacing: 8) {
                     if viewModel.isUploading {
@@ -101,18 +114,40 @@ struct PostFlowView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
             viewModel.authViewModel = authVM
             viewModel.onPostSuccess = onPostSuccess
             viewModel.onShouldDismiss = { dismiss() }
-            Task {
-                _ = await authVM.checkVerificationStatus()
-                isVerifyingEmail = false
+            isVerifyingEmail = true
+            _ = await authVM.checkVerificationStatus()
+            isVerifyingEmail = false
+            if authVM.isEmailVerified {
                 showRulesIfNeeded()
+            } else {
+                showVerifyEmailAlert = true
             }
         }
         .onChange(of: authVM.isEmailVerified) { _, newValue in
-            if newValue { showRulesIfNeeded() }
+            if newValue {
+                showVerifyEmailAlert = false
+                showRulesIfNeeded()
+            }
+        }
+        .alert("Verify your email", isPresented: $showVerifyEmailAlert) {
+            Button("Open verification") {
+                showConfirmEmailSheet = true
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("You need a verified email to post. Check your inbox for the link we sent you.")
+        }
+        .sheet(isPresented: $showConfirmEmailSheet, onDismiss: {
+            Task {
+                _ = await authVM.checkVerificationStatus()
+            }
+        }) {
+            ConfirmEmailView()
+                .environmentObject(authVM)
         }
         .sheet(isPresented: $showRulesSheet) {
             PostingRulesView(onAgree: {

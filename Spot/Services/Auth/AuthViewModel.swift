@@ -457,10 +457,13 @@ class AuthViewModel: ObservableObject {
         guard let user = Auth.auth().currentUser else { return false }
         do {
             try await user.reload()
-            let verified = user.isEmailVerified
+            // Read from currentUser after reload so we never use a stale in-memory snapshot.
+            guard let refreshed = Auth.auth().currentUser else { return false }
+            let verified = refreshed.isEmailVerified
             if verified { SpotLogger.log(AuthViewModelLogs.emailVerified) }
             await MainActor.run { self.isEmailVerified = verified }
-            if verified, let uid = user.uid as String? {
+            if verified {
+                let uid = refreshed.uid
                 // Persist server-side marker for analytics and visibility
                 try? await Firestore.firestore().collection("users").document(uid).setData(["isVerified": true], merge: true)
             }
