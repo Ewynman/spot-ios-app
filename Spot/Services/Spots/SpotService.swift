@@ -7,7 +7,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseAuth
 import FirebaseStorage
 
 final class SpotService {
@@ -24,7 +23,7 @@ final class SpotService {
     }
 
     func createSpot(imageURL: String, latitude: Double, longitude: Double, vibeTag: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = Auth.auth().currentUser?.uid else {
+        guard let userId = SpotAuthBridge.currentUserId else {
             completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated."])))
             return
         }
@@ -191,7 +190,7 @@ final class SpotService {
     }
 
     private func checkIfUserIsBlocked(_ userId: String, completion: @escaping (Bool) -> Void) {
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
+        guard let currentUserId = SpotAuthBridge.currentUserId else {
             completion(false)
             return
         }

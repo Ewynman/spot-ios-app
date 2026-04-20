@@ -1,5 +1,4 @@
 import Foundation
-import FirebaseAuth
 import FirebaseFirestore
 
 /// Session-scoped, in-memory cache for author privacy and follow state.
@@ -107,7 +106,7 @@ actor AuthorPrivacyCache {
     /// Returns whether a spot authored by `authorId` should be visible to the current viewer.
     /// - Returns: true/false if known, or nil if cache-miss (will log and caller may decide to hide until warm()).
     func isAllowed(authorId: String) -> Bool? {
-        guard let viewerId = Auth.auth().currentUser?.uid else { return true }
+        guard let viewerId = SpotAuthBridge.currentUserId else { return true }
         if viewerId == authorId { return true }
 
         // Blocked users drop regardless of privacy
@@ -125,7 +124,7 @@ actor AuthorPrivacyCache {
     /// Apply privacy + blocked-user filter to spots. Will warm cache for unknown authors before evaluating.
     func filter(spots: [Spot]) async -> [Spot] {
         guard !spots.isEmpty else { return spots }
-        let viewerId = Auth.auth().currentUser?.uid
+        let viewerId = SpotAuthBridge.currentUserId
         let authors = Set(spots.compactMap { $0.userId })
         await warm(authorIds: authors)
 
@@ -152,7 +151,7 @@ actor AuthorPrivacyCache {
     // MARK: Internals
 
     private func refreshFollowingIfNeeded() async {
-        guard let viewerId = Auth.auth().currentUser?.uid else { return }
+        guard let viewerId = SpotAuthBridge.currentUserId else { return }
         if Date().timeIntervalSince(followingFetchedAt) < ttl { return }
         do {
             let doc = try await db.collection("users").document(viewerId).getDocument()
@@ -165,7 +164,7 @@ actor AuthorPrivacyCache {
     }
 
     private func refreshBlockedIfNeeded() async {
-        guard let viewerId = Auth.auth().currentUser?.uid else { return }
+        guard let viewerId = SpotAuthBridge.currentUserId else { return }
         if Date().timeIntervalSince(blockedFetchedAt) < ttl { return }
         do {
             let doc = try await db.collection("users").document(viewerId).getDocument()

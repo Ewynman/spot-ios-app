@@ -7,7 +7,6 @@
 
 import SwiftUI
 import Foundation
-import FirebaseAuth
 import FirebaseFirestore
 
 @MainActor
@@ -86,7 +85,7 @@ final class DeepLinkState: ObservableObject {
         }
 
         // Check if user is authenticated before navigating
-        if Auth.auth().currentUser != nil {
+        if SpotAuthBridge.currentUserId != nil {
             // Navigate immediately for warm start
             navigateToSpot(spotId: spotId, origin: origin, isColdStart: isColdStart)
         } else {
@@ -229,7 +228,7 @@ final class DeepLinkState: ObservableObject {
         }
         
         // Check if user is authenticated before checking pro status
-        if Auth.auth().currentUser != nil {
+        if SpotAuthBridge.currentUserId != nil {
             checkProStatusAndShowSuccess()
         } else {
             // Store for later when user authenticates
@@ -240,7 +239,7 @@ final class DeepLinkState: ObservableObject {
     
     private func checkProStatusAndShowSuccess() {
         Task {
-            guard let userId = Auth.auth().currentUser?.uid else {
+            guard let userId = SpotAuthBridge.currentUserId else {
                 SpotLogger.log(DeepLinkStateLogs.noUserIdForSubscriptionCheck)
                 return
             }

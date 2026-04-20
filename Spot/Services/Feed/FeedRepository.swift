@@ -1,7 +1,6 @@
 import Foundation
 import _LocationEssentials
 import FirebaseFirestore
-import FirebaseAuth
 
 final class FeedRepository: ObservableObject {
     static let shared = FeedRepository()
@@ -124,7 +123,7 @@ final class FeedRepository: ObservableObject {
 
     // MARK: - Context helpers
     private func currentUserVibeStats() -> [String: Int] {
-        guard let uid = AuthViewModel().userId ?? Auth.auth().currentUser?.uid else { return [:] }
+        guard let uid = AuthViewModel().userId ?? SpotAuthBridge.currentUserId else { return [:] }
         let sema = DispatchSemaphore(value: 0)
         var result: [String: Int] = [:]
         Firestore.firestore().collection("users").document(uid).getDocument { snap, _ in

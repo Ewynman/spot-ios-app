@@ -6,8 +6,7 @@
 //
 
 import Foundation
-import FirebaseFirestore
-import FirebaseAuth
+import Supabase
 
 struct ProfileData {
     let username: String
@@ -20,6 +19,79 @@ struct ProfileData {
     let spots: [Spot]
 }
 
+private enum ProfileSupabaseSchema {
+    struct PublicUserRow: Decodable {
+        let id: UUID
+        let username: String
+        let profile_image_url: String?
+        let is_private: Bool
+        let is_pro: Bool
+        let pro_until: String?
+    }
+
+    struct IdRow: Decodable {
+        let id: UUID
+    }
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let iso8601Plain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func parseProUntil(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let d = iso8601Fractional.date(from: raw) { return d }
+        if let d = iso8601Plain.date(from: raw) { return d }
+        return nil
+    }
+
+    /// Matches prior Firestore semantics: explicit `pro_until` wins; otherwise use `is_pro` flag.
+    static func effectiveIsPro(proUntilRaw: String?, isPro: Bool) -> Bool {
+        if let until = parseProUntil(proUntilRaw) {
+            return until > Date()
+        }
+        return isPro
+    }
+
+    static func hasFollowEdge(
+        followerId: UUID,
+        followeeId: UUID
+    ) async throws -> Bool {
+        let rows: [IdRow] = try await supabase
+            .from("follows")
+            .select("id")
+            .eq("follower_id", value: followerId)
+            .eq("followee_id", value: followeeId)
+            .limit(1)
+            .execute()
+            .value
+        return !rows.isEmpty
+    }
+
+    static func hasPendingFollowRequest(
+        requesterId: UUID,
+        targetUserId: UUID
+    ) async throws -> Bool {
+        let rows: [IdRow] = try await supabase
+            .from("follow_requests")
+            .select("id")
+            .eq("requester_id", value: requesterId)
+            .eq("target_user_id", value: targetUserId)
+            .eq("status", value: "pending")
+            .limit(1)
+            .execute()
+            .value
+        return !rows.isEmpty
+    }
+}
+
 enum ProfileService {
     static func fetchProfile(for userId: String?) async throws -> ProfileData {
         let id: String
@@ -27,7 +99,7 @@ enum ProfileService {
         if let providedId = userId {
             id = providedId
         } else {
-            guard let currentId = Auth.auth().currentUser?.uid else {
+            guard let currentId = SpotAuthBridge.currentUserId else {
                 throw NSError(domain: "No current user ID", code: 0)
             }
             id = currentId
@@ -35,84 +107,62 @@ enum ProfileService {
 
         SpotLogger.log(ProfileServiceLogs.fetchingProfileData, details: ["userId": id])
 
-        let userDoc = try await Firestore.firestore()
-            .collection("users")
-            .document(id)
-            .getDocument()
-
-        guard let data = userDoc.data() else {
-            throw NSError(domain: "User not found", code: 0)
+        guard let targetUUID = UUID(uuidString: id) else {
+            throw NSError(
+                domain: "ProfileService",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid user id (expected UUID)."]
+            )
         }
 
-        let username = data["username"] as? String ?? "User"
-        let profileImageURL = data["profileImageURL"] as? String
-        let targetIsPrivate = data["isPrivate"] as? Bool ?? false
-        
-        // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
-        var proUntilDate: Date? = nil
-        if let timestamp = data["proUntil"] as? Timestamp {
-            proUntilDate = timestamp.dateValue()
-        } else if let timestamp = data["proUntil"] as? Date {
-            proUntilDate = timestamp
-        }
-        
-        // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
-        let targetIsPro: Bool
-        if let proUntil = proUntilDate {
-            targetIsPro = proUntil > Date()
-        } else {
-            // Backward compatibility: check isPro boolean
-            targetIsPro = data["isPro"] as? Bool ?? false
+        let row: ProfileSupabaseSchema.PublicUserRow
+        do {
+            row = try await supabase
+                .from("users")
+                .select("id,username,profile_image_url,is_private,is_pro,pro_until")
+                .eq("id", value: targetUUID)
+                .single()
+                .execute()
+                .value
+        } catch {
+            throw NSError(
+                domain: "User not found",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]
+            )
         }
 
-        let currentUserId = Auth.auth().currentUser?.uid
+        let username = row.username.isEmpty ? "User" : row.username
+        let profileImageURL = row.profile_image_url
+        let targetIsPrivate = row.is_private
+        let targetIsPro = ProfileSupabaseSchema.effectiveIsPro(proUntilRaw: row.pro_until, isPro: row.is_pro)
+
+        let currentUserId = SpotAuthBridge.currentUserId
         var isFollowing = false
         var hasRequested = false
         var canView = true
-        if let currentUserId, currentUserId != id {
-            let viewerDoc = try await Firestore.firestore().collection("users").document(currentUserId).getDocument()
-            let following = viewerDoc.data()? ["following"] as? [String] ?? []
-            let requested = viewerDoc.data()? ["requestedFollows"] as? [String] ?? []
-            isFollowing = following.contains(id)
-            hasRequested = requested.contains(id)
+        if let currentUserId, currentUserId != id, let viewerUUID = UUID(uuidString: currentUserId) {
+            isFollowing = (try? await ProfileSupabaseSchema.hasFollowEdge(
+                followerId: viewerUUID,
+                followeeId: targetUUID
+            )) ?? false
+            hasRequested = (try? await ProfileSupabaseSchema.hasPendingFollowRequest(
+                requesterId: viewerUUID,
+                targetUserId: targetUUID
+            )) ?? false
             canView = !targetIsPrivate || isFollowing
         }
 
-        let spotsSnapshot: QuerySnapshot?
+        let spots: [Spot]
         if canView {
-            spotsSnapshot = try await Firestore.firestore()
-                .collection("spots")
-                .whereField("userId", isEqualTo: id)
-                .order(by: "createdAt", descending: true)
-                .getDocuments()
+            spots = try await SpotSupabaseRepository.fetchSpotsForUser(
+                userId: targetUUID,
+                authorUsername: username,
+                authorProfileImageURL: profileImageURL
+            )
         } else {
-            spotsSnapshot = nil
+            spots = []
         }
-
-        let spots: [Spot] = try await {
-            guard let spotsSnapshot else { return [] }
-            return try await withThrowingTaskGroup(of: Spot?.self) { group in
-                for document in spotsSnapshot.documents {
-                    group.addTask {
-                        return try await Spot.fromDocument(document)
-                    }
-                }
-
-                var validSpots: [Spot] = []
-                for try await spot in group {
-                    if let spot = spot {
-                        validSpots.append(spot)
-                    }
-                }
-                // Ensure newest-first descending order (createdAt desc; tie-break by id)
-                return validSpots.sorted { lhs, rhs in
-                    let l = lhs.createdAt ?? .distantPast
-                    let r = rhs.createdAt ?? .distantPast
-                    if l != r { return l > r }
-                    return (lhs.id ?? "") > (rhs.id ?? "")
-                }
-            }
-        }()
 
         return ProfileData(
             username: username,

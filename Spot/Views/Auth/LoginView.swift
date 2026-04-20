@@ -6,30 +6,22 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var isLoggedIn = false
     @State private var resetMessage: String?
     @Environment(\.dismiss) var dismiss
 
     private func handleLoginError(_ error: Error) -> String {
-        let errorCode = (error as NSError).code
-        switch errorCode {
-        case 17008: // Invalid email
-            return "Please enter a valid email address"
-        case 17009: // Wrong password
-            return "Incorrect email or password"
-        case 17011: // User not found
-            return "Incorrect email or password"
-        case 17010: // Network error
-            return "Network error. Please check your connection"
-        default:
-            return "Incorrect email or password"
+        let text = error.localizedDescription.lowercased()
+        if text.contains("network") || text.contains("internet") {
+            return "Network error. Please check your connection."
         }
+        return "Incorrect email or password."
     }
 
     var body: some View {
@@ -113,14 +105,20 @@ struct LoginView: View {
                         isLoading = true
                         errorMessage = nil
 
-                        AuthService.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password) { (result: Result<Void, Error>) in
-                            DispatchQueue.main.async {
-                                isLoading = false
-                                switch result {
-                                case .success:
+                        Task {
+                            do {
+                                _ = try await supabase.auth.signIn(
+                                    email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                                    password: password
+                                )
+                                await MainActor.run {
+                                    isLoading = false
                                     SpotLogger.log(LoginViewLogs.loginSuccess)
-                                    isLoggedIn = true
-                                case .failure(let error):
+                                    dismiss()
+                                }
+                            } catch {
+                                await MainActor.run {
+                                    isLoading = false
                                     errorMessage = handleLoginError(error)
                                     SpotLogger.log(LoginViewLogs.loginFailed, details: ["error": error.localizedDescription])
                                 }
@@ -174,9 +172,6 @@ struct LoginView: View {
 
                     Spacer()
                 }
-            }
-            .navigationDestination(isPresented: $isLoggedIn) {
-                HomepageView()
             }
         }
         .navigationBarBackButtonHidden(true)

@@ -30,6 +30,7 @@
 		644D8BD12E29A5450098D191 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BD02E29A5450098D191 /* FirebaseRemoteConfig */; };
 		644D8BD32E29A5450098D191 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BD22E29A5450098D191 /* FirebaseStorage */; };
 		644D8BD52E29A5450098D191 /* FirebaseStorageCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BD42E29A5450098D191 /* FirebaseStorageCombine-Community */; };
+		649E00012E20429E00DC9E90 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 649E00022E20429E00DC9E90 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -116,6 +117,7 @@
 				644D8BD32E29A5450098D191 /* FirebaseStorage in Frameworks */,
 				644D8BB92E29A5450098D191 /* FirebaseCore in Frameworks */,
 				644D8BB72E29A5450098D191 /* FirebaseAuthCombine-Community in Frameworks */,
+				649E00012E20429E00DC9E90 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,6 +203,7 @@
 				644D8BD02E29A5450098D191 /* FirebaseRemoteConfig */,
 				644D8BD22E29A5450098D191 /* FirebaseStorage */,
 				644D8BD42E29A5450098D191 /* FirebaseStorageCombine-Community */,
+				649E00022E20429E00DC9E90 /* Supabase */,
 			);
 			productName = Spot;
 			productReference = 6428440D2E20429B00DC9E8A /* Spot.app */;
@@ -287,6 +290,7 @@
 			packageReferences = (
 				644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				647DE9C52E6D0EAB008EFD3F /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */,
+				649E00032E20429E00DC9E90 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6428440E2E20429B00DC9E8A /* Products */;
@@ -679,6 +683,14 @@
 				minimumVersion = 0.61.0;
 			};
 		};
+		649E00032E20429E00DC9E90 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase-community/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -796,6 +808,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = "FirebaseStorageCombine-Community";
+		};
+		649E00022E20429E00DC9E90 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 649E00032E20429E00DC9E90 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -6,14 +6,13 @@
 //
 
 import SwiftUI
-import FirebaseAuth
-import FirebaseFirestore
 
 struct FollowRequestsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var items: [FollowRequest] = []
     @State private var isLoading: Bool = false
-    @State private var last: DocumentSnapshot?
+    /// Next offset for Supabase range pagination; nil when no more pages.
+    @State private var nextPageStart: Int?
     @State private var hasMore: Bool = true
     @State private var processing: Set<String> = []
 
@@ -137,11 +136,16 @@ struct FollowRequestsView: View {
 
     // MARK: Data
     private func refresh() async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        await MainActor.run { isLoading = true; items = []; last = nil; hasMore = true }
+        guard let uid = SpotAuthBridge.currentUserId else { return }
+        await MainActor.run { isLoading = true; items = []; nextPageStart = nil; hasMore = true }
         do {
-            let page = try await service.fetchPage(for: uid, last: nil, pageSize: pageSize)
-            await MainActor.run { items = page.items; last = page.last; hasMore = (page.items.count == pageSize); isLoading = false }
+            let page = try await service.fetchPage(for: uid, start: 0, pageSize: pageSize)
+            await MainActor.run {
+                items = page.items
+                nextPageStart = page.nextStart
+                hasMore = page.nextStart != nil
+                isLoading = false
+            }
             SpotLogger.log(FollowRequestsViewLogs.followRequestsOpened)
         } catch {
             await MainActor.run { isLoading = false }
@@ -150,14 +154,14 @@ struct FollowRequestsView: View {
     }
 
     private func loadMore() async {
-        guard hasMore, !isLoading, let uid = Auth.auth().currentUser?.uid else { return }
+        guard hasMore, !isLoading, let uid = SpotAuthBridge.currentUserId, let start = nextPageStart else { return }
         await MainActor.run { isLoading = true }
         do {
-            let page = try await service.fetchPage(for: uid, last: last, pageSize: pageSize)
+            let page = try await service.fetchPage(for: uid, start: start, pageSize: pageSize)
             await MainActor.run {
                 items.append(contentsOf: page.items)
-                last = page.last
-                hasMore = (page.items.count == pageSize)
+                nextPageStart = page.nextStart
+                hasMore = page.nextStart != nil
                 isLoading = false
             }
         } catch {
@@ -167,7 +171,7 @@ struct FollowRequestsView: View {
     }
 
     private func accept(_ req: FollowRequest) async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = SpotAuthBridge.currentUserId else { return }
         processing.insert(req.id)
         do {
             try await service.accept(requesterUid: req.requesterUid, targetUid: uid)
@@ -184,7 +188,7 @@ struct FollowRequestsView: View {
     }
 
     private func deny(_ req: FollowRequest) async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = SpotAuthBridge.currentUserId else { return }
         processing.insert(req.id)
         do {
             try await service.deny(requesterUid: req.requesterUid, targetUid: uid)

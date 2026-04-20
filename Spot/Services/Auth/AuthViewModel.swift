@@ -6,14 +6,19 @@
 //
 
 import Foundation
+import UIKit
 import FirebaseAuth
 import FirebaseFirestore
+import Supabase
 
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isLoading: Bool = true
     @Published var userId: String?
     @Published var isEmailVerified: Bool = false
+    /// True when signup finished without a session (email confirmation / OTP pending).
+    @Published var awaitingEmailVerification: Bool = false
+    @Published var verificationEmailMaskSource: String = ""
     @Published var emailResendAvailableAt: Date?
     @Published var likedSpots: [String] = []
     @Published var bookmarkedSpots: [String] = []
@@ -22,109 +27,98 @@ class AuthViewModel: ObservableObject {
     @Published var proUntil: Date? = nil
     @Published var customVibeTags: [String] = []
 
-    private var handle: AuthStateDidChangeListenerHandle?
-    private var userDocListener: ListenerRegistration?
+    private var supabaseAuthTask: Task<Void, Never>?
 
     init() {
-        listenToAuthState()
+        listenToSupabaseAuthState()
     }
 
     deinit {
-        if let handle = handle {
-            Auth.auth().removeStateDidChangeListener(handle)
-        }
+        supabaseAuthTask?.cancel()
     }
 
     private var previousUserId: String?
-    
-    private func listenToAuthState() {
-        handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            if let user = user {
-                SpotLogger.log(AuthViewModelLogs.authStateSignedIn, details: ["uid": user.uid])
-                DispatchQueue.main.async {
-                    let isNewLogin = self?.previousUserId == nil && self?.userId == nil
-                    self?.userId = user.uid
-                    self?.isAuthenticated = true
-                    self?.isLoading = false
-                    self?.isEmailVerified = user.isEmailVerified
-                    self?.isPro = false
-                    self?.proUntil = nil
-                    self?.customVibeTags = []
-                    
-                    // Set user ID for analytics
-                    AnalyticsService.shared.setUserId(user.uid)
-                    
-                    // Track login if this is a new session
-                    if isNewLogin {
-                        AnalyticsService.shared.logEvent("user_login", parameters: [
-                            "email_verified": user.isEmailVerified
-                        ])
-                    }
-                    
-                    self?.refreshUserSpotLists()
-                    self?.refreshBlockedUsers()
-                    self?.refreshUserFlags()
-                    // On first login after a fresh install, trigger permission prompts once.
-                    if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
-                        SpotLogger.log(AuthViewModelLogs.autoPromptPermissions)
-                        PermissionManager.shared.requestPermissionsIfNeeded()
-                    }
-                    self?.previousUserId = user.uid
-                }
-                // Live observe user flags (e.g., isPro, proUntil) without restart
-                self?.userDocListener?.remove()
-                self?.userDocListener = Firestore.firestore().collection("users").document(user.uid)
-                    .addSnapshotListener { [weak self] snapshot, _ in
-                        guard let data = snapshot?.data() else { return }
-                        let vibes = data["customVibeTags"] as? [String] ?? []
-                        
-                        // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
-                        let proUntilDate: Date?
-                        if let timestamp = data["proUntil"] as? Timestamp {
-                            proUntilDate = timestamp.dateValue()
-                        } else if let timestamp = data["proUntil"] as? Date {
-                            proUntilDate = timestamp
-                        } else {
-                            proUntilDate = nil
-                        }
-                        
-                        // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
-                        let isProValue: Bool
-                        if let proUntil = proUntilDate {
-                            isProValue = proUntil > Date()
-                        } else {
-                            // Backward compatibility: check isPro boolean
-                            isProValue = data["isPro"] as? Bool ?? false
-                        }
-                        
-                        DispatchQueue.main.async {
-                            self?.isPro = isProValue
-                            self?.proUntil = proUntilDate
-                            self?.customVibeTags = vibes
-                        }
-                    }
-            } else {
-                DispatchQueue.main.async {
-                    SpotLogger.log(AuthViewModelLogs.authStateSignedOut)
-                    // Clear analytics user ID on sign out
-                    AnalyticsService.shared.setUserId(nil)
-                    
-                    self?.userId = nil
-                    self?.isAuthenticated = false
-                    self?.isLoading = false
-                    self?.isEmailVerified = false
-                    self?.likedSpots = []
-                    self?.bookmarkedSpots = []
-                    self?.blockedUsers = []
-                    self?.isPro = false
-                    self?.proUntil = nil
-                    self?.customVibeTags = []
-                }
-                self?.previousUserId = nil
-                self?.userDocListener?.remove()
-                self?.userDocListener = nil
+
+    private func listenToSupabaseAuthState() {
+        supabaseAuthTask = Task { @MainActor [weak self] in
+            for await (event, session) in supabase.auth.authStateChanges {
+                self?.applySupabaseAuthChange(event: event, session: session)
             }
         }
+    }
+
+    @MainActor
+    private func applySupabaseAuthChange(event: AuthChangeEvent, session: Session?) {
+        switch event {
+        case .initialSession, .signedIn, .tokenRefreshed, .userUpdated:
+            guard let session else {
+                clearSignedOutState()
+                return
+            }
+            if session.isExpired {
+                return
+            }
+            let user = session.user
+            SpotLogger.log(AuthViewModelLogs.authStateSignedIn, details: ["uid": user.id.uuidString])
+
+            let isNewLogin = previousUserId == nil && userId == nil
+            userId = user.id.uuidString
+            SpotAuthBridge.setSessionUser(id: user.id.uuidString, email: user.email, emailVerified: user.emailConfirmedAt != nil)
+            isAuthenticated = true
+            isLoading = false
+            isEmailVerified = user.emailConfirmedAt != nil
+            awaitingEmailVerification = false
+            verificationEmailMaskSource = user.email ?? verificationEmailMaskSource
+
+            AnalyticsService.shared.setUserId(user.id.uuidString)
+
+            if isNewLogin {
+                AnalyticsService.shared.logEvent("user_login", parameters: [
+                    "email_verified": user.emailConfirmedAt != nil
+                ])
+            }
+
+            refreshUserSpotLists()
+            refreshBlockedUsers()
+            refreshUserFlags()
+            Task {
+                await SupabaseUserService.shared.syncCurrentUser()
+            }
+            if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
+                SpotLogger.log(AuthViewModelLogs.autoPromptPermissions)
+                PermissionManager.shared.requestPermissionsIfNeeded()
+            }
+            previousUserId = user.id.uuidString
+
+            refreshUserFlags()
+            refreshBlockedUsers()
+
+        case .signedOut:
+            SpotLogger.log(AuthViewModelLogs.authStateSignedOut)
+            clearSignedOutState()
+
+        case .passwordRecovery, .userDeleted, .mfaChallengeVerified:
+            break
+        }
+    }
+
+    @MainActor
+    private func clearSignedOutState() {
+        AnalyticsService.shared.setUserId(nil)
+        SpotAuthBridge.setSessionUser(id: nil, email: nil)
+        userId = nil
+        isAuthenticated = false
+        isLoading = false
+        isEmailVerified = false
+        awaitingEmailVerification = false
+        verificationEmailMaskSource = ""
+        likedSpots = []
+        bookmarkedSpots = []
+        blockedUsers = []
+        isPro = false
+        proUntil = nil
+        customVibeTags = []
+        previousUserId = nil
     }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -164,15 +158,17 @@ class AuthViewModel: ObservableObject {
     }
 
     @MainActor func signOut() {
-        do {
-            try AuthService.shared.signOut()
-            isAuthenticated = false
-            // Clear deep link state when user logs out
-            DeepLinkState.shared.clearUserSession()
-            // Clear privacy session cache (actor)
-            Task { await AuthorPrivacyCache.shared.clear() }
-        } catch {
-            SpotLogger.log(AuthViewModelLogs.signOutFailed, details: ["error": error.localizedDescription])
+        Task {
+            do {
+                try await supabase.auth.signOut()
+            } catch {
+                SpotLogger.log(AuthViewModelLogs.signOutFailed, details: ["error": error.localizedDescription])
+            }
+            await MainActor.run {
+                self.isAuthenticated = false
+                DeepLinkState.shared.clearUserSession()
+            }
+            await AuthorPrivacyCache.shared.clear()
         }
     }
 
@@ -189,11 +185,17 @@ class AuthViewModel: ObservableObject {
     }
 
     func refreshBlockedUsers() {
-        guard let userId = userId else { return }
+        guard let userId = userId, let uid = UUID(uuidString: userId) else { return }
         Task {
             do {
-                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                let blocked = userDoc.data()?["blockedUsers"] as? [String] ?? []
+                struct Row: Decodable { let blocked_user_id: UUID }
+                let rows: [Row] = try await supabase
+                    .from("user_blocks")
+                    .select("blocked_user_id")
+                    .eq("blocker_id", value: uid)
+                    .execute()
+                    .value
+                let blocked = rows.map { $0.blocked_user_id.uuidString }
                 await MainActor.run {
                     self.blockedUsers = blocked
                 }
@@ -205,37 +207,33 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - User flags (Pro)
     func refreshUserFlags() {
-        guard let userId = userId else { return }
+        guard let userId = userId, let uid = UUID(uuidString: userId) else { return }
         Task {
             do {
-                let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                let data = userDoc.data() ?? [:]
-                let vibes = data["customVibeTags"] as? [String] ?? []
-                
-                // Check proUntil timestamp (new method) or fallback to isPro boolean (backward compatibility)
-                let proUntilDate: Date? = {
-                    if let timestamp = data["proUntil"] as? Timestamp {
-                        return timestamp.dateValue()
-                    }
-                    if let timestamp = data["proUntil"] as? Date {
-                        return timestamp
-                    }
-                    return nil
-                }()
+                struct FlagsRow: Decodable {
+                    let is_pro: Bool
+                    let pro_until: String?
+                }
+                let row: FlagsRow = try await supabase
+                    .from("users")
+                    .select("is_pro,pro_until")
+                    .eq("id", value: uid)
+                    .single()
+                    .execute()
+                    .value
 
-                // Compute isPro from proUntil (if date exists and is in future) or fallback to isPro boolean
+                let proUntilDate = SpotSupabaseRepository.parseTimestamptz(row.pro_until)
                 let isProValue: Bool
-                if let proUntil = proUntilDate {
-                    isProValue = proUntil > Date()
+                if let until = proUntilDate {
+                    isProValue = until > Date()
                 } else {
-                    // Backward compatibility: check isPro boolean
-                    isProValue = data["isPro"] as? Bool ?? false
+                    isProValue = row.is_pro
                 }
 
                 await MainActor.run {
                     self.isPro = isProValue
                     self.proUntil = proUntilDate
-                    self.customVibeTags = vibes
+                    self.customVibeTags = []
                 }
             } catch {
                 SpotLogger.log(AuthViewModelLogs.refreshUserFlagsFailed, details: ["error": error.localizedDescription])
@@ -244,15 +242,27 @@ class AuthViewModel: ObservableObject {
     }
 
     func setProActive(_ active: Bool, proUntil: Date? = nil) async {
-        guard let userId = userId else { return }
+        guard let userId, let uid = UUID(uuidString: userId) else { return }
         do {
-            var fields: [String: Any] = ["isPro": active]
-            if active, let expiry = proUntil {
-                fields["proUntil"] = Timestamp(date: expiry)
-            } else if !active {
-                fields["proUntil"] = FieldValue.delete()
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let proUntilString: String? = {
+                if active, let expiry = proUntil { return formatter.string(from: expiry) }
+                if !active { return nil }
+                return nil
+            }()
+
+            struct ProPatch: Encodable {
+                let is_pro: Bool
+                let pro_until: String?
             }
-            try await Firestore.firestore().collection("users").document(userId).setData(fields, merge: true)
+
+            try await supabase
+                .from("users")
+                .update(ProPatch(is_pro: active, pro_until: proUntilString))
+                .eq("id", value: uid)
+                .execute()
+
             await MainActor.run {
                 self.isPro = active
                 self.proUntil = active ? proUntil : nil
@@ -310,36 +320,48 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Settings Updates (async Firestore)
+    // MARK: - Settings Updates (Supabase `public.users` + auth metadata)
     func updateUsername(_ username: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else {
+        guard let userId = userId, let uid = UUID(uuidString: userId) else {
             completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
             return
         }
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newLower = trimmed.lowercased()
         Task {
             do {
-                // Check uniqueness
-                let snapshot = try await Firestore.firestore()
-                    .collection("users")
-                    .whereField("username", isEqualTo: username)
-                    .limit(to: 1)
-                    .getDocuments()
-                if let doc = snapshot.documents.first, doc.documentID != userId {
-                    await MainActor.run {
-                        completion(.failure(NSError(domain: "AuthVM", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username is already taken"])))
+                struct NameRow: Decodable { let username_lower: String }
+                let current: NameRow = try await supabase
+                    .from("users")
+                    .select("username_lower")
+                    .eq("id", value: uid)
+                    .single()
+                    .execute()
+                    .value
+
+                if newLower != current.username_lower {
+                    let available = await isUsernameAvailable(trimmed)
+                    if !available {
+                        await MainActor.run {
+                            completion(.failure(NSError(domain: "AuthVM", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username is already taken"])))
+                        }
+                        return
                     }
-                    return
                 }
 
-                try await Firestore.firestore()
-                    .collection("users")
-                    .document(userId)
-                    .updateData(["username": username])
-
-                if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
-                    changeReq.displayName = username
-                    try? await commitProfileChange(changeReq)
+                struct UserPatch: Encodable {
+                    let username: String
+                    let username_lower: String
                 }
+                try await supabase
+                    .from("users")
+                    .update(UserPatch(username: trimmed, username_lower: newLower))
+                    .eq("id", value: uid)
+                    .execute()
+
+                try await supabase.auth.update(
+                    user: UserAttributes(data: ["username": .string(trimmed)])
+                )
 
                 await MainActor.run { completion(.success(())) }
             } catch {
@@ -349,16 +371,15 @@ class AuthViewModel: ObservableObject {
     }
 
     func updateName(_ name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else {
+        guard userId != nil else {
             completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
             return
         }
         Task {
             do {
-                try await Firestore.firestore()
-                    .collection("users")
-                    .document(userId)
-                    .updateData(["name": name])
+                try await supabase.auth.update(
+                    user: UserAttributes(data: ["full_name": .string(name)])
+                )
                 await MainActor.run { completion(.success(())) }
             } catch {
                 await MainActor.run { completion(.failure(error)) }
@@ -367,7 +388,7 @@ class AuthViewModel: ObservableObject {
     }
 
     func updateEmail(_ email: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else {
+        guard let userId = userId, let uid = UUID(uuidString: userId) else {
             completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
             return
         }
@@ -376,14 +397,15 @@ class AuthViewModel: ObservableObject {
         AuthService.shared.updateEmail(newEmail) { result in
             switch result {
             case .failure(let error):
-                // Fallback: mirror to Firestore only
                 SpotLogger.log(AuthViewModelLogs.emailUpdateFallingBackToFirestore, details: ["error": error.localizedDescription])
                 Task {
                     do {
-                        try await Firestore.firestore()
-                            .collection("users")
-                            .document(userId)
-                            .updateData(["email": newEmail])
+                        struct EmailPatch: Encodable { let email: String }
+                        try await supabase
+                            .from("users")
+                            .update(EmailPatch(email: newEmail))
+                            .eq("id", value: uid)
+                            .execute()
                         await MainActor.run { completion(.success(())) }
                     } catch {
                         SpotLogger.log(AuthViewModelLogs.emailUpdateFirestoreFallbackFailed, details: ["error": error.localizedDescription])
@@ -392,17 +414,18 @@ class AuthViewModel: ObservableObject {
                 }
 
             case .success:
-                // Mirror to Firestore profile
                 Task {
                     do {
-                        try await Firestore.firestore()
-                            .collection("users")
-                            .document(userId)
-                            .updateData(["email": newEmail])
+                        struct EmailPatch: Encodable { let email: String }
+                        try await supabase
+                            .from("users")
+                            .update(EmailPatch(email: newEmail))
+                            .eq("id", value: uid)
+                            .execute()
                         await MainActor.run { completion(.success(())) }
                     } catch {
                         SpotLogger.log(AuthViewModelLogs.firebaseAuthUpdatedFirestoreSyncFailed, details: ["error": error.localizedDescription])
-                        await MainActor.run { completion(.success(())) } // keep your original behavior
+                        await MainActor.run { completion(.success(())) }
                     }
                 }
             }
@@ -410,20 +433,9 @@ class AuthViewModel: ObservableObject {
     }
 
     func updatePassword(_ password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.updatePassword(password, completion: completion)
-    }
-
-    func setPrivateAccount(_ isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let userId = userId else {
-            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
-            return
-        }
         Task {
             do {
-                try await Firestore.firestore()
-                    .collection("users")
-                    .document(userId)
-                    .updateData(["isPrivate": isPrivate])
+                try await supabase.auth.update(user: UserAttributes(password: password))
                 await MainActor.run { completion(.success(())) }
             } catch {
                 await MainActor.run { completion(.failure(error)) }
@@ -431,11 +443,91 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Email Verification
+    func setPrivateAccount(_ isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = userId, let uid = UUID(uuidString: userId) else {
+            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"])))
+            return
+        }
+        Task {
+            do {
+                struct PrivPatch: Encodable { let is_private: Bool }
+                try await supabase
+                    .from("users")
+                    .update(PrivPatch(is_private: isPrivate))
+                    .eq("id", value: uid)
+                    .execute()
+
+                try await supabase.auth.update(
+                    user: UserAttributes(data: ["is_private": .bool(isPrivate)])
+                )
+
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
+        }
+    }
+
+    // MARK: - Email verification (Supabase email OTP / signup)
+    func beginEmailVerificationPending(email: String, avatar: UIImage?) {
+        awaitingEmailVerification = true
+        pendingVerificationEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        verificationEmailMaskSource = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        pendingAvatarAfterVerification = avatar
+    }
+
+    func clearEmailVerificationPending() {
+        awaitingEmailVerification = false
+        pendingVerificationEmail = nil
+        pendingAvatarAfterVerification = nil
+    }
+
+    /// Verifies the 6-digit code from the signup email, establishes the session, uploads pending avatar, syncs profile.
+    func verifySignupEmailOTP(code: String) async throws {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count == 6, trimmed.allSatisfy(\.isNumber) else {
+            throw NSError(domain: "AuthVM", code: -2, userInfo: [NSLocalizedDescriptionKey: "Enter the 6-digit code from your email."])
+        }
+        guard let email = pendingVerificationEmail else {
+            throw NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing signup email. Go back and sign up again."])
+        }
+        _ = try await supabase.auth.verifyOTP(email: email, token: trimmed, type: .signup)
+        try await completePendingAvatarUploadIfNeeded()
+        clearEmailVerificationPending()
+        await SupabaseUserService.shared.syncCurrentUser()
+        if let user = try? await supabase.auth.user() {
+            await MainActor.run {
+                self.isEmailVerified = user.emailConfirmedAt != nil
+            }
+        }
+    }
+
+    private func completePendingAvatarUploadIfNeeded() async throws {
+        guard let image = pendingAvatarAfterVerification,
+              let data = image.jpegData(compressionQuality: 0.7) else { return }
+        let session = try await supabase.auth.session
+        let url = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: session.user.id)
+        struct AvatarPatch: Encodable { let profile_image_url: String }
+        try await supabase
+            .from("users")
+            .update(AvatarPatch(profile_image_url: url))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    private var pendingVerificationEmail: String?
+    private var pendingAvatarAfterVerification: UIImage?
+
     func sendVerificationEmail() async {
-        guard let user = Auth.auth().currentUser else { return }
+        let email: String?
+        if let pending = pendingVerificationEmail {
+            email = pending
+        } else {
+            email = (try? await supabase.auth.session)?.user.email
+        }
+        guard let email, !email.isEmpty else { return }
         do {
-            try await user.sendEmailVerification()
+            try await supabase.auth.resend(email: email, type: .signup)
             SpotLogger.log(AuthViewModelLogs.verificationEmailSent)
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
         } catch {
@@ -454,18 +546,18 @@ class AuthViewModel: ObservableObject {
     }
 
     func checkVerificationStatus() async -> Bool {
-        guard let user = Auth.auth().currentUser else { return false }
         do {
-            try await user.reload()
-            // Read from currentUser after reload so we never use a stale in-memory snapshot.
-            guard let refreshed = Auth.auth().currentUser else { return false }
-            let verified = refreshed.isEmailVerified
+            let user = try await supabase.auth.user()
+            let verified = user.emailConfirmedAt != nil
             if verified { SpotLogger.log(AuthViewModelLogs.emailVerified) }
             await MainActor.run { self.isEmailVerified = verified }
-            if verified {
-                let uid = refreshed.uid
-                // Persist server-side marker for analytics and visibility
-                try? await Firestore.firestore().collection("users").document(uid).setData(["isVerified": true], merge: true)
+            if verified, let uidString = userId, let uid = UUID(uuidString: uidString) {
+                struct VerifiedPatch: Encodable { let email_verified: Bool }
+                try? await supabase
+                    .from("users")
+                    .update(VerifiedPatch(email_verified: true))
+                    .eq("id", value: uid)
+                    .execute()
             }
             return verified
         } catch {
@@ -475,25 +567,18 @@ class AuthViewModel: ObservableObject {
     }
 
     func verifyBeforeUpdateEmail(_ newEmail: String) async throws {
-        guard let user = Auth.auth().currentUser else { throw NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user"]) }
         do {
-            // Prefer new API if available; fallback to generate link on backend if needed
-            try await user.sendEmailVerification(beforeUpdatingEmail: newEmail)
+            try await supabase.auth.update(user: UserAttributes(email: newEmail))
             SpotLogger.log(AuthViewModelLogs.changeEmailVerifySent)
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
         } catch {
-            let ns = error as NSError
-            if ns.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                SpotLogger.log(AuthViewModelLogs.emailChangeRequiresReauth)
-            } else {
-                SpotLogger.log(AuthViewModelLogs.changeEmailError, details: ["code": ns.code])
-            }
+            SpotLogger.log(AuthViewModelLogs.changeEmailError, details: ["error": error.localizedDescription])
             throw error
         }
     }
 
     var maskedEmail: String {
-        let e = Auth.auth().currentUser?.email ?? ""
+        let e = verificationEmailMaskSource
         guard let at = e.firstIndex(of: "@") else { return e }
         let name = e[..<at]
         let domain = e[at...]
@@ -504,22 +589,34 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - Reauthentication
     func reauthenticate(currentPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.reauthenticate(withPassword: currentPassword, completion: completion)
+        let trimmed = currentPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            completion(.failure(NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Current password is required."])))
+            return
+        }
+        Task {
+            do {
+                let user = try await supabase.auth.user()
+                guard let email = user.email, !email.isEmpty else {
+                    throw NSError(domain: "AuthVM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing account email for reauthentication."])
+                }
+                _ = try await supabase.auth.signIn(email: email, password: trimmed)
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
+        }
     }
 
     // MARK: - Username Availability
     func isUsernameAvailable(_ username: String) async -> Bool {
+        struct Params: Encodable { let p_username: String }
         do {
-            let snapshot = try await Firestore.firestore()
-                .collection("users")
-                .whereField("username", isEqualTo: username)
-                .limit(to: 1)
-                .getDocuments()
-            // If a doc exists and it's not the current user, not available
-            if let doc = snapshot.documents.first, doc.documentID != self.userId {
-                return false
-            }
-            return true
+            let available: Bool = try await supabase
+                .rpc("is_username_available", params: Params(p_username: username))
+                .execute()
+                .value
+            return available
         } catch {
             return false
         }
@@ -532,12 +629,20 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - Blocking
     func blockUser(userId targetUserId: String) async throws {
-        guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
+        guard let currentUserId = userId,
+              let blocker = UUID(uuidString: currentUserId),
+              let blocked = UUID(uuidString: targetUserId)
+        else { throw NSError(domain: "No current user", code: 0) }
         guard currentUserId != targetUserId else { throw NSError(domain: "Cannot block yourself", code: 0) }
 
-        try await Firestore.firestore().collection("users").document(currentUserId).updateData([
-            "blockedUsers": FieldValue.arrayUnion([targetUserId])
-        ])
+        struct BlockInsert: Encodable {
+            let blocker_id: UUID
+            let blocked_user_id: UUID
+        }
+        try await supabase
+            .from("user_blocks")
+            .insert(BlockInsert(blocker_id: blocker, blocked_user_id: blocked))
+            .execute()
 
         await MainActor.run {
             if !blockedUsers.contains(targetUserId) {
@@ -549,11 +654,17 @@ class AuthViewModel: ObservableObject {
     }
 
     func unblockUser(userId targetUserId: String) async throws {
-        guard let currentUserId = userId else { throw NSError(domain: "No current user", code: 0) }
+        guard let currentUserId = userId,
+              let blocker = UUID(uuidString: currentUserId),
+              let blocked = UUID(uuidString: targetUserId)
+        else { throw NSError(domain: "No current user", code: 0) }
 
-        try await Firestore.firestore().collection("users").document(currentUserId).updateData([
-            "blockedUsers": FieldValue.arrayRemove([targetUserId])
-        ])
+        try await supabase
+            .from("user_blocks")
+            .delete()
+            .eq("blocker_id", value: blocker)
+            .eq("blocked_user_id", value: blocked)
+            .execute()
 
         await MainActor.run {
             blockedUsers.removeAll { $0 == targetUserId }
@@ -563,15 +674,3 @@ class AuthViewModel: ObservableObject {
     }
 }
 
-// MARK: - Helper
-private func commitProfileChange(_ changeReq: UserProfileChangeRequest) async throws {
-    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-        changeReq.commitChanges { error in
-            if let error = error {
-                cont.resume(throwing: error)
-            } else {
-                cont.resume(returning: ())
-            }
-        }
-    }
-}

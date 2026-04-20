@@ -15,7 +15,7 @@ enum SettingsViewLogs: SpotLog {
     case saveSuccess
     case profilePhotoUploadStart
     case profilePhotoUploadNoUser
-    case profilePhotoUpdateFirestoreFailed
+    case profilePhotoUpdateSupabaseFailed
     case profilePhotoUpdated
     case profilePhotoUploadFailed
 
@@ -29,7 +29,7 @@ enum SettingsViewLogs: SpotLog {
         case .saveSuccess: return .info
         case .profilePhotoUploadStart: return .info
         case .profilePhotoUploadNoUser: return .error
-        case .profilePhotoUpdateFirestoreFailed: return .error
+        case .profilePhotoUpdateSupabaseFailed: return .error
         case .profilePhotoUpdated: return .info
         case .profilePhotoUploadFailed: return .error
         }
@@ -43,7 +43,7 @@ enum SettingsViewLogs: SpotLog {
         case .saveSuccess: return "Settings save success"
         case .profilePhotoUploadStart: return "Profile photo upload start"
         case .profilePhotoUploadNoUser: return "Profile photo upload: no user"
-        case .profilePhotoUpdateFirestoreFailed: return "Profile photo Firestore update failed"
+        case .profilePhotoUpdateSupabaseFailed: return "Profile photo Supabase update failed"
         case .profilePhotoUpdated: return "Profile photo updated"
         case .profilePhotoUploadFailed: return "Profile photo upload failed"
         }

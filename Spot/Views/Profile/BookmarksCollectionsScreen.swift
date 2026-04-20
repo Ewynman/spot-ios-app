@@ -1,5 +1,4 @@
 import SwiftUI
-import FirebaseFirestore
 
 struct BookmarksCollectionsScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -129,29 +128,8 @@ struct BookmarksCollectionsScreen: View {
     }
 
     private func fetchSpotPreviewURLs(spotIds: [String], limit: Int = 4) async -> [String] {
-        guard !spotIds.isEmpty else { return [] }
-        let spotsRef = Firestore.firestore().collection("spots")
-        var urls: [String] = []
-        await withTaskGroup(of: String?.self) { group in
-            for id in spotIds.prefix(limit) {
-                group.addTask {
-                    do {
-                        let doc = try await spotsRef.document(id).getDocument()
-                        guard doc.exists else { return nil }
-                        let data = doc.data() ?? [:]
-                        if let thumb = data["thumbnailURL"] as? String, !thumb.isEmpty { return thumb }
-                        if let arr = data["imageURLs"] as? [String], let first = arr.first { return first }
-                        if let single = data["imageURL"] as? String { return single }
-                        return nil
-                    } catch {
-                        return nil
-                    }
-                }
-            }
-            for await maybe in group {
-                if let u = maybe { urls.append(u) }
-            }
-        }
+        let trimmed = Array(spotIds.prefix(limit))
+        let urls = await SpotSupabaseRepository.fetchPreviewImageURLs(spotIds: trimmed)
         return Array(urls.prefix(limit))
     }
 }
@@ -244,20 +222,14 @@ private struct CollectionDetailScreen: View {
     private func load() async {
         isLoading = true
         do {
-            let ids = collection.spotIds
-            var results: [Spot] = []
-            let spotsRef = Firestore.firestore().collection("spots")
-            for id in ids {
-                do {
-                    let doc = try await spotsRef.document(id).getDocument()
-                    if let spot = try? doc.data(as: Spot.self) { results.append(spot) }
-                } catch { }
-            }
-            // Sort by createdAt desc
+            let uuids = collection.spotIds.compactMap(UUID.init(uuidString:))
+            var results = try await SpotSupabaseRepository.fetchSpotsByIds(uuids)
             results.sort { (a, b) in
                 (a.createdAt ?? Date.distantPast) > (b.createdAt ?? Date.distantPast)
             }
             spots = results
+        } catch {
+            spots = []
         }
         isLoading = false
     }

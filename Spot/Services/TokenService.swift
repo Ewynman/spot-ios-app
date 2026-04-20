@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import FirebaseAuth
 import Security
+import Supabase
 
 class TokenService {
     static let shared = TokenService()
@@ -49,31 +49,24 @@ class TokenService {
     // MARK: - Private Methods
 
     private func getFreshToken(completion: @escaping (Result<String, Error>) -> Void) {
-        guard let currentUser = Auth.auth().currentUser else {
+        guard SpotAuthBridge.currentUserId != nil else {
             let error = NSError(domain: "TokenService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])
             SpotLogger.log(TokenServiceLogs.noAuthenticatedUser)
             completion(.failure(error))
             return
         }
 
-        currentUser.getIDToken { [weak self] token, error in
-            if let error = error {
+        Task { [weak self] in
+            do {
+                let session = try await supabase.auth.session
+                let token = session.accessToken
+                self?.cacheToken(token)
+                SpotLogger.log(TokenServiceLogs.gotFreshToken)
+                completion(.success(token))
+            } catch {
                 SpotLogger.log(TokenServiceLogs.failedToGetIdToken, details: ["error": error.localizedDescription])
                 completion(.failure(error))
-                return
             }
-
-            guard let token = token else {
-                let error = NSError(domain: "TokenService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No token received"])
-                SpotLogger.log(TokenServiceLogs.noTokenReceived)
-                completion(.failure(error))
-                return
-            }
-
-            // Cache the token with expiration
-            self?.cacheToken(token)
-            SpotLogger.log(TokenServiceLogs.gotFreshToken)
-            completion(.success(token))
         }
     }
 

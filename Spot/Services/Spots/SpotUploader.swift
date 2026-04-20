@@ -9,7 +9,6 @@ import Foundation
 import FirebaseFirestore
 import CoreLocation
 import FirebaseStorage
-import FirebaseAuth
 import UIKit
 
 final class SpotUploader {
@@ -51,7 +50,7 @@ final class SpotUploader {
     }
 
     private func getCurrentUserData(completion: @escaping (Result<(String, String?), Error>) -> Void) {
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = SpotAuthBridge.currentUserId else {
             completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             return
         }
@@ -83,7 +82,7 @@ final class SpotUploader {
         placeName: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        guard let userId = Auth.auth().currentUser?.uid else {
+        guard let userId = SpotAuthBridge.currentUserId else {
             completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
@@ -120,7 +119,7 @@ final class SpotUploader {
         placeName: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        guard let userId = Auth.auth().currentUser?.uid else {
+        guard let userId = SpotAuthBridge.currentUserId else {
             completion(.failure(NSError(domain: "", code: Constants.HTTPErrorCode.unauthorized, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
             SpotLogger.error("User not authenticated for spot upload", details: [:])
             return
@@ -298,32 +297,15 @@ final class SpotUploader {
                 let docRef = db.collection("spots").document(postId)
                 var docCreated = false
 
-                // Force-refresh the Firebase ID token on MainActor so the Firestore write
-                // stream picks up the latest auth credentials (including email_verified claim)
-                // before the write.  Multi-image uploads take significantly longer than
-                // single-image ones, creating a window where the SDK's cached token can
-                // become stale or be mid-refresh when setData is called.
-                var tokenEmailVerified: Bool = false
-                if let user = Auth.auth().currentUser {
-                    do {
-                        let tokenResult = try await user.getIDTokenResult(forcingRefresh: true)
-                        tokenEmailVerified = tokenResult.claims["email_verified"] as? Bool ?? false
-                    } catch {
-                        SpotLogger.error("Token refresh failed before Firestore write", details: [
-                            "postId": postId,
-                            "uid": Auth.auth().currentUser?.uid ?? "nil",
-                            "error": error.localizedDescription
-                        ])
-                    }
-                }
-                let preWriteUser = Auth.auth().currentUser
+                let tokenEmailVerified = SpotAuthBridge.isEmailVerifiedForSession
+                let preWriteUserId = SpotAuthBridge.currentUserId
                 SpotLogger.info("setData pre-write", details: [
                     "postId": postId,
-                    "uid": preWriteUser?.uid ?? "nil",
+                    "uid": preWriteUserId ?? "nil",
                     "docUserId": userId,
-                    "isEmailVerified": preWriteUser?.isEmailVerified ?? false,
+                    "isEmailVerified": SpotAuthBridge.isEmailVerifiedForSession,
                     "tokenEmailVerified": tokenEmailVerified,
-                    "isAnonymous": preWriteUser?.isAnonymous ?? true,
+                    "isAnonymous": false,
                     "fieldKeys": Array(finalData.keys).sorted().joined(separator: ", ")
                 ])
                 do {
@@ -343,9 +325,9 @@ final class SpotUploader {
                         "errorDomain": nsErr.domain,
                         "errorCode": nsErr.code,
                         "error": nsErr.localizedDescription,
-                        "uid": Auth.auth().currentUser?.uid ?? "nil",
+                        "uid": SpotAuthBridge.currentUserId ?? "nil",
                         "docUserId": userId,
-                        "isEmailVerified": Auth.auth().currentUser?.isEmailVerified ?? false
+                        "isEmailVerified": SpotAuthBridge.isEmailVerifiedForSession
                     ])
                     // Attempt to clean up any orphaned resources
                     Task {

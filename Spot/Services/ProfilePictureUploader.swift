@@ -1,6 +1,5 @@
 import Foundation
 import FirebaseStorage
-import FirebaseAuth
 import UIKit
 
 final class ProfilePictureUploader {
@@ -50,7 +49,7 @@ final class ProfilePictureUploader {
 
     // For existing users updating their profile picture
     func uploadProfilePicture(image: UIImage, completion: @escaping (Result<String, Error>) -> Void) {
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = SpotAuthBridge.currentUserId else {
             completion(.failure(NSError(domain: "ProfilePictureUploader", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not logged in"])))
             return
         }

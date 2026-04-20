@@ -27,6 +27,7 @@ final class SubscriptionManager: ObservableObject {
     let productIds: [String] = ["spotPro", "spot.pro.yearly"]
 
     private var cachedProduct: Product?
+    private var transactionUpdatesTask: Task<Void, Never>?
 
     func loadProduct() async throws -> Product {
         if let p = cachedProduct { return p }
@@ -84,6 +85,28 @@ final class SubscriptionManager: ObservableObject {
         try await AppStore.sync()
     }
 
+    /// Start listening for StoreKit transaction updates for the app lifetime.
+    /// This avoids missing successful purchases that complete outside the immediate purchase flow.
+    func startTransactionUpdatesListener(
+        onEntitlementChanged: (@Sendable (Bool, Date?) async -> Void)? = nil
+    ) {
+        guard transactionUpdatesTask == nil else { return }
+        transactionUpdatesTask = Task.detached(priority: .background) { [productIds] in
+            let checker = ProEntitlementChecker(proProductIDs: productIds)
+            for await update in Transaction.updates {
+                do {
+                    let transaction = try await Self.checkVerifiedStatic(update)
+                    defer { Task { await transaction.finish() } }
+
+                    guard checker.grantsPro(forProductID: transaction.productID) else { continue }
+                    await onEntitlementChanged?(true, transaction.expirationDate)
+                } catch {
+                    continue
+                }
+            }
+        }
+    }
+
     func refreshEntitlement() async -> Bool {
         let checker = ProEntitlementChecker(proProductIDs: productIds)
         for await result in Transaction.currentEntitlements {
@@ -108,6 +131,15 @@ final class SubscriptionManager: ObservableObject {
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified:
+            throw NSError(domain: "Unverified transaction", code: 0)
+        case .verified(let safe):
+            return safe
+        }
+    }
+
+    private static func checkVerifiedStatic<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified:
             throw NSError(domain: "Unverified transaction", code: 0)

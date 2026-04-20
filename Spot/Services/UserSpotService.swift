@@ -1,11 +1,10 @@
 import Foundation
-import FirebaseAuth
 import FirebaseFirestore
 
 class UserSpotService {
     static let shared = UserSpotService()
     private let db = Firestore.firestore()
-    private var userId: String? { Auth.auth().currentUser?.uid }
+    private var userId: String? { SpotAuthBridge.currentUserId }
 
     // MARK: - Like/Unlike
     func likeSpot(spotId: String, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -288,7 +287,7 @@ class UserSpotService {
         }
 
         // Filter out blocked users' spots
-        let currentUserId = Auth.auth().currentUser?.uid
+        let currentUserId = SpotAuthBridge.currentUserId
         if let currentUserId {
             let userDoc = try await db.collection("users").document(currentUserId).getDocument()
             let blockedUsers = userDoc.data()?["blockedUsers"] as? [String] ?? []

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import FirebaseAuth
 import FirebaseFirestore
 
 class PrivacyFilter {
@@ -26,7 +25,7 @@ class PrivacyFilter {
 
     /// Check if a specific user's content should be visible to current user
     func shouldShowContent(from authorId: String) async -> Bool {
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
+        guard let currentUserId = SpotAuthBridge.currentUserId else {
             return false
         }
 

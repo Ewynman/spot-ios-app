@@ -9,6 +9,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
+import Supabase
 
 class AuthService {
     static let shared = AuthService()
@@ -85,15 +86,16 @@ class AuthService {
 
     func resetPassword(email: String, completion: @escaping (Result<Void, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        Auth.auth().sendPasswordReset(withEmail: cleanEmail) { error in
-            if let error = error {
-                completion(.failure(error))
-            } else {
+        Task {
+            do {
+                try await supabase.auth.resetPasswordForEmail(cleanEmail)
                 SpotLogger.log(AuthServiceLogs.emailInUseReset)
-                Task { @MainActor in
+                await MainActor.run {
                     AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "reset"])
+                    completion(.success(()))
                 }
-                completion(.success(()))
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
             }
         }
     }
@@ -114,8 +116,8 @@ class AuthService {
 
     // MARK: - Sign Out
 
-    func signOut() throws {
-        try Auth.auth().signOut()
+    func signOut() async throws {
+        try await supabase.auth.signOut()
     }
 
     // MARK: - User Document Creation
@@ -151,7 +153,7 @@ class AuthService {
 
     /// Verify Firestore user document exists for current auth user
     func verifyUserExists(completion: @escaping (Bool) -> Void) {
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = SpotAuthBridge.currentUserId else {
             SpotLogger.log(AuthServiceLogs.verifyUserExistsNoCurrentUser)
             completion(false)
             return
@@ -166,7 +168,7 @@ class AuthService {
             let exists = snapshot?.exists ?? false
             if !exists {
                 SpotLogger.log(AuthServiceLogs.missingFirestoreUserDoc, details: ["userId": uid])
-                try? Auth.auth().signOut()
+                Task { try? await supabase.auth.signOut() }
             }
             completion(exists)
         }
@@ -219,8 +221,13 @@ class AuthService {
     /// Completion-style sign in used by existing UI
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        Auth.auth().signIn(withEmail: cleanEmail, password: password) { _, error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        Task {
+            do {
+                _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
         }
     }
 

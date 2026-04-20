@@ -16,6 +16,8 @@ struct RootView: View {
         Group {
             if authViewModel.isLoading {
                 LaunchView()
+            } else if authViewModel.awaitingEmailVerification {
+                ConfirmEmailView()
             } else if authViewModel.isAuthenticated {
                 ZStack {
                     // Main content (verified vs confirm)

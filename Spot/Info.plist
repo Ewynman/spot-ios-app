@@ -17,6 +17,13 @@
 	<false/>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Spot sends you alerts about new spots nearby</string>
+	<key>Supabase</key>
+	<dict>
+		<key>url</key>
+		<string>https://aeurigbbohyxvtsfiyul.supabase.co</string>
+		<key>anonKey</key>
+		<string>sb_publishable_5IKZU3dDw6C0-V9lRPc7vw_z_v8a08G</string>
+	</dict>
 	<key>SpotURLs</key>
 	<dict>
 		<key>customScheme</key>

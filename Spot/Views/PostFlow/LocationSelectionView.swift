@@ -2,7 +2,6 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import FirebaseFirestore
-import FirebaseAuth
 import UIKit
 
 struct LocationSelectionView: View {
@@ -679,7 +678,7 @@ struct LocationMapView: View {
                             "createdAt": FieldValue.serverTimestamp(),
                             "postsCount": 0
                         ]
-                        if let uid = Auth.auth().currentUser?.uid {
+                        if let uid = SpotAuthBridge.currentUserId {
                             data["createdBy"] = uid
                         }
                         _ = try await db.collection("places").addDocument(data: data)

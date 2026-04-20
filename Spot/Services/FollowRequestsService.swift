@@ -1,9 +1,8 @@
 import Foundation
-import FirebaseAuth
-import FirebaseFirestore
+import Supabase
 
 struct FollowRequest: Identifiable, Hashable {
-    let id: String // requesterUid
+    let id: String
     let requesterUid: String
     let username: String?
     let photoURL: String?
@@ -14,68 +13,128 @@ final class FollowRequestsService {
     static let shared = FollowRequestsService()
     private init() {}
 
-    private let db = Firestore.firestore()
-
-    // MARK: Count Listener
-    func listenPendingCount(for targetUid: String, onChange: @escaping (Int) -> Void) -> ListenerRegistration {
-        SpotLogger.log(FollowRequestsServiceLogs.startCountListener, details: ["targetUid": targetUid])
-        return db.collection("users").document(targetUid).collection("followRequests")
-            .addSnapshotListener { snapshot, _ in
-                let count = snapshot?.documents.count ?? 0
-                SpotLogger.log(FollowRequestsServiceLogs.followRequestsCount, details: ["count": count])
-                onChange(count)
-            }
+    struct Page {
+        let items: [FollowRequest]
+        /// Pass as `start` for the next `fetchPage` call, or nil when no more pages.
+        let nextStart: Int?
     }
 
-    // MARK: Paged Fetch
-    struct Page { let items: [FollowRequest]; let last: DocumentSnapshot? }
+    private struct FollowRequestRow: Decodable {
+        let id: UUID
+        let requester_id: UUID
+        let created_at: String
+    }
 
-    func fetchPage(for targetUid: String, last: DocumentSnapshot? = nil, pageSize: Int = 24) async throws -> Page {
-        var q: Query = db.collection("users").document(targetUid).collection("followRequests")
-            .order(by: "createdAt", descending: true)
-            .limit(to: pageSize)
-        if let last { q = q.start(afterDocument: last) }
+    private struct UserMini: Decodable {
+        let id: UUID
+        let username: String
+        let profile_image_url: String?
+    }
 
-        let snap = try await q.getDocuments()
-        let items: [FollowRequest] = snap.documents.map { doc in
-            let data = doc.data()
+    func countPending(targetUserId: String) async throws -> Int {
+        guard let target = UUID(uuidString: targetUserId) else { return 0 }
+        struct IdRow: Decodable { let id: UUID }
+        let rows: [IdRow] = try await supabase
+            .from("follow_requests")
+            .select("id", head: false)
+            .eq("target_user_id", value: target)
+            .eq("status", value: "pending")
+            .execute()
+            .value
+        return rows.count
+    }
+
+    func fetchPage(for targetUid: String, start: Int, pageSize: Int) async throws -> Page {
+        guard let target = UUID(uuidString: targetUid) else {
+            return Page(items: [], nextStart: nil)
+        }
+
+        let rows: [FollowRequestRow] = try await supabase
+            .from("follow_requests")
+            .select("id,requester_id,created_at")
+            .eq("target_user_id", value: target)
+            .eq("status", value: "pending")
+            .order("created_at", ascending: false)
+            .range(from: start, to: start + pageSize - 1)
+            .execute()
+            .value
+
+        let requesterIds = rows.map(\.requester_id)
+        var usersById: [UUID: UserMini] = [:]
+        if !requesterIds.isEmpty {
+            let users: [UserMini] = try await supabase
+                .from("users")
+                .select("id,username,profile_image_url")
+                .in("id", values: requesterIds)
+                .execute()
+                .value
+            for u in users { usersById[u.id] = u }
+        }
+
+        let items: [FollowRequest] = rows.map { row in
+            let u = usersById[row.requester_id]
             return FollowRequest(
-                id: doc.documentID,
-                requesterUid: doc.documentID,
-                username: data["username"] as? String,
-                photoURL: data["photoURL"] as? String,
-                createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
+                id: row.id.uuidString,
+                requesterUid: row.requester_id.uuidString,
+                username: u?.username,
+                photoURL: u?.profile_image_url,
+                createdAt: SpotSupabaseRepository.parseTimestamptz(row.created_at)
             )
         }
-        return Page(items: items, last: snap.documents.last)
+
+        let nextStart = rows.count == pageSize ? (start + pageSize) : nil
+        return Page(items: items, nextStart: nextStart)
     }
 
-    // MARK: Actions
     func accept(requesterUid: String, targetUid: String) async throws {
+        guard let requester = UUID(uuidString: requesterUid),
+              let target = UUID(uuidString: targetUid)
+        else {
+            throw NSError(domain: "FollowRequestsService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])
+        }
+
         SpotLogger.log(FollowRequestsServiceLogs.followRequestAccepted, details: ["requesterUid": requesterUid])
-        let batch = db.batch()
 
-        // 1) Add to requester's following array (idempotent)
-        let requesterRef = db.collection("users").document(requesterUid)
-        batch.updateData(["following": FieldValue.arrayUnion([targetUid])], forDocument: requesterRef)
+        struct FollowInsert: Encodable {
+            let follower_id: UUID
+            let followee_id: UUID
+        }
 
-        // 2) Optional: create followers subcollection doc under target (idempotent)
-        let followerRef = db.collection("users").document(targetUid).collection("followers").document(requesterUid)
-        batch.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: followerRef, merge: true)
+        do {
+            try await supabase
+                .from("follows")
+                .insert(FollowInsert(follower_id: requester, followee_id: target))
+                .execute()
+        } catch {
+            // Idempotent: edge may already exist.
+        }
 
-        // 3) Cleanup: delete follow request
-        let reqRef = db.collection("users").document(targetUid).collection("followRequests").document(requesterUid)
-        batch.deleteDocument(reqRef)
+        try await supabase
+            .from("follow_requests")
+            .delete()
+            .eq("requester_id", value: requester)
+            .eq("target_user_id", value: target)
+            .eq("status", value: "pending")
+            .execute()
 
-        try await batch.commit()
-
-        // Local: invalidate privacy cache so future checks reload
         await AuthorPrivacyCache.shared.invalidate(authorId: requesterUid)
     }
 
     func deny(requesterUid: String, targetUid: String) async throws {
+        guard let requester = UUID(uuidString: requesterUid),
+              let target = UUID(uuidString: targetUid)
+        else {
+            throw NSError(domain: "FollowRequestsService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])
+        }
+
         SpotLogger.log(FollowRequestsServiceLogs.followRequestDenied, details: ["requesterUid": requesterUid])
-        let reqRef = db.collection("users").document(targetUid).collection("followRequests").document(requesterUid)
-        try await reqRef.delete()
+
+        try await supabase
+            .from("follow_requests")
+            .delete()
+            .eq("requester_id", value: requester)
+            .eq("target_user_id", value: target)
+            .eq("status", value: "pending")
+            .execute()
     }
 }

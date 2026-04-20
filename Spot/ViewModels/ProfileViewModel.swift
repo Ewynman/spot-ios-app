@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import FirebaseFirestore
 
 class ProfileViewModel: ObservableObject {
     @Published var username: String?
@@ -24,7 +23,7 @@ class ProfileViewModel: ObservableObject {
     @Published var followRequestsCount: Int = 0
 
     private var loadTask: Task<Void, Never>?
-    private var followReqListener: ListenerRegistration?
+    private var followReqPollTask: Task<Void, Never>?
     private var lastLoadedUserId: String?
     private var hasLoaded = false
 
@@ -82,7 +81,10 @@ class ProfileViewModel: ObservableObject {
         spots.removeAll { $0.id == id }
 
         do {
-            try await SpotService.shared.deleteSpot(spot)
+            guard let uuid = UUID(uuidString: id) else {
+                throw NSError(domain: "ProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid spot id"])
+            }
+            try await SpotSupabaseRepository.deleteSpot(id: uuid)
             deletingSpotIds.remove(id)
         } catch {
             SpotLogger.log(ProfileViewModelLogs.profileDeleteFailed, details: ["error": error.localizedDescription])
@@ -95,16 +97,22 @@ class ProfileViewModel: ObservableObject {
     func startFollowRequestsListener(ownUserId: String?) {
         stopFollowRequestsListener()
         guard let uid = ownUserId else { return }
-        followReqListener = FollowRequestsService.shared.listenPendingCount(for: uid) { [weak self] n in
-            DispatchQueue.main.async {
-                self?.followRequestsCount = n
+        followReqPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    let n = try await FollowRequestsService.shared.countPending(targetUserId: uid)
+                    await MainActor.run { self?.followRequestsCount = n }
+                } catch {
+                    await MainActor.run { self?.followRequestsCount = 0 }
+                }
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
             }
         }
     }
 
     func stopFollowRequestsListener() {
-        followReqListener?.remove()
-        followReqListener = nil
+        followReqPollTask?.cancel()
+        followReqPollTask = nil
     }
 
     func follow(targetUserId: String) {

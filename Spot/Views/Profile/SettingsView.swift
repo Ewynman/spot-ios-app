@@ -1,6 +1,4 @@
 import SwiftUI
-import FirebaseAuth
-import FirebaseFirestore
 import PhotosUI
 import UIKit
 
@@ -18,6 +16,9 @@ struct SettingsView: View {
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
+    @State private var currentPasswordError: String?
+    @State private var newPasswordError: String?
+    @State private var confirmPasswordError: String?
     @State private var originalUsername: String = ""
     @State private var confirmDelete: Bool = false
     @State private var deletePassword: String = ""
@@ -26,6 +27,13 @@ struct SettingsView: View {
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var isUploadingPhoto: Bool = false
     @State private var showCollectionsNav: Bool = false
+
+    private struct SettingsUserRow: Decodable {
+        let username: String
+        let email: String?
+        let is_private: Bool
+        let profile_image_url: String?
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -121,8 +129,26 @@ struct SettingsView: View {
                             sectionHeader("Security")
                             
                             SettingsSecureField(title: "Current Password", text: $currentPassword)
+                            if let currentPasswordError {
+                                Text(currentPasswordError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             SettingsSecureField(title: "New Password", text: $newPassword)
+                            if let newPasswordError {
+                                Text(newPasswordError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             SettingsSecureField(title: "Confirm Password", text: $confirmPassword)
+                            if let confirmPasswordError {
+                                Text(confirmPasswordError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             
                             Toggle(isOn: $isPrivate) {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -353,21 +379,30 @@ struct SettingsView: View {
             }
             .padding(.top, 8)
         }
+        .task {
+            load()
+        }
     }
 
     private func load() {
-        guard let userId = authVM.userId else { return }
+        guard let userId = authVM.userId, let uid = UUID(uuidString: userId) else { return }
         Task {
             do {
-                let snap = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                let data = snap.data() ?? [:]
+                let row: SettingsUserRow = try await supabase
+                    .from("users")
+                    .select("username,email,is_private,profile_image_url")
+                    .eq("id", value: uid)
+                    .single()
+                    .execute()
+                    .value
+                let authUser = try? await supabase.auth.user()
                 await MainActor.run {
-                    username = data["username"] as? String ?? ""
+                    username = row.username
                     originalUsername = username
-                    name = data["name"] as? String ?? ""
-                    email = data["email"] as? String ?? (Auth.auth().currentUser?.email ?? "")
-                    isPrivate = data["isPrivate"] as? Bool ?? false
-                    profileImageURL = data["profileImageURL"] as? String
+                    name = (authUser?.userMetadata["full_name"]?.stringValue) ?? ""
+                    email = row.email ?? (authUser?.email ?? SpotAuthBridge.currentUserEmail ?? "")
+                    isPrivate = row.is_private
+                    profileImageURL = row.profile_image_url
                 }
             } catch {
                 SpotLogger.log(SettingsViewLogs.loadProfileFailed, details: ["userId": userId, "error": error.localizedDescription])
@@ -379,19 +414,32 @@ struct SettingsView: View {
     private func save() {
         errorMessage = nil
         successMessage = nil
+        currentPasswordError = nil
+        newPasswordError = nil
+        confirmPasswordError = nil
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Username cannot be empty"
             return
         }
         if !newPassword.isEmpty || !confirmPassword.isEmpty {
             guard newPassword == confirmPassword else {
-                errorMessage = "Passwords do not match"
+                confirmPasswordError = "Passwords do not match."
                 return
             }
-            guard newPassword.count >= 6 else {
-                errorMessage = "Password must be at least 6 characters"
+            switch PasswordValidator.validate(newPassword) {
+            case .ok:
+                break
+            case .failure(let message):
+                newPasswordError = message
                 return
             }
+        }
+        let isEmailChange = !email.isEmpty && email != SpotAuthBridge.currentUserEmail
+        let isPasswordChange = !newPassword.isEmpty
+        if (isEmailChange || isPasswordChange) &&
+            currentPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            currentPasswordError = "Current password is required for email or password changes."
+            return
         }
 
         isSaving = true
@@ -410,7 +458,7 @@ struct SettingsView: View {
             }
         }
 
-        // Update Firestore profile fields
+        // Update Supabase profile fields
         let group = DispatchGroup()
         var firstError: Error?
 
@@ -439,7 +487,7 @@ struct SettingsView: View {
             group.leave()
         }
 
-        if !email.isEmpty && email != Auth.auth().currentUser?.email {
+        if isEmailChange {
             // Ask user to confirm change and send verification link
             DispatchQueue.main.async {
                 let newEmail = email
@@ -449,8 +497,15 @@ struct SettingsView: View {
                 alert.addAction(UIAlertAction(title: "Send & Verify", style: .default, handler: { _ in
                     Task {
                         do {
-                            // Reauth best-effort
-                            if !currentPassword.isEmpty { await withCheckedContinuation { cont in authVM.reauthenticate(currentPassword: currentPassword) { _ in cont.resume() } } }
+                            // Enforce current-password reauth before any email change.
+                            let reauthResult: Result<Void, Error> = await withCheckedContinuation { cont in
+                                authVM.reauthenticate(currentPassword: currentPassword) { result in
+                                    cont.resume(returning: result)
+                                }
+                            }
+                            if case let .failure(reauthError) = reauthResult {
+                                throw reauthError
+                            }
                             try await authVM.verifyBeforeUpdateEmail(newEmail)
                             // Navigate to confirmation screen
                             // Use SwiftUI navigation push via a navigation state instead of presenting UIKit controller
@@ -466,12 +521,18 @@ struct SettingsView: View {
             }
         }
 
-        if !newPassword.isEmpty {
+        if isPasswordChange {
             group.enter()
-            authVM.reauthenticate(currentPassword: currentPassword) { _ in
-                authVM.updatePassword(newPassword) { result in
-                    if case let .failure(err) = result { firstError = firstError ?? err }
+            authVM.reauthenticate(currentPassword: currentPassword) { reauth in
+                switch reauth {
+                case .failure(let error):
+                    firstError = firstError ?? error
                     group.leave()
+                case .success:
+                    authVM.updatePassword(newPassword) { result in
+                        if case let .failure(err) = result { firstError = firstError ?? err }
+                        group.leave()
+                    }
                 }
             }
         }
@@ -490,7 +551,7 @@ struct SettingsView: View {
             } else {
                 SpotLogger.log(SettingsViewLogs.saveSuccess, details: [
                     "usernameChanged": username != originalUsername,
-                    "emailChanged": email != Auth.auth().currentUser?.email ?? "",
+                    "emailChanged": email != SpotAuthBridge.currentUserEmail ?? "",
                     "isPrivate": isPrivate
                 ])
                 showToast(message: "Settings updated", isError: false)
@@ -526,33 +587,39 @@ struct SettingsView: View {
         isUploadingPhoto = true
         errorMessage = nil
         successMessage = nil
-
-        ProfilePictureUploader.shared.uploadProfilePicture(image: image) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let imageURL):
-                    guard let uid = Auth.auth().currentUser?.uid else {
-                        self.isUploadingPhoto = false
-                        self.showToast(message: "No user session", isError: true)
-                        SpotLogger.log(SettingsViewLogs.profilePhotoUploadNoUser)
-                        return
-                    }
-                    Firestore.firestore().collection("users").document(uid).updateData(["profileImageURL": imageURL]) { err in
-                        self.isUploadingPhoto = false
-                        if let err = err {
-                            self.showToast(message: "Failed to update profile picture: \(err.localizedDescription)", isError: true)
-                            SpotLogger.log(SettingsViewLogs.profilePhotoUpdateFirestoreFailed, details: ["error": err.localizedDescription])
-                        } else {
-                            self.profileImageURL = imageURL
-                            self.selectedProfileImage = nil
-                            self.showToast(message: "Profile photo updated", isError: false)
-                            SpotLogger.log(SettingsViewLogs.profilePhotoUpdated)
-                        }
-                    }
-                case .failure(let error):
-                    self.isUploadingPhoto = false
-                    self.showToast(message: "Failed to upload photo: \(error.localizedDescription)", isError: true)
-                    SpotLogger.log(SettingsViewLogs.profilePhotoUploadFailed, details: ["error": error.localizedDescription])
+        guard let uid = SpotAuthBridge.currentUserId, let uuid = UUID(uuidString: uid) else {
+            isUploadingPhoto = false
+            showToast(message: "No user session", isError: true)
+            SpotLogger.log(SettingsViewLogs.profilePhotoUploadNoUser)
+            return
+        }
+        guard let data = image.jpegData(compressionQuality: 0.7) else {
+            isUploadingPhoto = false
+            showToast(message: "Failed to process image", isError: true)
+            SpotLogger.log(SettingsViewLogs.profilePhotoUploadFailed, details: ["error": "JPEG conversion failed"])
+            return
+        }
+        Task {
+            do {
+                struct AvatarPatch: Encodable { let profile_image_url: String }
+                let url = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uuid)
+                try await supabase
+                    .from("users")
+                    .update(AvatarPatch(profile_image_url: url))
+                    .eq("id", value: uuid)
+                    .execute()
+                await MainActor.run {
+                    isUploadingPhoto = false
+                    profileImageURL = url
+                    selectedProfileImage = nil
+                    showToast(message: "Profile photo updated", isError: false)
+                    SpotLogger.log(SettingsViewLogs.profilePhotoUpdated)
+                }
+            } catch {
+                await MainActor.run {
+                    isUploadingPhoto = false
+                    showToast(message: "Failed to update profile picture: \(error.localizedDescription)", isError: true)
+                    SpotLogger.log(SettingsViewLogs.profilePhotoUpdateSupabaseFailed, details: ["error": error.localizedDescription])
                 }
             }
         }

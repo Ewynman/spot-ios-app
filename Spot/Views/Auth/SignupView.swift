@@ -8,8 +8,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
-import FirebaseFirestore
-import FirebaseAuth
+import Supabase
 
 struct SignupView: View {
     @State private var email = ""
@@ -23,8 +22,11 @@ struct SignupView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var passwordError: String?
+    @State private var confirmPasswordError: String?
+    @State private var toastMessage: String?
+    @State private var toastIsError: Bool = true
     @State private var showLogin = false
-    @State private var showConfirmEmail = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authVM: AuthViewModel
 
@@ -107,12 +109,24 @@ struct SignupView: View {
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
                             CustomSecureField(placeholder: "Password", text: $password)
+                            if let passwordError {
+                                Text(passwordError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Confirm Password")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
                             CustomSecureField(placeholder: "Confirm password", text: $confirmPassword)
+                            if let confirmPasswordError {
+                                Text(confirmPasswordError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         HStack {
                             Button(action: { isPrivate.toggle() }) {
@@ -168,13 +182,15 @@ struct SignupView: View {
                     .padding(.horizontal, 32)
 
                     Button(action: {
+                        passwordError = nil
+                        confirmPasswordError = nil
                         guard agreedToTerms else {
-                            errorMessage = "Please agree to the Terms of Service."
+                            showToast("Please agree to the Terms of Service.", isError: true)
                             return
                         }
 
                         guard !email.isEmpty, !username.isEmpty, !password.isEmpty else {
-                            errorMessage = "Please fill in all fields."
+                            showToast("Please fill in all fields.", isError: true)
                             return
                         }
 
@@ -184,25 +200,33 @@ struct SignupView: View {
                         case .ok:
                             break
                         case .tooShort:
-                            errorMessage = "Username is too short"; return
+                            showToast("Username is too short", isError: true); return
                         case .tooLong:
-                            errorMessage = "Username is too long"; return
+                            showToast("Username is too long", isError: true); return
                         case .invalidChars:
-                            errorMessage = "Username has invalid characters"; return
+                            showToast("Username has invalid characters", isError: true); return
                         case .reserved:
-                            errorMessage = "That username is reserved"; return
+                            showToast("That username is reserved", isError: true); return
                         case .blocked:
                             SpotLogger.log(SignupViewLogs.usernameBlocked, details: ["raw": username, "norm": validator.normalized(username), "reason": "blocked"])
-                            errorMessage = "That username isn’t allowed"; return
+                            showToast("That username isn’t allowed", isError: true); return
                         }
 
                         guard password == confirmPassword else {
-                            errorMessage = "Passwords do not match."
+                            confirmPasswordError = "Passwords do not match."
+                            return
+                        }
+
+                        switch PasswordValidator.validate(password) {
+                        case .ok:
+                            break
+                        case .failure(let message):
+                            passwordError = message
                             return
                         }
 
                         guard selectedProfileImage != nil else {
-                            errorMessage = "Please add a profile picture."
+                            showToast("Please add a profile picture.", isError: true)
                             return
                         }
 
@@ -225,15 +249,6 @@ struct SignupView: View {
                     .padding(.horizontal, 32)
                     .padding(.top, 8)
 
-                    if let error = errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(FontManager.primaryText())
-                            .padding(.top, 4)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
-
                     HStack(spacing: 4) {
                         Text("Already have an account?")
                             .font(FontManager.primaryText())
@@ -255,8 +270,12 @@ struct SignupView: View {
                 .navigationDestination(isPresented: $showLogin) {
                     LoginView()
                 }
-                .navigationDestination(isPresented: $showConfirmEmail) {
-                    ConfirmEmailView()
+            }
+            .overlay(alignment: .top) {
+                if let toastMessage {
+                    ToastView(message: toastMessage, isError: toastIsError)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
         }
@@ -265,85 +284,69 @@ struct SignupView: View {
 
     private func validateAndSignUp() {
         Task {
-            do {
-                let snapshot = try await Firestore.firestore()
-                    .collection("users")
-                    .whereField("username", isEqualTo: username)
-                    .limit(to: 1)
-                    .getDocuments()
-                if !snapshot.documents.isEmpty {
-                    await MainActor.run {
-                        self.isLoading = false
-                        self.errorMessage = "Username is already taken"
-                    }
-                    return
+            let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let available = await authVM.isUsernameAvailable(trimmedUsername)
+            if !available {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.showToast("Username is already taken", isError: true)
                 }
-                // Proceed with signup flow
-                await MainActor.run { self.uploadProfilePictureAndSignUp() }
+                return
+            }
+            await MainActor.run { self.signUpWithSupabase() }
+        }
+    }
+
+    private func signUpWithSupabase() {
+        guard selectedProfileImage != nil else { return }
+
+        isLoading = true
+        errorMessage = nil
+
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        Task {
+            do {
+                let response = try await supabase.auth.signUp(
+                    email: cleanEmail,
+                    password: password,
+                    data: [
+                        "username": .string(trimmedUsername),
+                        "is_private": .bool(isPrivate)
+                    ]
+                )
+
+                await MainActor.run {
+                    AnalyticsService.shared.setUserId(response.user.id.uuidString)
+                    AnalyticsService.shared.logEvent("user_signup", parameters: [
+                        "email_verified": response.user.emailConfirmedAt != nil
+                    ])
+                }
+
+                await MainActor.run {
+                    authVM.beginEmailVerificationPending(email: cleanEmail, avatar: selectedProfileImage)
+                    self.isLoading = false
+                    self.errorMessage = nil
+                    self.showToast("Check your email for the verification code.", isError: false)
+                    self.dismiss()
+                }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = "Failed to validate username. Please try again."
+                    self.showToast(error.localizedDescription, isError: true)
                 }
             }
         }
     }
 
-    private func uploadProfilePictureAndSignUp() {
-        guard let profileImage = selectedProfileImage else { return }
-
-        isLoading = true
-        errorMessage = nil
-
-        // First create user with empty profile picture URL
-        AuthService.shared.signUp(email: email, password: password, username: username, profileImageURL: "", isPrivate: isPrivate) { result in
-            switch result {
-            case .success:
-                // Update Firebase Auth display name to keep in sync
-                if let changeReq = Auth.auth().currentUser?.createProfileChangeRequest() {
-                    changeReq.displayName = self.username
-                    changeReq.commitChanges(completion: nil)
-                }
-                // Send verification email and push confirm screen (using shared VM)
-                Task { await authVM.sendVerificationEmail() }
-                DispatchQueue.main.async { self.showConfirmEmail = true }
-                // Now that we're authenticated, upload the profile picture
-                ProfilePictureUploader.shared.uploadProfilePicture(image: profileImage) { uploadResult in
-                    DispatchQueue.main.async {
-                        switch uploadResult {
-                        case .success(let imageURL):
-                            // Update the user's document with the profile picture URL
-                            guard let uid = Auth.auth().currentUser?.uid else {
-                                self.isLoading = false
-                                self.errorMessage = "Failed to get user ID"
-                                return
-                            }
-
-                            let userData: [String: Any] = [
-                                "profileImageURL": imageURL
-                            ]
-
-                            Firestore.firestore().collection("users").document(uid).updateData(userData) { error in
-                                self.isLoading = false
-                                if let error = error {
-                                    self.errorMessage = "Failed to update profile picture: \(error.localizedDescription)"
-                                } else {
-                                    print("✅ Signed up and uploaded profile picture!")
-                                }
-                            }
-                        case .failure(let error):
-                            self.isLoading = false
-                            self.errorMessage = "Failed to upload profile picture: \(error.localizedDescription)"
-                        }
-                    }
-                }
-            case .failure(let error):
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.errorMessage = error.localizedDescription
-                    print("❌ Signup failed: \(error.localizedDescription)")
-                }
-            }
+    private func showToast(_ message: String, isError: Bool) {
+        withAnimation {
+            toastMessage = message
+            toastIsError = isError
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { toastMessage = nil }
         }
     }
 }
@@ -390,4 +393,5 @@ struct CustomSecureField: View {
 
 #Preview {
     SignupView()
+        .environmentObject(AuthViewModel())
 }

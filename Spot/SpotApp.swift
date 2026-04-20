@@ -37,8 +37,12 @@ struct SpotApp: App {
                         .environmentObject(authViewModel)
                         .environmentObject(deepLinkState)
                         .environmentObject(PermissionManager.shared)
-                        .onAppear {
-                            _ = FreshInstallDetector.shared.handleFreshInstall()
+                        .task {
+                            SubscriptionManager.shared.startTransactionUpdatesListener { [weak authViewModel] hasPro, expirationDate in
+                                guard hasPro else { return }
+                                await authViewModel?.setProActive(true, proUntil: expirationDate)
+                            }
+                            _ = await FreshInstallDetector.shared.handleFreshInstall()
                             deepLinkState.processPendingDeepLinks()
                         }
                 }
