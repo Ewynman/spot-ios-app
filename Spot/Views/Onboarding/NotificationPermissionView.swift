@@ -8,16 +8,28 @@
 import SwiftUI
 
 struct NotificationPermissionView: View {
+    enum AuthDestination {
+        case signup
+        case login
+        case postAuthSetup
+    }
+
+    let authDestination: AuthDestination
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var permissionManager: PermissionManager
     @State private var navigateToSignup = false
+    @State private var navigateToLogin = false
+    @State private var navigateToPostAuthSetup = false
+
+    init(authDestination: AuthDestination = .signup) {
+        self.authDestination = authDestination
+    }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Constants.Colors.background.ignoresSafeArea()
+        ZStack {
+            Constants.Colors.background.ignoresSafeArea()
 
-                VStack(spacing: 22) {
+            VStack(spacing: 22) {
 
                     // Custom Back Button
                     HStack {
@@ -73,7 +85,7 @@ struct NotificationPermissionView: View {
                         .buttonStyle(PlainButtonStyle())
 
                         Button(action: {
-                            navigateToSignup = true
+                            goToAuthDestination()
                         }) {
                             Text("Maybe Later")
                                 .font(FontManager.buttonText())
@@ -84,25 +96,49 @@ struct NotificationPermissionView: View {
                     .padding(.horizontal, 32)
 
                     Spacer()
-                }
-                .padding(.top)
             }
-            .navigationDestination(isPresented: $navigateToSignup) {
-                SignupView()
-            }
+            .padding(.top)
+        }
+        .navigationDestination(isPresented: $navigateToSignup) {
+            SignupView()
+        }
+        .navigationDestination(isPresented: $navigateToLogin) {
+            LoginView()
+        }
+        .navigationDestination(isPresented: $navigateToPostAuthSetup) {
+            PostAuthSetupFlowView(onComplete: {})
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
             // Check if notifications are already granted on appear
             permissionManager.updatePermissionStatuses()
             if permissionManager.notificationStatus == .authorized {
-                // Already granted, skip to signup
-                navigateToSignup = true
+                // Already granted, skip to auth destination.
+                goToAuthDestination()
             }
         }
         .onChange(of: permissionManager.notificationStatus) { _, newStatus in
             if newStatus != .notDetermined {
+                goToAuthDestination()
+            }
+        }
+    }
+
+    private func goToAuthDestination() {
+        withAnimation(.easeInOut(duration: 0.25)) {}
+        let delay = DispatchTime.now() + 0.12
+        switch authDestination {
+        case .signup:
+            DispatchQueue.main.asyncAfter(deadline: delay) {
                 navigateToSignup = true
+            }
+        case .login:
+            DispatchQueue.main.asyncAfter(deadline: delay) {
+                navigateToLogin = true
+            }
+        case .postAuthSetup:
+            DispatchQueue.main.asyncAfter(deadline: delay) {
+                navigateToPostAuthSetup = true
             }
         }
     }

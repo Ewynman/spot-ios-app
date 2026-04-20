@@ -137,6 +137,18 @@ struct LoginView: View {
                     .disabled(isLoading)
                     .padding(.horizontal, 32)
 
+                    ThemedAppleSignInButton(
+                        onSuccess: {
+                            SpotLogger.log(LoginViewLogs.loginSuccess)
+                            dismiss()
+                        },
+                        onError: { message in
+                            errorMessage = message
+                            SpotLogger.log(LoginViewLogs.loginFailed, details: ["error": message])
+                        }
+                    )
+                    .padding(.horizontal, 32)
+
                     // Error Text
                     if let error = errorMessage {
                         Text(error)
@@ -180,4 +192,5 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+        .environmentObject(AuthViewModel())
 }

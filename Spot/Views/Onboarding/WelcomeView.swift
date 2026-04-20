@@ -8,11 +8,18 @@
 import SwiftUI
 
 struct WelcomeView: View {
+    private enum AuthDestination {
+        case signup
+        case login
+    }
+
     @ObservedObject private var permissionManager = PermissionManager.shared
     @State private var navigateToLocation = false
     @State private var navigateToNotifications = false
     @State private var navigateToSignup = false
-    @State private var showLogin = false
+    @State private var navigateToLogin = false
+    @State private var authDestination: AuthDestination = .signup
+    @State private var appleErrorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -37,21 +44,7 @@ struct WelcomeView: View {
                     Spacer()
 
                     Button(action: {
-                        // Check permission status and navigate accordingly
-                        permissionManager.updatePermissionStatuses()
-                        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
-                        let notificationsGranted = permissionManager.notificationStatus == .authorized
-                        
-                        if locationGranted && notificationsGranted {
-                            // Both granted, skip to signup
-                            navigateToSignup = true
-                        } else if locationGranted {
-                            // Location granted, skip to notifications
-                            navigateToNotifications = true
-                        } else {
-                            // Need location permission
-                            navigateToLocation = true
-                        }
+                        startOnboardingFlow(destination: .signup)
                     }) {
                         Text("Get Started")
                             .font(FontManager.buttonText())
@@ -63,6 +56,19 @@ struct WelcomeView: View {
                             .padding(.horizontal, 0)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .padding(.bottom, 6)
+
+                    ThemedAppleSignInButton(
+                        onSuccess: {
+                            // Root auth gate will transition automatically from auth state.
+                        },
+                        onError: { message in
+                            appleErrorMessage = message
+                        },
+                        height: 56
+                    )
+                    .frame(width: UIScreen.main.bounds.width * 0.65)
+                    .padding(.horizontal, 0)
 
                     HStack {
                         Text("Already have an account?")
@@ -70,7 +76,7 @@ struct WelcomeView: View {
                             .foregroundColor(Constants.Colors.buttonText)
 
                         Button("Login") {
-                            showLogin = true
+                            navigateToLogin = true
                         }
                         .font(FontManager.primaryText())
                         .fontWeight(.black)
@@ -79,24 +85,59 @@ struct WelcomeView: View {
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 24)
+
+                    if let appleErrorMessage {
+                        Text(appleErrorMessage)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
                 }
                 .navigationDestination(isPresented: $navigateToLocation) {
-                    LocationPermissionView()
+                    LocationPermissionView(authDestination: authDestination == .login ? .login : .signup)
+                        .environmentObject(permissionManager)
                 }
                 .navigationDestination(isPresented: $navigateToNotifications) {
-                    NotificationPermissionView()
+                    NotificationPermissionView(authDestination: authDestination == .login ? .login : .signup)
+                        .environmentObject(permissionManager)
                 }
                 .navigationDestination(isPresented: $navigateToSignup) {
                     SignupView()
                 }
-                .navigationDestination(isPresented: $showLogin) {
+                .navigationDestination(isPresented: $navigateToLogin) {
                     LoginView()
                 }
             }
+        }
+    }
+
+    private func startOnboardingFlow(destination: AuthDestination) {
+        authDestination = destination
+        permissionManager.updatePermissionStatuses()
+        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
+        let notificationsGranted = permissionManager.notificationStatus == .authorized
+
+        if locationGranted && notificationsGranted {
+            routeToDestination(destination)
+        } else if locationGranted {
+            navigateToNotifications = true
+        } else {
+            navigateToLocation = true
+        }
+    }
+
+    private func routeToDestination(_ destination: AuthDestination) {
+        switch destination {
+        case .signup:
+            navigateToSignup = true
+        case .login:
+            navigateToLogin = true
         }
     }
 }
 
 #Preview {
     WelcomeView()
+        .environmentObject(AuthViewModel())
 }

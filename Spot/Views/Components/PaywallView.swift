@@ -119,12 +119,14 @@ struct PaywallView: View {
                 case .purchased(let expirationDate):
                     // Transaction is already verified via checkVerified in purchasePro().
                     // refreshEntitlement() provides an additional on-device confirmation.
+                    var unlocked = false
                     if await subscriptionManager.refreshEntitlement() {
                         await authVM.setProActive(true, proUntil: expirationDate)
+                        unlocked = true
                     }
                     await MainActor.run {
                         dismiss()
-                        if isPro { onProUnlocked?() }
+                        if unlocked { onProUnlocked?() }
                     }
                 case .pending:
                     SpotLogger.log(PaywallViewLogs.purchasePending)

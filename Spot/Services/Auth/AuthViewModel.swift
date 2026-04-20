@@ -10,6 +10,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 import Supabase
+import AuthenticationServices
 
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
@@ -84,10 +85,6 @@ class AuthViewModel: ObservableObject {
             Task {
                 await SupabaseUserService.shared.syncCurrentUser()
             }
-            if FreshInstallDetector.shared.consumePromptPermissionsOnNextLoginFlag() {
-                SpotLogger.log(AuthViewModelLogs.autoPromptPermissions)
-                PermissionManager.shared.requestPermissionsIfNeeded()
-            }
             previousUserId = user.id.uuidString
 
             refreshUserFlags()
@@ -155,6 +152,39 @@ class AuthViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Completes native Apple auth by exchanging the Apple identity token with Supabase.
+    /// Optionally persists the full name into auth metadata when Apple provides it (first consent only).
+    func signInWithApple(idToken: String, fullName: PersonNameComponents?) async throws {
+        _ = try await supabase.auth.signInWithIdToken(
+            credentials: .init(
+                provider: .apple,
+                idToken: idToken
+            )
+        )
+
+        if let fullName {
+            var parts: [String] = []
+            if let given = fullName.givenName, !given.isEmpty { parts.append(given) }
+            if let middle = fullName.middleName, !middle.isEmpty { parts.append(middle) }
+            if let family = fullName.familyName, !family.isEmpty { parts.append(family) }
+
+            if !parts.isEmpty {
+                let full = parts.joined(separator: " ")
+                try? await supabase.auth.update(
+                    user: UserAttributes(
+                        data: [
+                            "full_name": .string(full),
+                            "given_name": .string(fullName.givenName ?? ""),
+                            "family_name": .string(fullName.familyName ?? "")
+                        ]
+                    )
+                )
+            }
+        }
+
+        await SupabaseUserService.shared.syncCurrentUser()
     }
 
     @MainActor func signOut() {

@@ -10,8 +10,11 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @EnvironmentObject var deepLinkState: DeepLinkState
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var showPaywall: Bool = false
     @State private var showPostPurchaseProOnboarding: Bool = false
+    @State private var showPostAuthSetup: Bool = false
+    @State private var isResolvingPostAuthSetup: Bool = false
 
     var body: some View {
         Group {
@@ -20,7 +23,32 @@ struct RootView: View {
             } else if authViewModel.awaitingEmailVerification {
                 ConfirmEmailView()
             } else if authViewModel.isAuthenticated {
-                ZStack {
+                Group {
+                    if authViewModel.isEmailVerified && (isResolvingPostAuthSetup || showPostAuthSetup) {
+                        if isResolvingPostAuthSetup {
+                            ZStack {
+                                Constants.Colors.background.ignoresSafeArea()
+                                ProgressView()
+                            }
+                        } else
+                        if permissionManager.locationStatus != .authorizedWhenInUse &&
+                            permissionManager.locationStatus != .authorizedAlways {
+                            LocationPermissionView(authDestination: .postAuthSetup)
+                                .environmentObject(permissionManager)
+                                .environmentObject(authViewModel)
+                        } else if permissionManager.notificationStatus != .authorized {
+                            NotificationPermissionView(authDestination: .postAuthSetup)
+                                .environmentObject(permissionManager)
+                                .environmentObject(authViewModel)
+                        } else {
+                            PostAuthSetupFlowView {
+                                showPostAuthSetup = false
+                            }
+                            .environmentObject(authViewModel)
+                            .environmentObject(permissionManager)
+                        }
+                    } else {
+                        ZStack {
                     // Main content (verified vs confirm)
                     Group {
                         if authViewModel.isEmailVerified {
@@ -137,6 +165,8 @@ struct RootView: View {
                     // Process any pending deep links when user becomes authenticated
                     deepLinkState.processPendingDeepLinks()
                 }
+                    }
+                }
                 .sheet(isPresented: $showPaywall) {
                     PaywallView(onProUnlocked: queuePostPurchaseProOnboardingIfNeeded)
                         .environmentObject(authViewModel)
@@ -173,6 +203,9 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showPostPurchaseProOnboarding)) { _ in
             queuePostPurchaseProOnboardingIfNeeded()
         }
+        .task(id: "\(authViewModel.userId ?? "nil")-\(authViewModel.isAuthenticated)-\(authViewModel.isEmailVerified)") {
+            await refreshPostAuthSetupRequirement()
+        }
     }
 
     private func queuePostPurchaseProOnboardingIfNeeded() {
@@ -180,6 +213,48 @@ struct RootView: View {
             guard PostPurchaseProOnboardingManager.shouldShow(userId: authViewModel.userId) else { return }
             showPostPurchaseProOnboarding = true
         }
+    }
+
+    @MainActor
+    private func refreshPostAuthSetupRequirement() async {
+        isResolvingPostAuthSetup = true
+        defer { isResolvingPostAuthSetup = false }
+
+        guard authViewModel.isAuthenticated, authViewModel.isEmailVerified,
+              let uidString = authViewModel.userId,
+              let uid = UUID(uuidString: uidString)
+        else {
+            showPostAuthSetup = false
+            return
+        }
+
+        permissionManager.updatePermissionStatuses()
+        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse ||
+            permissionManager.locationStatus == .authorizedAlways
+        let notificationsGranted = permissionManager.notificationStatus == .authorized
+
+        struct Row: Decodable {
+            let username: String
+            let profile_image_url: String?
+        }
+
+        let needsProfileSetup: Bool
+        do {
+            let row: Row = try await supabase
+                .from("users")
+                .select("username,profile_image_url")
+                .eq("id", value: uid)
+                .single()
+                .execute()
+                .value
+            let usernameOk = !row.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let photoOk = !(row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            needsProfileSetup = !(usernameOk && photoOk)
+        } catch {
+            needsProfileSetup = true
+        }
+
+        showPostAuthSetup = (!locationGranted || !notificationsGranted || needsProfileSetup)
     }
 }
 

@@ -10,6 +10,7 @@ import CoreLocation
 import UserNotifications
 import UIKit
 
+@MainActor
 class PermissionManager: NSObject, ObservableObject {
     static let shared = PermissionManager()
     private let locationManager = CLLocationManager()
