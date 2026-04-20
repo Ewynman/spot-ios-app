@@ -11,6 +11,7 @@ struct RootView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @EnvironmentObject var deepLinkState: DeepLinkState
     @State private var showPaywall: Bool = false
+    @State private var showPostPurchaseProOnboarding: Bool = false
 
     var body: some View {
         Group {
@@ -137,7 +138,14 @@ struct RootView: View {
                     deepLinkState.processPendingDeepLinks()
                 }
                 .sheet(isPresented: $showPaywall) {
-                    PaywallView().environmentObject(authViewModel)
+                    PaywallView(onProUnlocked: queuePostPurchaseProOnboardingIfNeeded)
+                        .environmentObject(authViewModel)
+                }
+                .fullScreenCover(isPresented: $showPostPurchaseProOnboarding) {
+                    PostPurchaseProOnboardingView {
+                        showPostPurchaseProOnboarding = false
+                    }
+                    .environmentObject(authViewModel)
                 }
             } else {
                 WelcomeView()
@@ -161,6 +169,16 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showPaywall)) { _ in
             showPaywall = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showPostPurchaseProOnboarding)) { _ in
+            queuePostPurchaseProOnboardingIfNeeded()
+        }
+    }
+
+    private func queuePostPurchaseProOnboardingIfNeeded() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            guard PostPurchaseProOnboardingManager.shouldShow(userId: authViewModel.userId) else { return }
+            showPostPurchaseProOnboarding = true
         }
     }
 }

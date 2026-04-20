@@ -51,6 +51,50 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
+    /// Starts a long-lived task that consumes `Transaction.updates` so successful purchases are not missed if `purchase()` is not awaiting (process kill, UI flow gaps, pending approval, etc.). Safe to call once at app launch.
+    func startListeningForTransactionUpdates() {
+        guard transactionUpdatesTask == nil else { return }
+        transactionUpdatesTask = Task { @MainActor in
+            for await update in Transaction.updates {
+                await self.processTransactionUpdate(update)
+            }
+        }
+    }
+
+    private func processTransactionUpdate(_ result: VerificationResult<Transaction>) async {
+        let transaction: Transaction
+        switch result {
+        case .unverified(_, let error):
+            SpotLogger.error(
+                "StoreKit: Unverified transaction in Transaction.updates",
+                details: ["error": "\(error)"]
+            )
+            return
+        case .verified(let safe):
+            transaction = safe
+        }
+
+        let checker = ProEntitlementChecker(proProductIDs: productIds)
+        let isPro = checker.grantsPro(forProductID: transaction.productID)
+        if isPro {
+            SpotLogger.info(
+                "StoreKit: Verified Pro transaction in updates; finishing",
+                details: ["productID": transaction.productID]
+            )
+        } else {
+            SpotLogger.debug(
+                "StoreKit: Finishing transaction in updates (non-Pro product)",
+                details: ["productID": transaction.productID]
+            )
+        }
+
+        await transaction.finish()
+
+        if isPro {
+            NotificationCenter.default.post(name: .spotStoreKitProEntitlementReady, object: nil)
+        }
+    }
+
     enum PurchaseProResult: Sendable {
         case purchased(expirationDate: Date?)
         case pending

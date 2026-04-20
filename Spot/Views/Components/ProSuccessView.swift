@@ -53,6 +53,9 @@ struct ProSuccessView: View {
             // Continue Button
             Button(action: {
                 deepLinkState.dismissSubscriptionSuccess()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    NotificationCenter.default.post(name: .showPostPurchaseProOnboarding, object: nil)
+                }
             }) {
                 Text("Continue")
                     .font(FontManager.buttonText())

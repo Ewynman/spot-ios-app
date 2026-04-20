@@ -75,6 +75,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Enable feed diagnostic logging
         FeedFlags.enableDiagnosticLogging = true
 
+        SubscriptionManager.shared.startListeningForTransactionUpdates()
+
         return true
     }
 

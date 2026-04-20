@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct PaywallView: View {
+    /// Called after a purchase or restore grants Pro (sheet dismisses first; use for follow-up UI such as onboarding).
+    var onProUnlocked: (() -> Void)? = nil
+
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
@@ -119,7 +122,10 @@ struct PaywallView: View {
                     if await subscriptionManager.refreshEntitlement() {
                         await authVM.setProActive(true, proUntil: expirationDate)
                     }
-                    await MainActor.run { dismiss() }
+                    await MainActor.run {
+                        dismiss()
+                        if isPro { onProUnlocked?() }
+                    }
                 case .pending:
                     SpotLogger.log(PaywallViewLogs.purchasePending)
                 case .userCancelled:
