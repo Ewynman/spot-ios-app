@@ -94,27 +94,29 @@ class PostFlowViewModel: ObservableObject {
         let placeName = location.placeName
         let images = selectedImages
 
-        let jpegs: [Data] = images.compactMap { $0.jpegData(compressionQuality: 0.85) }
-        guard jpegs.count == images.count, !jpegs.isEmpty else {
-            showToastWith(message: "Could not prepare images. Try different photos.", isError: true)
-            isEncodingPost = false
-            return
-        }
-
-        let draft = SpotPublishDraft(
-            imageJPEGs: jpegs,
-            vibeTag: vibe,
-            latitude: lat,
-            longitude: lon,
-            placeName: placeName,
-            userId: userId
-        )
-
-        spotPublisher.enqueue(draft: draft) { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
-            self.resetComposerAfterQueued()
-            self.onPostQueued?()
-            self.isEncodingPost = false
+            guard let jpegs = await self.encodeImagesForUpload(images), !jpegs.isEmpty else {
+                self.showToastWith(message: "Could not prepare images. Try different photos.", isError: true)
+                self.isEncodingPost = false
+                return
+            }
+
+            let draft = SpotPublishDraft(
+                imageJPEGs: jpegs,
+                vibeTag: vibe,
+                latitude: lat,
+                longitude: lon,
+                placeName: placeName,
+                userId: userId
+            )
+
+            self.spotPublisher.enqueue(draft: draft) { [weak self] in
+                guard let self else { return }
+                self.resetComposerAfterQueued()
+                self.onPostQueued?()
+                self.isEncodingPost = false
+            }
         }
     }
 
@@ -133,6 +135,24 @@ class PostFlowViewModel: ObservableObject {
         withAnimation { showToast = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             withAnimation { self?.showToast = false }
+        }
+    }
+
+    private func encodeImagesForUpload(_ images: [UIImage]) async -> [Data]? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var output: [Data] = []
+                output.reserveCapacity(images.count)
+                for image in images {
+                    let data = autoreleasepool(invoking: { image.jpegData(compressionQuality: 0.78) })
+                    guard let data else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    output.append(data)
+                }
+                continuation.resume(returning: output)
+            }
         }
     }
 }

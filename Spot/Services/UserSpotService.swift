@@ -239,11 +239,11 @@ class UserSpotService {
                     let follower_id: UUID
                     let followee_id: UUID
                 }
-                _ = try? await supabase
+                try await supabase
                     .from("follows")
                     .insert(FollowInsert(follower_id: follower, followee_id: followee))
                     .execute()
-                _ = try? await supabase
+                try await supabase
                     .from("follow_requests")
                     .delete()
                     .eq("requester_id", value: follower)

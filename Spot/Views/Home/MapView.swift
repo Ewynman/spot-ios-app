@@ -45,6 +45,7 @@ struct MapView: View {
                 locationManager.stopUpdatingLocation()
                 // Clear selected spot to ensure map resources are released before navigation
                 selectedSpot = nil
+                mapVM.clearVisibleSpots()
                 // Cancel any pending region load tasks
                 regionLoadTask?.cancel()
                 regionLoadTask = nil

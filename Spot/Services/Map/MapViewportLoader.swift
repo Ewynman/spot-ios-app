@@ -9,6 +9,10 @@ actor MapViewportLoader {
     private var tileCache: [String: [Spot]] = [:]
     private let maxCachedTiles = 128
 
+    func clearCache() {
+        tileCache.removeAll()
+    }
+
     func load(region: MKCoordinateRegion, perTileLimit: Int = 200) async -> [Spot] {
         let prefixes = prefixesForRegion(region)
         let db = Firestore.firestore()

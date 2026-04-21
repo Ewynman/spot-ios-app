@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import ImageIO
 
 struct SettingsView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -37,7 +38,6 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top bar
             HStack {
                 Button {
                     dismiss()
@@ -57,301 +57,84 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-
             ScrollView {
                 VStack(spacing: 24) {
-                    // MARK: - Profile Section
-                    settingsSection {
-                        VStack(spacing: 16) {
-                            sectionHeader("Profile")
-                            
-                            PhotosPicker(selection: $photoPickerItem, matching: .images) {
-                                ZStack {
-                                    if let image = selectedProfileImage {
-                                        Image(uiImage: image)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 100, height: 100)
-                                            .clipShape(Circle())
-                                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                    } else if let urlString = profileImageURL, let url = URL(string: urlString) {
-                                        AsyncImage(url: url) { img in
-                                            img.resizable()
-                                                .scaledToFill()
-                                        } placeholder: {
-                                            Image(systemName: "person.fill")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(Constants.Colors.primary)
-                                        }
-                                        .frame(width: 100, height: 100)
-                                        .clipShape(Circle())
-                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                    } else {
-                                        Circle()
-                                            .fill(Constants.Colors.background)
-                                            .frame(width: 100, height: 100)
-                                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                            .overlay(
-                                                Image(systemName: "person.fill")
-                                                    .font(.system(size: 40))
-                                                    .foregroundColor(Constants.Colors.primary)
-                                            )
-                                    }
-
-                                    if isUploadingPhoto {
-                                        Circle()
-                                            .fill(Color.black.opacity(0.15))
-                                            .frame(width: 100, height: 100)
-                                        ProgressView()
-                                    }
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .onChange(of: photoPickerItem) { _, newItem in
-                                Task {
-                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                       let uiImage = UIImage(data: data) {
-                                        selectedProfileImage = uiImage
-                                        uploadProfilePhoto(uiImage)
-                                    }
-                                }
-                            }
-                            
-                            SettingsTextField(title: "Username", text: $username)
-                            SettingsTextField(title: "Name", text: $name)
-                            SettingsTextField(title: "Email", text: $email, keyboardType: .emailAddress)
-                        }
-                    }
-                    
-                    // MARK: - Security Section
-                    settingsSection {
-                        VStack(spacing: 16) {
-                            sectionHeader("Security")
-                            
-                            SettingsSecureField(title: "Current Password", text: $currentPassword)
-                            if let currentPasswordError {
-                                Text(currentPasswordError)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            SettingsSecureField(title: "New Password", text: $newPassword)
-                            if let newPasswordError {
-                                Text(newPasswordError)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            SettingsSecureField(title: "Confirm Password", text: $confirmPassword)
-                            if let confirmPasswordError {
-                                Text(confirmPasswordError)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            
-                            Toggle(isOn: $isPrivate) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Private Account")
-                                        .font(FontManager.primaryText())
-                                        .foregroundColor(Constants.Colors.primary)
-                                    Text("Only approved followers can see your spots")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            .tint(Constants.Colors.primary)
-                            
-                            if let error = errorMessage {
-                                Text(error)
-                                    .foregroundColor(.red)
-                                    .font(FontManager.primaryText())
-                                    .multilineTextAlignment(.center)
-                            }
-                            if let success = successMessage {
-                                Text(success)
-                                    .foregroundColor(.green)
-                                    .font(FontManager.primaryText())
-                                    .multilineTextAlignment(.center)
-                            }
-                            
-                            Button(action: save) {
-                                Text(isSaving ? "Saving..." : "Save Changes")
-                                    .font(FontManager.buttonText())
-                                    .foregroundColor(Constants.Colors.buttonText)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Constants.Colors.primary)
-                                    .cornerRadius(12)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .disabled(isSaving)
-                        }
-                    }
-                    
-                    // MARK: - Subscription Management Section
                     settingsSection {
                         VStack(spacing: 12) {
-                            sectionHeader("Subscription Management")
-
-                            if authVM.isPro {
-                                // Show Pro Until date prominently
-                                HStack(spacing: 12) {
-                                    Image(systemName: "star.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(Constants.Colors.primary)
-                                        .frame(width: 24)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Pro Member")
-                                            .font(FontManager.primaryText())
-                                            .foregroundColor(Constants.Colors.primary)
-                                        if let proUntil = authVM.proUntil {
-                                            Text("Active until \(formatDate(proUntil))")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 16)
-
-                                Button {
-                                    showCollectionsNav = true
-                                } label: {
-                                    settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                Button {
-                                    Task {
-                                        do {
-                                            try await SubscriptionManager.shared.manageSubscriptions()
-                                        } catch {
-                                            await MainActor.run {
-                                                showToast(message: error.localizedDescription, isError: true)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            } else {
-                                Button {
-                                    NotificationCenter.default.post(name: .showPaywall, object: nil)
-                                } label: {
-                                    settingsRow(title: "Go Pro", icon: "star.fill")
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                Button {
-                                    Task {
-                                        do {
-                                            try await SubscriptionManager.shared.restorePurchases()
-                                            if await SubscriptionManager.shared.refreshEntitlement() {
-                                                let expirationDate = await SubscriptionManager.shared.refreshEntitlementExpiry()
-                                                await authVM.setProActive(true, proUntil: expirationDate)
-                                                await MainActor.run {
-                                                    showToast(message: "Subscription restored", isError: false)
-                                                }
-                                            } else {
-                                                await MainActor.run {
-                                                    showToast(message: "No active subscription found", isError: true)
-                                                }
-                                            }
-                                        } catch {
-                                            await MainActor.run {
-                                                showToast(message: error.localizedDescription, isError: true)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    settingsRow(title: "Restore Purchases", icon: "arrow.clockwise")
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                    }
-
-                    // MARK: - Account Privacy Section
-                    settingsSection {
-                        VStack(spacing: 12) {
-                            sectionHeader("Account Privacy")
-
+                            sectionHeader("Account")
                             NavigationLink {
-                                BlockedUsersView()
+                                AccountSettingsDetailView(
+                                    username: $username,
+                                    name: $name,
+                                    email: $email,
+                                    profileImageURL: $profileImageURL,
+                                    selectedProfileImage: $selectedProfileImage,
+                                    photoPickerItem: $photoPickerItem,
+                                    isUploadingPhoto: $isUploadingPhoto,
+                                    currentPassword: $currentPassword,
+                                    confirmDelete: $confirmDelete,
+                                    deletePassword: $deletePassword,
+                                    isSaving: $isSaving,
+                                    onSave: saveAccountChanges,
+                                    onUploadPhoto: uploadProfilePhoto,
+                                    onLogout: { authVM.signOut() },
+                                    onDelete: deleteAccount
+                                )
                             } label: {
-                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
+                                settingsRow(title: "Account settings", icon: "person.crop.circle")
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
-                    
-                    // MARK: - Danger Zone Section
+
                     settingsSection {
-                        VStack(spacing: 16) {
-                            sectionHeader("Danger Zone")
-                            
-                            Button {
-                                authVM.signOut()
+                        VStack(spacing: 12) {
+                            sectionHeader("Security")
+                            NavigationLink {
+                                SecuritySettingsDetailView(
+                                    currentPassword: $currentPassword,
+                                    newPassword: $newPassword,
+                                    confirmPassword: $confirmPassword,
+                                    isPrivate: $isPrivate,
+                                    isSaving: $isSaving,
+                                    currentPasswordError: $currentPasswordError,
+                                    newPasswordError: $newPasswordError,
+                                    confirmPasswordError: $confirmPasswordError,
+                                    onSave: saveSecurityChanges
+                                )
                             } label: {
-                                settingsRow(title: "Log Out", icon: "arrow.right.square.fill", isDestructive: false)
+                                settingsRow(title: "Security options", icon: "lock.shield")
                             }
                             .buttonStyle(PlainButtonStyle())
-                            
-                            VStack(alignment: .leading, spacing: 12) {
-                                Toggle(isOn: $confirmDelete) {
-                                    Text("I understand this will permanently delete my account")
-                                        .font(FontManager.primaryText())
-                                        .foregroundColor(Constants.Colors.primary)
-                                }
-                                .tint(Constants.Colors.primary)
-
-                                SettingsSecureField(title: "Password to Confirm", text: $deletePassword)
-
-                                Button {
-                                    guard confirmDelete, !deletePassword.isEmpty else {
-                                        showToast(message: "Please confirm and enter your password", isError: true)
-                                        return
-                                    }
-                                    isSaving = true
-                                    authVM.deleteAccount(password: deletePassword) { result in
-                                        DispatchQueue.main.async {
-                                            isSaving = false
-                                            switch result {
-                                            case .success:
-                                                showToast(message: "Account deleted", isError: false)
-                                            case .failure(let error):
-                                                showToast(message: error.localizedDescription, isError: true)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .disabled(!confirmDelete || deletePassword.isEmpty)
-                            }
                         }
                     }
-                    
-                    // MARK: - Legal Section
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Subscription")
+                            NavigationLink {
+                                SubscriptionSettingsDetailView(
+                                    isPro: authVM.isPro,
+                                    proUntil: authVM.proUntil,
+                                    onOpenCollections: { showCollectionsNav = true },
+                                    onGoPro: { NotificationCenter.default.post(name: .showPaywall, object: nil) },
+                                    onManageSubscription: manageSubscriptions,
+                                    onRestorePurchases: restorePurchases
+                                )
+                            } label: {
+                                settingsRow(title: "Subscription & Pro", icon: "star")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+
                     settingsSection {
                         VStack(spacing: 12) {
                             sectionHeader("Legal")
-                            
-                            Button {
-                                if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) }
+                            NavigationLink {
+                                LegalSettingsDetailView()
                             } label: {
-                                settingsRow(title: "Terms & Conditions", icon: "doc.text.fill")
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            Button {
-                                if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) }
-                            } label: {
-                                settingsRow(title: "Privacy Policy", icon: "lock.shield.fill")
+                                settingsRow(title: "Legal documents", icon: "doc.text")
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -362,7 +145,6 @@ struct SettingsView: View {
         }
         .background(Color(hex: "F5F3EF").ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
-        .onAppear(perform: load)
         .navigationDestination(isPresented: $showCollectionsNav) {
             CollectionsView()
         }
@@ -379,35 +161,33 @@ struct SettingsView: View {
             }
             .padding(.top, 8)
         }
-        .task {
-            load()
+        .task(id: authVM.userId) {
+            await load()
         }
     }
 
-    private func load() {
+    private func load() async {
         guard let userId = authVM.userId, let uid = UUID(uuidString: userId) else { return }
-        Task {
-            do {
-                let row: SettingsUserRow = try await supabase
-                    .from("users")
-                    .select("username,email,is_private,profile_image_url")
-                    .eq("id", value: uid)
-                    .single()
-                    .execute()
-                    .value
-                let authUser = try? await supabase.auth.user()
-                await MainActor.run {
-                    username = row.username
-                    originalUsername = username
-                    name = (authUser?.userMetadata["full_name"]?.stringValue) ?? ""
-                    email = row.email ?? (authUser?.email ?? SpotAuthBridge.currentUserEmail ?? "")
-                    isPrivate = row.is_private
-                    profileImageURL = row.profile_image_url
-                }
-            } catch {
-                SpotLogger.log(SettingsViewLogs.loadProfileFailed, details: ["userId": userId, "error": error.localizedDescription])
-                await MainActor.run { errorMessage = error.localizedDescription }
+        do {
+            let row: SettingsUserRow = try await supabase
+                .from("users")
+                .select("username,email,is_private,profile_image_url")
+                .eq("id", value: uid)
+                .single()
+                .execute()
+                .value
+            let authUser = try? await supabase.auth.user()
+            await MainActor.run {
+                username = row.username
+                originalUsername = username
+                name = (authUser?.userMetadata["full_name"]?.stringValue) ?? ""
+                email = row.email ?? (authUser?.email ?? SpotAuthBridge.currentUserEmail ?? "")
+                isPrivate = row.is_private
+                profileImageURL = row.profile_image_url
             }
+        } catch {
+            SpotLogger.log(SettingsViewLogs.loadProfileFailed, details: ["userId": userId, "error": error.localizedDescription])
+            await MainActor.run { errorMessage = error.localizedDescription }
         }
     }
 
@@ -559,6 +339,209 @@ struct SettingsView: View {
         }
     }
 
+    private func saveAccountChanges() {
+        errorMessage = nil
+        successMessage = nil
+        currentPasswordError = nil
+
+        guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Username cannot be empty"
+            return
+        }
+
+        isSaving = true
+        let isEmailChange = !email.isEmpty && email != SpotAuthBridge.currentUserEmail
+        if isEmailChange && currentPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            isSaving = false
+            currentPasswordError = "Current password is required for email changes."
+            return
+        }
+
+        Task {
+            if username != originalUsername {
+                let available = await authVM.isUsernameAvailable(username)
+                if !available {
+                    await MainActor.run {
+                        isSaving = false
+                        errorMessage = "Username is already taken"
+                    }
+                    return
+                }
+            }
+
+            let validator = UsernameValidator()
+            switch validator.validate(username) {
+            case .ok: break
+            case .tooShort:
+                await MainActor.run { isSaving = false; errorMessage = "Username is too short" }
+                return
+            case .tooLong:
+                await MainActor.run { isSaving = false; errorMessage = "Username is too long" }
+                return
+            case .invalidChars:
+                await MainActor.run { isSaving = false; errorMessage = "Username has invalid characters" }
+                return
+            case .reserved:
+                await MainActor.run { isSaving = false; errorMessage = "That username is reserved" }
+                return
+            case .blocked:
+                await MainActor.run { isSaving = false; errorMessage = "That username isn’t allowed" }
+                return
+            }
+
+            let group = DispatchGroup()
+            var firstError: Error?
+
+            group.enter()
+            authVM.updateUsername(username) { result in
+                if case let .failure(err) = result { firstError = firstError ?? err }
+                group.leave()
+            }
+
+            group.enter()
+            authVM.updateName(name) { result in
+                if case let .failure(err) = result { firstError = firstError ?? err }
+                group.leave()
+            }
+
+            if isEmailChange {
+                group.enter()
+                authVM.reauthenticate(currentPassword: currentPassword) { reauth in
+                    switch reauth {
+                    case .failure(let error):
+                        firstError = firstError ?? error
+                        group.leave()
+                    case .success:
+                        Task {
+                            do {
+                                try await authVM.verifyBeforeUpdateEmail(email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+                            } catch {
+                                firstError = firstError ?? error
+                            }
+                            group.leave()
+                        }
+                    }
+                }
+            }
+
+            group.notify(queue: .main) {
+                isSaving = false
+                if let err = firstError {
+                    showToast(message: err.localizedDescription, isError: true)
+                } else {
+                    showToast(message: isEmailChange ? "Verification code sent to new email" : "Account settings updated", isError: false)
+                }
+            }
+        }
+    }
+
+    private func saveSecurityChanges() {
+        errorMessage = nil
+        successMessage = nil
+        currentPasswordError = nil
+        newPasswordError = nil
+        confirmPasswordError = nil
+
+        let isPasswordChange = !newPassword.isEmpty || !confirmPassword.isEmpty
+        if isPasswordChange {
+            guard newPassword == confirmPassword else {
+                confirmPasswordError = "Passwords do not match."
+                return
+            }
+            switch PasswordValidator.validate(newPassword) {
+            case .ok: break
+            case .failure(let message):
+                newPasswordError = message
+                return
+            }
+            if currentPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                currentPasswordError = "Current password is required for password changes."
+                return
+            }
+        }
+
+        isSaving = true
+        let group = DispatchGroup()
+        var firstError: Error?
+
+        group.enter()
+        authVM.setPrivateAccount(isPrivate) { result in
+            if case let .failure(err) = result { firstError = firstError ?? err }
+            group.leave()
+        }
+
+        if isPasswordChange {
+            group.enter()
+            authVM.reauthenticate(currentPassword: currentPassword) { reauth in
+                switch reauth {
+                case .failure(let error):
+                    firstError = firstError ?? error
+                    group.leave()
+                case .success:
+                    authVM.updatePassword(newPassword) { result in
+                        if case let .failure(err) = result { firstError = firstError ?? err }
+                        group.leave()
+                    }
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            isSaving = false
+            if let err = firstError {
+                showToast(message: err.localizedDescription, isError: true)
+            } else {
+                showToast(message: "Security settings updated", isError: false)
+            }
+        }
+    }
+
+    private func deleteAccount() {
+        guard confirmDelete, !deletePassword.isEmpty else {
+            showToast(message: "Please confirm and enter your password", isError: true)
+            return
+        }
+        isSaving = true
+        authVM.deleteAccount(password: deletePassword) { result in
+            DispatchQueue.main.async {
+                isSaving = false
+                switch result {
+                case .success:
+                    showToast(message: "Account deleted", isError: false)
+                case .failure(let error):
+                    showToast(message: error.localizedDescription, isError: true)
+                }
+            }
+        }
+    }
+
+    private func manageSubscriptions() {
+        Task {
+            do {
+                try await SubscriptionManager.shared.manageSubscriptions()
+            } catch {
+                await MainActor.run { showToast(message: error.localizedDescription, isError: true) }
+            }
+        }
+    }
+
+    private func restorePurchases() {
+        Task {
+            do {
+                try await SubscriptionManager.shared.restorePurchases()
+                if await SubscriptionManager.shared.refreshEntitlement() {
+                    let expirationDate = await SubscriptionManager.shared.refreshEntitlementExpiry()
+                    await authVM.setProActive(true, proUntil: expirationDate)
+                    await MainActor.run { showToast(message: "Subscription restored", isError: false) }
+                } else {
+                    await MainActor.run { showToast(message: "No active subscription found", isError: true) }
+                }
+            } catch {
+                await MainActor.run { showToast(message: error.localizedDescription, isError: true) }
+            }
+        }
+    }
+
     private func showToast(message: String, isError: Bool) {
         if isError {
             errorMessage = message
@@ -626,6 +609,358 @@ struct SettingsView: View {
     }
 }
 
+private struct AccountSettingsDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var username: String
+    @Binding var name: String
+    @Binding var email: String
+    @Binding var profileImageURL: String?
+    @Binding var selectedProfileImage: UIImage?
+    @Binding var photoPickerItem: PhotosPickerItem?
+    @Binding var isUploadingPhoto: Bool
+    @Binding var currentPassword: String
+    @Binding var confirmDelete: Bool
+    @Binding var deletePassword: String
+    @Binding var isSaving: Bool
+    let onSave: () -> Void
+    let onUploadPhoto: (UIImage) -> Void
+    let onLogout: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsTopBar(title: "Account", dismiss: dismiss)
+            ScrollView {
+                VStack(spacing: 24) {
+                    settingsSection {
+                        VStack(spacing: 16) {
+                            sectionHeader("Profile")
+                            PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                                HStack(spacing: 12) {
+                                    profileImage
+                                    Text(isUploadingPhoto ? "Uploading..." : "Change profile photo")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .background(Color.white)
+                                .cornerRadius(10)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Constants.Colors.primary, lineWidth: 1)
+                                )
+                            }
+                            .onChange(of: photoPickerItem) { _, newItem in
+                                Task {
+                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                       let uiImage = downsampledImage(from: data, maxPixelSize: 1024) {
+                                        selectedProfileImage = uiImage
+                                        onUploadPhoto(uiImage)
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            SettingsTextField(title: "Username", text: $username)
+                            SettingsTextField(title: "Display Name", text: $name)
+                            SettingsTextField(title: "Email", text: $email, keyboardType: .emailAddress)
+                            SettingsSecureField(title: "Current Password (for email change)", text: $currentPassword)
+
+                            Button(action: onSave) {
+                                Text(isSaving ? "Saving..." : "Save Account Changes")
+                                    .font(FontManager.buttonText())
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(12)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isSaving)
+                        }
+                    }
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Account Actions")
+                            Button(action: onLogout) {
+                                settingsRow(title: "Log Out", icon: "arrow.right.square.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Delete Account")
+                            Toggle(isOn: $confirmDelete) {
+                                Text("I understand this permanently deletes my account")
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .tint(Constants.Colors.primary)
+
+                            SettingsSecureField(title: "Password to confirm", text: $deletePassword)
+                            Button(action: onDelete) {
+                                settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(!confirmDelete || deletePassword.isEmpty || isSaving)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private var profileImage: some View {
+        Group {
+            if let image = selectedProfileImage {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if let urlString = profileImageURL, let url = URL(string: urlString) {
+                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.gray.opacity(0.2) }
+            } else {
+                Image(systemName: "person.fill").resizable().scaledToFit().padding(10)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 1))
+    }
+}
+
+private func downsampledImage(from data: Data, maxPixelSize: CGFloat) -> UIImage? {
+    let options: CFDictionary = [
+        kCGImageSourceShouldCache: false
+    ] as CFDictionary
+    guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
+    let downsampleOptions: CFDictionary = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ] as CFDictionary
+    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else { return nil }
+    return UIImage(cgImage: cgImage)
+}
+
+private struct SecuritySettingsDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var currentPassword: String
+    @Binding var newPassword: String
+    @Binding var confirmPassword: String
+    @Binding var isPrivate: Bool
+    @Binding var isSaving: Bool
+    @Binding var currentPasswordError: String?
+    @Binding var newPasswordError: String?
+    @Binding var confirmPasswordError: String?
+    let onSave: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsTopBar(title: "Security", dismiss: dismiss)
+            ScrollView {
+                VStack(spacing: 24) {
+                    settingsSection {
+                        VStack(spacing: 16) {
+                            sectionHeader("Password")
+                            SettingsSecureField(title: "Current Password", text: $currentPassword)
+                            if let currentPasswordError { inlineError(currentPasswordError) }
+                            SettingsSecureField(title: "New Password", text: $newPassword)
+                            if let newPasswordError { inlineError(newPasswordError) }
+                            SettingsSecureField(title: "Confirm Password", text: $confirmPassword)
+                            if let confirmPasswordError { inlineError(confirmPasswordError) }
+                        }
+                    }
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Privacy")
+                            Toggle(isOn: $isPrivate) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Private Account")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(Constants.Colors.primary)
+                                    Text("Only approved followers can see your spots")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .tint(Constants.Colors.primary)
+
+                            NavigationLink {
+                                BlockedUsersView()
+                            } label: {
+                                settingsRow(title: "Blocked Users", icon: "person.slash.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+
+                    settingsSection {
+                        Button(action: onSave) {
+                            Text(isSaving ? "Saving..." : "Save Security Changes")
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Constants.Colors.primary)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(isSaving)
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private func inlineError(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SubscriptionSettingsDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let isPro: Bool
+    let proUntil: Date?
+    let onOpenCollections: () -> Void
+    let onGoPro: () -> Void
+    let onManageSubscription: () -> Void
+    let onRestorePurchases: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsTopBar(title: "Subscription", dismiss: dismiss)
+            ScrollView {
+                VStack(spacing: 24) {
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Subscription")
+                            if isPro {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "star.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Constants.Colors.primary)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Pro Member")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                        if let proUntil {
+                                            Text("Active until \(formatDate(proUntil))")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.vertical, 8)
+
+                                Button(action: onOpenCollections) {
+                                    settingsRow(title: "Bookmark Collections", icon: "bookmark.fill", subtitle: "Pro")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                Button(action: onManageSubscription) {
+                                    settingsRow(title: "Manage Subscription", icon: "creditcard.fill")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            } else {
+                                Button(action: onGoPro) {
+                                    settingsRow(title: "Go Pro", icon: "star.fill")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                Button(action: onRestorePurchases) {
+                                    settingsRow(title: "Restore Purchases", icon: "arrow.clockwise")
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+}
+
+private struct LegalSettingsDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsTopBar(title: "Legal", dismiss: dismiss)
+            ScrollView {
+                VStack(spacing: 24) {
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Legal")
+                            Button {
+                                if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) }
+                            } label: {
+                                settingsRow(title: "Terms & Conditions", icon: "doc.text.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Button {
+                                if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) }
+                            } label: {
+                                settingsRow(title: "Privacy Policy", icon: "lock.shield.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+}
+
+private func settingsTopBar(title: String, dismiss: DismissAction) -> some View {
+    HStack {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(Constants.Colors.primary)
+        }
+        .buttonStyle(PlainButtonStyle())
+
+        Text(title)
+            .font(FontManager.sectionHeader())
+            .foregroundColor(Constants.Colors.primary)
+            .frame(maxWidth: .infinity)
+
+        Spacer().frame(width: 40)
+    }
+    .padding(.horizontal, 16)
+    .padding(.top, 8)
+}
+
 private func sectionHeader(_ title: String) -> some View {
     HStack {
         Text(title)
@@ -652,7 +987,7 @@ private func settingsRow(title: String, icon: String, subtitle: String? = nil, i
             .font(.system(size: 18))
             .foregroundColor(isDestructive ? .red : Constants.Colors.primary)
             .frame(width: 24)
-        
+
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(FontManager.primaryText())
@@ -663,9 +998,9 @@ private func settingsRow(title: String, icon: String, subtitle: String? = nil, i
                     .foregroundColor(.gray)
             }
         }
-        
+
         Spacer()
-        
+
         Image(systemName: "chevron.right")
             .font(.system(size: 14, weight: .semibold))
             .foregroundColor(.gray)

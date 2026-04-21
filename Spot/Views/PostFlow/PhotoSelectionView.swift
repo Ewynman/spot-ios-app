@@ -1,5 +1,9 @@
 import SwiftUI
 import PhotosUI
+import UIKit
+import ImageIO
+
+private let postImageMaxPixelSize: CGFloat = 1600
 
 struct PhotoSelectionView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -207,10 +211,11 @@ struct PhotoSelectionView: View {
             let maxCount = authVM.isPro ? 5 : 1
             for item in photoPickerItems.prefix(maxCount) {
                 if let data = try? await item.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
+                   let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
                     newImages.append(uiImage)
                 }
             }
+            photoPickerItems = []
             if !newImages.isEmpty {
                 SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
                 // Append up to the max allowed count
@@ -252,6 +257,33 @@ private extension PhotoSelectionView {
     }
 }
 
+private func downsampledPostImage(from data: Data, maxPixelSize: CGFloat) -> UIImage? {
+    let sourceOptions: CFDictionary = [kCGImageSourceShouldCache: false] as CFDictionary
+    guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+    let options: CFDictionary = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ] as CFDictionary
+    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+    return UIImage(cgImage: cgImage)
+}
+
+private func resizedPostImage(_ image: UIImage, maxPixelSize: CGFloat) -> UIImage? {
+    let width = image.size.width
+    let height = image.size.height
+    let longestEdge = max(width, height)
+    guard longestEdge > maxPixelSize else { return image }
+    let ratio = maxPixelSize / longestEdge
+    let target = CGSize(width: floor(width * ratio), height: floor(height * ratio))
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    let renderer = UIGraphicsImageRenderer(size: target, format: format)
+    return renderer.image { _ in
+        image.draw(in: CGRect(origin: .zero, size: target))
+    }
+}
+
 // MARK: - Camera View
 struct CameraView: UIViewControllerRepresentable {
     @Binding var selectedImages: [UIImage]
@@ -281,11 +313,12 @@ struct CameraView: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             if let image = info[.originalImage] as? UIImage {
                 SpotLogger.log(PhotoSelectionViewLogs.photoCapturedWithCamera)
+                let normalized = resizedPostImage(image, maxPixelSize: postImageMaxPixelSize) ?? image
                 var imgs = parent.selectedImages
                 if parent.maxCount <= 1 {
-                    imgs = [image]
+                    imgs = [normalized]
                 } else {
-                    if imgs.count < parent.maxCount { imgs.append(image) } else { imgs[parent.maxCount - 1] = image }
+                    if imgs.count < parent.maxCount { imgs.append(normalized) } else { imgs[parent.maxCount - 1] = normalized }
                 }
                 parent.selectedImages = imgs
             } else {

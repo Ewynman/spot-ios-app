@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
+import Supabase
 
 struct BlockedUsersView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -185,19 +185,31 @@ struct BlockedUsersView: View {
         isLoading = true
         Task {
             do {
-                var userDetails: [BlockedUserInfo] = []
-
-                for userId in authVM.blockedUsers {
-                    let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
-                    if let data = userDoc.data() {
-                        let username = data["username"] as? String ?? "Unknown"
-                        let profileImageURL = data["profileImageURL"] as? String
-                        userDetails.append(BlockedUserInfo(
-                            id: userId,
-                            username: username,
-                            profileImageURL: profileImageURL
-                        ))
+                struct UserRow: Decodable {
+                    let id: UUID
+                    let username: String
+                    let profile_image_url: String?
+                }
+                let ids = authVM.blockedUsers.compactMap(UUID.init(uuidString:))
+                guard !ids.isEmpty else {
+                    await MainActor.run {
+                        self.blockedUserDetails = []
+                        self.isLoading = false
                     }
+                    return
+                }
+                let rows: [UserRow] = try await supabase
+                    .from("users")
+                    .select("id,username,profile_image_url")
+                    .in("id", values: ids)
+                    .execute()
+                    .value
+                let userDetails = rows.map { row in
+                    BlockedUserInfo(
+                        id: row.id.uuidString,
+                        username: row.username,
+                        profileImageURL: row.profile_image_url
+                    )
                 }
 
                 await MainActor.run {

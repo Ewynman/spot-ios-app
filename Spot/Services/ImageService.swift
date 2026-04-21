@@ -10,11 +10,16 @@ import UIKit
 
 class ImageService {
     static let shared = ImageService()
-    private init() {}
+    private init() {
+        // Cap image cache memory to avoid OOM on long sessions.
+        imageCache.countLimit = 300
+        imageCache.totalCostLimit = 64 * 1024 * 1024
+    }
 
     private let imageCache = NSCache<NSString, UIImage>()
     private var failedURLs = Set<String>()
     private let maxRetries = 3
+    private let maxFailedURLCount = 512
 
     /// Load image with retry logic and caching
     func loadImage(from urlString: String, spotId: String? = nil) async -> UIImage? {
@@ -47,7 +52,8 @@ class ImageService {
                 }
 
                 // Cache successful image
-                imageCache.setObject(image, forKey: urlString as NSString)
+                let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+                imageCache.setObject(image, forKey: urlString as NSString, cost: max(cost, 1))
 
                 SpotLogger.log(ImageServiceLogs.imageLoadedSuccessfully, details: ["host": url.host ?? "unknown", "spotId": spotId ?? "unknown"])
                 return image
@@ -59,6 +65,9 @@ class ImageService {
                 if attempt == maxRetries {
                     // Final failure - mark URL as failed
                     failedURLs.insert(urlString)
+                    if failedURLs.count > maxFailedURLCount {
+                        failedURLs.removeAll(keepingCapacity: true)
+                    }
                     SpotLogger.log(ImageServiceLogs.imageLoadFailedAnalytics, details: ["spotId": spotId ?? "nil", "urlHost": url.host ?? "unknown", "code": errorCode, "attempt": attempt])
                     Task { @MainActor in
                         AnalyticsService.shared.trackImageLoadFailure(spotId: spotId, urlHost: url.host, errorCode: errorCode, attempt: attempt)
@@ -90,6 +99,7 @@ class ImageService {
     /// Clear cache (useful for memory management)
     func clearCache() {
         imageCache.removeAllObjects()
+        failedURLs.removeAll(keepingCapacity: true)
     }
 
     /// Check if an image URL is valid and accessible

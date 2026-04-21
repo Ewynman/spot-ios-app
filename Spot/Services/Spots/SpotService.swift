@@ -10,6 +10,7 @@ import Foundation
 final class SpotService {
     static let shared = SpotService()
     private init() {}
+    private let mapSpotLimit = 250
 
     private var cachedSpots: [Spot] = []
     private var lastFetchTime: Date?
@@ -35,7 +36,7 @@ final class SpotService {
         SpotLogger.log(SpotServiceLogs.fetchSpotsStarted, details: ["orderBy": "created_at", "desc": true])
         Task {
             do {
-                let spots = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: 1000, offset: 0)
+                let spots = try await SpotSupabaseRepository.fetchMapSpots(limit: mapSpotLimit)
                 let filtered = await AuthorPrivacyCache.shared.filter(spots: spots)
                 self.cachedSpots = filtered
                 self.lastFetchTime = Date()

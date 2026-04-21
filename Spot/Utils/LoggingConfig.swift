@@ -36,7 +36,7 @@ struct LoggingConfig {
         DebugCategory.enable(.ui)
         DebugCategory.enable(.navigation)
     }
-    
+     
     static func enableFeedLogging() {
         DebugCategory.enable(.feed)
         FeedFlags.enableDiagnosticLogging = true

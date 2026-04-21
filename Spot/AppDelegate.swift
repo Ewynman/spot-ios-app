@@ -11,6 +11,8 @@ import FirebaseCrashlytics
 import FirebaseAnalytics
 
 class AppDelegate: NSObject, UIApplicationDelegate {
+    private var memoryWarningObserver: NSObjectProtocol?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -31,39 +33,25 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         Analytics.setAnalyticsCollectionEnabled(true)
         #endif
 
-        // Configure logging - ENABLE ALL LOGS
+        // Configure logging defaults.
         LoggingConfig.configure()
-        
-        // Enable all debug logging (categories, components, and minimum level)
+
+        #if DEBUG
+        // Keep noisy logs in debug only.
         LoggingConfig.enableAllDebugLogging()
-        
-        // Set minimum log level to debug to show all logs
         SpotLogger.setMinimumLevel(.debug)
-        
-        // Enable ALL component logging flags
-        ComponentLogging.spotCard = true
-        ComponentLogging.profileView = true
-        ComponentLogging.searchView = true
-        ComponentLogging.feedView = true
-        ComponentLogging.authorPrivacyCache = true
-        ComponentLogging.feedRepository = true
-        ComponentLogging.feedRanker = true
-        ComponentLogging.postFlow = true
-        ComponentLogging.locationSelection = true
-        ComponentLogging.photoSelection = true
-        ComponentLogging.authService = true
-        ComponentLogging.authViewModel = true
-        ComponentLogging.likesViewModel = true
-        ComponentLogging.bookmarksViewModel = true
-        ComponentLogging.spotService = true
-        ComponentLogging.imageService = true
-        ComponentLogging.deepLinkRouter = true
-        
-        // Enable all debug categories
-        DebugCategory.enableAll()
-        
-        // Enable feed diagnostic logging
-        FeedFlags.enableDiagnosticLogging = true
+        #endif
+
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            ImageService.shared.clearCache()
+            URLCache.shared.removeAllCachedResponses()
+            Task { await MapViewportLoader.shared.clearCache() }
+            SpotLogger.log(AppDelegateLogs.memoryWarning)
+        }
 
         SubscriptionManager.shared.startListeningForTransactionUpdates()
 
@@ -93,5 +81,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         SpotLogger.log(AppDelegateLogs.customSchemeUrlOnLaunch, details: ["url": url.absoluteString])
         DeepLinkState.shared.handleDeepLink(url, origin: .customScheme, isColdStart: true)
         return true
+    }
+
+    deinit {
+        if let memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
     }
 }

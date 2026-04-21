@@ -388,6 +388,73 @@ enum SpotSupabaseRepository {
         return try await mapRowsToSpotsPerAuthor(rows)
     }
 
+    /// Lightweight map dataset: one image per spot (for preview cards), bounded count.
+    /// Avoids loading all image variants and keeps memory stable when opening the map.
+    static func fetchMapSpots(limit: Int) async throws -> [Spot] {
+        let rows: [SpotRow] = try await supabase
+            .from("spots")
+            .select(spotRowSelectColumns)
+            .order("created_at", ascending: false)
+            .range(from: 0, to: max(0, limit - 1))
+            .execute()
+            .value
+        guard !rows.isEmpty else { return [] }
+
+        let userIds = Array(Set(rows.map(\.user_id)))
+        let users: [UserBriefRow] = try await supabase
+            .from("users")
+            .select("id,username,profile_image_url")
+            .in("id", values: userIds)
+            .execute()
+            .value
+        var byUser: [UUID: UserBriefRow] = [:]
+        for u in users { byUser[u.id] = u }
+
+        let vibeIds = Set(rows.compactMap(\.vibe_tag_id))
+        var vibeNames: [UUID: String] = [:]
+        if !vibeIds.isEmpty {
+            let vibes: [VibeRow] = try await supabase
+                .from("vibe_tags")
+                .select("id,name")
+                .in("id", values: Array(vibeIds))
+                .execute()
+                .value
+            for v in vibes { vibeNames[v.id] = v.name }
+        }
+
+        let orderedSpotIds = rows.map(\.id.uuidString)
+        let previewURLs = await fetchPreviewImageURLs(spotIds: orderedSpotIds)
+        var previewById: [String: String] = [:]
+        for (sid, url) in zip(orderedSpotIds, previewURLs) {
+            previewById[sid] = url
+        }
+
+        return rows.map { row in
+            let sid = row.id.uuidString
+            let u = byUser[row.user_id]
+            let vibe = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let preview = previewById[sid]
+            return Spot(
+                id: sid,
+                userId: row.user_id.uuidString,
+                username: u?.username ?? "User",
+                userProfileImageURL: u?.profile_image_url,
+                imageURL: preview,
+                thumbnailURL: preview,
+                vibeTag: vibe,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                locationName: row.location_name,
+                likes: Int(row.likes_count ?? 0),
+                isLiked: nil,
+                isSaved: nil,
+                createdAt: parseTimestamptz(row.created_at),
+                authorIsPrivate: row.author_is_private_snapshot,
+                imageURLs: nil
+            )
+        }
+    }
+
     static func fetchFeedSpotsForAuthors(userIds: [UUID], limit: Int, offset: Int) async throws -> [Spot] {
         guard !userIds.isEmpty else { return [] }
         let rows: [SpotRow] = try await supabase

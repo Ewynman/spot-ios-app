@@ -17,7 +17,7 @@ final class MapViewModel: ObservableObject {
         guard !isLoadingAllSpots else { return }
         isLoadingAllSpots = true
 
-        SpotService.shared.fetchSpotsForMap(forceRefresh: true) { [weak self] result in
+        SpotService.shared.fetchSpotsForMap(forceRefresh: false) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoadingAllSpots = false
@@ -30,5 +30,9 @@ final class MapViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func clearVisibleSpots() {
+        visibleSpots.removeAll(keepingCapacity: false)
     }
 }

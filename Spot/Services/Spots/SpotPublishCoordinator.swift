@@ -61,25 +61,8 @@ final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
             return
         }
 
-        let images: [UIImage] = await Task.detached(priority: .userInitiated) {
-            draft.imageJPEGs.compactMap { UIImage(data: $0) }
-        }.value
-
-        guard images.count == draft.imageJPEGs.count, !images.isEmpty else {
-            SpotLogger.log(SpotPublishCoordinatorLogs.imageDecodeFailed, details: [
-                "jpegCount": draft.imageJPEGs.count,
-                "decodedCount": images.count
-            ])
-            await presentErrorToast("Could not prepare images.")
-            bannerPhase = .hidden
-            return
-        }
-
-        let jpegs: [Data] = await Task.detached(priority: .userInitiated) {
-            images.compactMap { $0.jpegData(compressionQuality: 0.85) }
-        }.value
-
-        guard jpegs.count == images.count else {
+        let jpegs = draft.imageJPEGs
+        guard !jpegs.isEmpty else {
             await presentErrorToast("Could not prepare images.")
             bannerPhase = .hidden
             return
