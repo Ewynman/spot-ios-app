@@ -11,6 +11,7 @@ import Testing
 import UIKit
 @testable import Spot
 
+@MainActor
 struct PostFlowViewModelTests {
 
     @Test func isEmailVerifiedWhenAuthViewModelNilReturnsFalse() {

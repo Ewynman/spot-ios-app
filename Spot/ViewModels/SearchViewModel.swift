@@ -1,5 +1,4 @@
 import Foundation
-import FirebaseFirestore
 @MainActor
 final class SearchViewModel: ObservableObject {
     enum Segment: String, CaseIterable { case users = "Users", locations = "Locations", vibes = "Vibes" }
@@ -36,7 +35,7 @@ final class SearchViewModel: ObservableObject {
     @Published var gridTitle: String?
     @Published var gridIsVibe: Bool = false
     @Published var gridSpots: [Spot] = []
-    private var lastGridDoc: DocumentSnapshot?
+    private var lastGridDoc: String?
     @Published var isLoadingGrid = false
     @Published var hasMoreGrid = true
     // Advanced filters (Pro)

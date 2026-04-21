@@ -76,7 +76,6 @@ struct ComponentLogging {
     static var feedRepository: Bool = false
     static var feedRanker: Bool = false
     static var spotService: Bool = false
-    static var spotUploader: Bool = false
     static var authService: Bool = false
     static var imageService: Bool = false
     static var deepLinkRouter: Bool = false
@@ -222,7 +221,6 @@ final class SpotLogger {
         case "FeedRepository.swift": return ComponentLogging.feedRepository
         case "FeedRanker.swift": return ComponentLogging.feedRanker
         case "SpotService.swift": return ComponentLogging.spotService
-        case "SpotUploader.swift": return ComponentLogging.spotUploader
         case "AuthService.swift": return ComponentLogging.authService
         case "ImageService.swift": return ComponentLogging.imageService
         case "DeepLinkRouter.swift": return ComponentLogging.deepLinkRouter

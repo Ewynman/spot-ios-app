@@ -11,7 +11,8 @@ struct PostFlowView: View {
     @State private var showVerifyEmailAlert: Bool = false
     @State private var showConfirmEmailSheet: Bool = false
 
-    var onPostSuccess: ((Spot) -> Void)?
+    /// Fires on the main thread right after the publish pipeline accepts the draft (composer resets; use to e.g. switch tabs).
+    var onPostQueued: (() -> Void)?
 
     var body: some View {
         NavigationStack {
@@ -77,8 +78,8 @@ struct PostFlowView: View {
                         NavigationButtonsView(
                             currentStep: $viewModel.currentStep,
                             totalSteps: viewModel.totalSteps,
-                            canProceed: viewModel.canProceedToNextStep && !viewModel.isPosting,
-                            isPosting: viewModel.isPosting,
+                            canProceed: viewModel.canProceedToNextStep && !viewModel.isEncodingPost,
+                            isBusy: viewModel.isEncodingPost,
                             onBack: { viewModel.goBack() },
                             onNext: { viewModel.goNext() },
                             onFinish: { viewModel.submitPost() }
@@ -88,10 +89,6 @@ struct PostFlowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 VStack(spacing: 8) {
-                    if viewModel.isUploading {
-                        ProgressBarView()
-                            .transition(.move(edge: .top))
-                    }
                     if viewModel.showToast {
                         ToastView(message: viewModel.toastMessage, isError: viewModel.toastIsError)
                             .transition(.move(edge: .top))
@@ -116,8 +113,7 @@ struct PostFlowView: View {
         }
         .task {
             viewModel.authViewModel = authVM
-            viewModel.onPostSuccess = onPostSuccess
-            viewModel.onShouldDismiss = { dismiss() }
+            viewModel.onPostQueued = onPostQueued
             isVerifyingEmail = true
             _ = await authVM.checkVerificationStatus()
             isVerifyingEmail = false
@@ -187,7 +183,7 @@ struct NavigationButtonsView: View {
     @Binding var currentStep: Int
     let totalSteps: Int
     let canProceed: Bool
-    let isPosting: Bool
+    let isBusy: Bool
     let onBack: () -> Void
     let onNext: () -> Void
     let onFinish: () -> Void
@@ -212,15 +208,15 @@ struct NavigationButtonsView: View {
             }
 
             Button(action: currentStep == totalSteps ? onFinish : onNext) {
-                Text(currentStep == totalSteps ? (isPosting ? "Posting..." : "Post") : "Next")
+                Text(currentStep == totalSteps ? (isBusy ? "Posting…" : "Post") : "Next")
                     .font(FontManager.buttonText())
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(canProceed && !isPosting ? Constants.Colors.primary : Color.gray)
+                    .background(canProceed && !isBusy ? Constants.Colors.primary : Color.gray)
                     .cornerRadius(20)
             }
-            .disabled(!canProceed || isPosting)
+            .disabled(!canProceed || isBusy)
             .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
@@ -248,32 +244,6 @@ struct LocationData: Identifiable, Equatable {
     }
 }
 
-// MARK: - Progress Bar View
-struct ProgressBarView: View {
-    @State private var progress: CGFloat = 0.0
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(height: 4)
-                Capsule()
-                    .fill(Constants.Colors.primary)
-                    .frame(width: geo.size.width * progress, height: 4)
-                    .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: progress)
-            }
-            .onAppear {
-                progress = 0.7
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    progress = 1.0
-                }
-            }
-        }
-        .frame(height: 4)
-        .padding(.horizontal, 0)
-    }
-}
-
 // MARK: - Toast View
 struct ToastView: View {
     let message: String
@@ -291,6 +261,6 @@ struct ToastView: View {
 }
 
 #Preview {
-    PostFlowView()
+    PostFlowView(onPostQueued: nil)
         .environmentObject(AuthViewModel())
 }

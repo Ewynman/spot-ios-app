@@ -1,62 +1,72 @@
+//
+//  FeedRepository.swift
+//  Spot
+//
+//  Home feed: Supabase candidates + ranker + privacy.
+//
+
 import Foundation
+import Supabase
 import _LocationEssentials
-import FirebaseFirestore
 
 final class FeedRepository: ObservableObject {
     static let shared = FeedRepository()
     private init() {}
 
     @Published private(set) var spots: [Spot] = []
-    private var globalCursor: DocumentSnapshot?
-    private var followeeChunkCursors: [Int: DocumentSnapshot?] = [:]
-    private var isColdStart = true
 
-    private let candidate = FeedCandidateService.shared
+    private var globalNextOffset: Int = 0
+    private var globalExhausted = false
+
+    private var followeeNextOffsetByChunk: [Int: Int] = [:]
+    private var followeeChunkDone: Set<Int> = []
+    private var followeeMoreAvailable = false
+
     private let ranker = FeedRanker.shared
     private let pageSize = FeedFlags.pageSize
     private let privacy = AuthorPrivacyCache.shared
     private var seenSpotIds: Set<String> = []
 
     var moreAvailable: Bool {
-        if globalCursor != nil { return true }
-        for v in followeeChunkCursors.values { if v != nil { return true } }
-        return false
+        !globalExhausted || followeeMoreAvailable
     }
 
     func loadInitial() async {
         PerfMetrics.shared.mark("t_first_item")
 
-        // Reset cursors and seen spots for fresh feed
-        globalCursor = nil
-        followeeChunkCursors = [:]
+        globalNextOffset = 0
+        globalExhausted = false
+        followeeNextOffsetByChunk = [:]
+        followeeChunkDone = []
+        followeeMoreAvailable = false
         seenSpotIds = []
 
-        // Log cold start diagnostics
         FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
 
         do {
-            // Load social lists and current user context
-            let (followeeIds, _) = await withCheckedContinuation { cont in
-                UserSpotService.shared.getSocialLists(for: nil) { f, r in cont.resume(returning: (f, r)) }
+            guard let uidString = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: uidString) else {
+                SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": "No user id"])
+                return
             }
+            let (followeeIds, _) = try await SocialGraphSupabase.socialLists(for: uid)
             let followeesSet = Set(followeeIds)
 
-            // Pull candidates in parallel - start fresh with nil cursors
-            async let globalPage = candidate.fetchRecent(last: nil)
-            async let followeesPage = candidate.fetchFolloweesRecent(followeeIds: followeeIds, lastByChunk: [:])
-            let (g, f) = try await (globalPage, followeesPage)
-            globalCursor = g.last
-            followeeChunkCursors = f.lastByChunk
+            async let gItems = SpotSupabaseRepository.fetchGlobalFeedSpots(limit: pageSize, offset: 0)
+            async let fPack = fetchFolloweeSpotsMerged(followeeIds: followeeIds)
+            let (g, f) = try await (gItems, fPack)
 
-            // Privacy warm + filter
-            await privacy.warm(authorIds: Set((g.items + f.items).compactMap { $0.userId }))
-            let gatedGlobal = await privacy.filter(spots: g.items)
+            advanceGlobalState(fetched: g)
+            followeeNextOffsetByChunk = f.nextOffsets
+            followeeChunkDone = f.doneChunks
+            followeeMoreAvailable = f.hasMore
+
+            await privacy.warm(authorIds: Set((g + f.items).compactMap { $0.userId }))
+            let gatedGlobal = await privacy.filter(spots: g)
             let gatedFollowees = await privacy.filter(spots: f.items)
 
-            // Rank within buckets
             let ctx = FeedRanker.Context(
                 followeeIds: followeesSet,
-                userVibeStats: currentUserVibeStats(),
+                userVibeStats: await currentUserVibeStats(userId: uid),
                 userLocation: currentUserLocation(),
                 seenSpotIds: seenSpotIds
             )
@@ -71,7 +81,6 @@ final class FeedRepository: ObservableObject {
                 "blended": blended.count
             ])
             await MainActor.run { self.spots = blended }
-            isColdStart = false
         } catch {
             SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": error.localizedDescription])
         }
@@ -79,24 +88,30 @@ final class FeedRepository: ObservableObject {
 
     func loadMore() async {
         do {
-            let (followeeIds, _) = await withCheckedContinuation { cont in
-                UserSpotService.shared.getSocialLists(for: nil) { f, r in cont.resume(returning: (f, r)) }
-            }
+            guard let uidString = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: uidString) else { return }
+            let (followeeIds, _) = try await SocialGraphSupabase.socialLists(for: uid)
             let followeesSet = Set(followeeIds)
 
-            async let g = candidate.fetchRecent(last: globalCursor)
-            async let f = candidate.fetchFolloweesRecent(followeeIds: followeeIds, lastByChunk: followeeChunkCursors)
-            let (ng, nf) = try await (g, f)
-            globalCursor = ng.last
-            followeeChunkCursors = nf.lastByChunk
+            let g: [Spot]
+            if globalExhausted {
+                g = []
+            } else {
+                g = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: pageSize, offset: globalNextOffset)
+                advanceGlobalState(fetched: g)
+            }
 
-            await privacy.warm(authorIds: Set((ng.items + nf.items).compactMap { $0.userId }))
-            let gatedGlobal = await privacy.filter(spots: ng.items)
-            let gatedFollowees = await privacy.filter(spots: nf.items)
+            let f = try await fetchFolloweeSpotsMerged(followeeIds: followeeIds)
+            for (k, v) in f.nextOffsets { followeeNextOffsetByChunk[k] = v }
+            followeeChunkDone.formUnion(f.doneChunks)
+            followeeMoreAvailable = f.hasMore
+
+            await privacy.warm(authorIds: Set((g + f.items).compactMap { $0.userId }))
+            let gatedGlobal = await privacy.filter(spots: g)
+            let gatedFollowees = await privacy.filter(spots: f.items)
 
             let ctx = FeedRanker.Context(
                 followeeIds: followeesSet,
-                userVibeStats: currentUserVibeStats(),
+                userVibeStats: await currentUserVibeStats(userId: uid),
                 userLocation: currentUserLocation(),
                 seenSpotIds: seenSpotIds
             )
@@ -104,7 +119,6 @@ final class FeedRepository: ObservableObject {
             let rankedGlobal = gatedGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
             let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
 
-            // Dedup against existing
             let existingIds = Set(self.spots.compactMap { $0.id })
             let newUnique = blended.filter { spot in
                 if let id = spot.id { return !existingIds.contains(id) }
@@ -121,22 +135,93 @@ final class FeedRepository: ObservableObject {
         }
     }
 
-    // MARK: - Context helpers
-    private func currentUserVibeStats() -> [String: Int] {
-        guard let uid = AuthViewModel().userId ?? SpotAuthBridge.currentUserId else { return [:] }
-        let sema = DispatchSemaphore(value: 0)
-        var result: [String: Int] = [:]
-        Firestore.firestore().collection("users").document(uid).getDocument { snap, _ in
-            if let map = snap?.data()? ["vibeStats"] as? [String: Any] {
-                var out: [String: Int] = [:]
-                for (k, v) in map { if let i = v as? Int { out[k] = i } }
-                result = out
-            }
-            sema.signal()
+    private func advanceGlobalState(fetched: [Spot]) {
+        globalNextOffset += fetched.count
+        if fetched.count < pageSize {
+            globalExhausted = true
         }
-        _ = sema.wait(timeout: .now() + 1.0)
-        return result
     }
 
-    private func currentUserLocation() -> CLLocation? { return LocationManager.shared.userLocation }
+    private struct FolloweeFetchPack {
+        let items: [Spot]
+        let nextOffsets: [Int: Int]
+        let doneChunks: Set<Int>
+        let hasMore: Bool
+    }
+
+    private func fetchFolloweeSpotsMerged(followeeIds: [String]) async throws -> FolloweeFetchPack {
+        guard !followeeIds.isEmpty else {
+            return FolloweeFetchPack(items: [], nextOffsets: [:], doneChunks: [], hasMore: false)
+        }
+
+        let chunks: [[String]] = stride(from: 0, to: followeeIds.count, by: 10).map {
+            Array(followeeIds[$0..<min($0 + 10, followeeIds.count)])
+        }
+
+        let offsetsSnapshot = followeeNextOffsetByChunk
+        let doneSnapshot = followeeChunkDone
+
+        var results: [Spot] = []
+        var newOffsets: [Int: Int] = [:]
+        var done: Set<Int> = []
+        var countByChunk: [Int: Int] = [:]
+
+        try await withThrowingTaskGroup(of: (Int, [Spot]).self) { group in
+            for (idx, ids) in chunks.enumerated() {
+                if doneSnapshot.contains(idx) {
+                    group.addTask { (idx, []) }
+                    continue
+                }
+                group.addTask {
+                    let uuids = ids.compactMap { UUID(uuidString: $0) }
+                    guard !uuids.isEmpty else { return (idx, []) }
+                    let prev = offsetsSnapshot[idx] ?? 0
+                    let spots = try await SpotSupabaseRepository.fetchFeedSpotsForAuthors(
+                        userIds: uuids,
+                        limit: self.pageSize,
+                        offset: prev
+                    )
+                    return (idx, spots)
+                }
+            }
+
+            for try await (idx, spots) in group {
+                results.append(contentsOf: spots)
+                countByChunk[idx] = spots.count
+                let prev = offsetsSnapshot[idx] ?? 0
+                if spots.isEmpty {
+                    done.insert(idx)
+                } else if spots.count < pageSize {
+                    done.insert(idx)
+                } else {
+                    newOffsets[idx] = prev + spots.count
+                }
+            }
+        }
+
+        let hasMore = countByChunk.contains { idx, cnt in
+            !done.contains(idx) && cnt == pageSize
+        }
+
+        results.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        return FolloweeFetchPack(items: results, nextOffsets: newOffsets, doneChunks: done, hasMore: hasMore)
+    }
+
+    private func currentUserVibeStats(userId: UUID) async -> [String: Int] {
+        struct VibeStatsRow: Decodable { let vibe_stats: [String: Int]? }
+        do {
+            let row: VibeStatsRow = try await supabase
+                .from("users")
+                .select("vibe_stats")
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            return row.vibe_stats ?? [:]
+        } catch {
+            return [:]
+        }
+    }
+
+    private func currentUserLocation() -> CLLocation? { LocationManager.shared.userLocation }
 }

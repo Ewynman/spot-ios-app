@@ -6,11 +6,10 @@
 //
 
 import Foundation
-import FirebaseFirestore
 import CoreLocation
 
 struct Spot: Identifiable, Codable, Equatable, Hashable {
-    @DocumentID var id: String?
+    var id: String?
     var userId: String?
     var username: String?
     var userProfileImageURL: String?
@@ -65,39 +64,26 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         self.authorIsPrivate = authorIsPrivate
     }
 
-    static func fromDocument(_ document: QueryDocumentSnapshot) async throws -> Spot? {
-        do {
-            var spot = try document.data(as: Spot.self)
-            if spot.id == nil {
-                spot.id = document.documentID
-            }
-
-            // Preserve authored locationName (e.g., venue/building) if present.
-            // Only fallback to reverse-geocoded City, State when locationName is empty.
-            let hasCustomLocation = !(spot.locationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            if !hasCustomLocation, let latitude = spot.latitude, let longitude = spot.longitude {
-                let location = CLLocation(latitude: latitude, longitude: longitude)
-                let geocoder = CLGeocoder()
-                do {
-                    let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                    if let placemark = placemarks.first {
-                        // Prefer placemark.name when available (often POI/venue), otherwise City, State
-                        if let name = placemark.name, !name.isEmpty {
-                            spot.locationName = name
-                        } else if let city = placemark.locality, let state = placemark.administrativeArea {
-                            spot.locationName = "\(city), \(state)"
-                        }
+    static func withResolvedLocation(_ spot: Spot) async -> Spot {
+        var spot = spot
+        let hasCustomLocation = !(spot.locationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if !hasCustomLocation, let latitude = spot.latitude, let longitude = spot.longitude {
+            let location = CLLocation(latitude: latitude, longitude: longitude)
+            let geocoder = CLGeocoder()
+            do {
+                let placemarks = try await geocoder.reverseGeocodeLocation(location)
+                if let placemark = placemarks.first {
+                    if let name = placemark.name, !name.isEmpty {
+                        spot.locationName = name
+                    } else if let city = placemark.locality, let state = placemark.administrativeArea {
+                        spot.locationName = "\(city), \(state)"
                     }
-                } catch {
-                    SpotLogger.log(SpotModelLogs.geocodingFailed, details: ["error": error.localizedDescription])
                 }
+            } catch {
+                SpotLogger.log(SpotModelLogs.geocodingFailed, details: ["error": error.localizedDescription])
             }
-
-            return spot
-        } catch {
-            SpotLogger.log(SpotModelLogs.decodeFailed, details: ["error": error.localizedDescription])
-            return nil
         }
+        return spot
     }
 
     static func == (lhs: Spot, rhs: Spot) -> Bool {

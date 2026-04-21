@@ -181,12 +181,16 @@ struct PostAuthSetupFlowView: View {
                 .eq("id", value: uid)
                 .execute()
 
-            // Keep auth metadata in sync for clients that read username there.
-            try? await supabase.auth.update(
-                user: UserAttributes(
-                    data: ["username": .string(trimmed)]
+            // Best-effort: keep auth metadata in sync for clients that read username there.
+            do {
+                _ = try await supabase.auth.update(
+                    user: UserAttributes(
+                        data: ["username": .string(trimmed)]
+                    )
                 )
-            )
+            } catch {
+                // `users` row is already updated; continuing avoids blocking the user on auth-only failures.
+            }
 
             onComplete()
         } catch {

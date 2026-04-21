@@ -8,6 +8,7 @@
 
 import Foundation
 
+@MainActor
 class ProfileViewModel: ObservableObject {
     @Published var username: String?
     @Published var profileImageURL: String?
@@ -22,14 +23,15 @@ class ProfileViewModel: ObservableObject {
     @Published var deletingSpotIds: Set<String> = []
     @Published var followRequestsCount: Int = 0
 
-    private var loadTask: Task<Void, Never>?
-    private var followReqPollTask: Task<Void, Never>?
+    /// Held `nonisolated(unsafe)` so `deinit` can cancel without crossing `@MainActor`; only touch from this type’s logic / `deinit`.
+    private nonisolated(unsafe) var loadTask: Task<Void, Never>?
+    private nonisolated(unsafe) var followReqPollTask: Task<Void, Never>?
     private var lastLoadedUserId: String?
     private var hasLoaded = false
 
     deinit {
         loadTask?.cancel()
-        stopFollowRequestsListener()
+        followReqPollTask?.cancel()
     }
 
     /// Load profile for the given user (nil = current user). Uses ProfileService.
@@ -37,34 +39,28 @@ class ProfileViewModel: ObservableObject {
         guard !isLoading else { return }
         if !forceReload, hasLoaded, lastLoadedUserId == userId { return }
 
-        await MainActor.run {
-            isLoading = true
-            error = nil
-        }
+        isLoading = true
+        error = nil
 
         loadTask?.cancel()
         loadTask = Task {
             do {
                 let data = try await ProfileService.fetchProfile(for: userId)
-                await MainActor.run {
-                    self.username = data.username
-                    self.profileImageURL = data.profileImageURL
-                    self.spots = data.spots
-                    self.isPrivateProfile = data.isPrivate
-                    self.isProProfile = data.isPro
-                    self.isFollowingUser = data.isFollowing
-                    self.hasRequestedFollow = data.hasRequested
-                    self.canViewContent = data.canView
-                    self.lastLoadedUserId = userId
-                    self.hasLoaded = true
-                    self.isLoading = false
-                }
+                self.username = data.username
+                self.profileImageURL = data.profileImageURL
+                self.spots = data.spots
+                self.isPrivateProfile = data.isPrivate
+                self.isProProfile = data.isPro
+                self.isFollowingUser = data.isFollowing
+                self.hasRequestedFollow = data.hasRequested
+                self.canViewContent = data.canView
+                self.lastLoadedUserId = userId
+                self.hasLoaded = true
+                self.isLoading = false
                 SpotLogger.log(ProfileViewModelLogs.profileLoaded, details: ["username": data.username])
             } catch {
-                await MainActor.run {
-                    self.error = error
-                    self.isLoading = false
-                }
+                self.error = error
+                self.isLoading = false
                 SpotLogger.log(ProfileViewModelLogs.loadUserFailed, details: ["error": error.localizedDescription])
             }
         }
@@ -99,11 +95,12 @@ class ProfileViewModel: ObservableObject {
         guard let uid = ownUserId else { return }
         followReqPollTask = Task { [weak self] in
             while !Task.isCancelled {
+                guard let self else { return }
                 do {
                     let n = try await FollowRequestsService.shared.countPending(targetUserId: uid)
-                    await MainActor.run { self?.followRequestsCount = n }
+                    self.followRequestsCount = n
                 } catch {
-                    await MainActor.run { self?.followRequestsCount = 0 }
+                    self.followRequestsCount = 0
                 }
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
             }

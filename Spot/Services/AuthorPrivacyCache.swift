@@ -1,9 +1,14 @@
-import Foundation
-import FirebaseFirestore
+//
+//  AuthorPrivacyCache.swift
+//  Spot
+//
+//  Session-scoped, in-memory cache for author privacy and follow state (Supabase-backed).
+//
 
-/// Session-scoped, in-memory cache for author privacy and follow state.
-/// Keyed by authorId.
-/// Entry: `isPrivate`, `isFollowedByViewer`, `lastCheckedAt`.
+import Foundation
+import Supabase
+
+/// Keyed by authorId. Entry: `isPrivate`, `isFollowedByViewer`, `lastCheckedAt`.
 actor AuthorPrivacyCache {
     struct Entry {
         var isPrivate: Bool
@@ -14,7 +19,6 @@ actor AuthorPrivacyCache {
     static let shared = AuthorPrivacyCache()
     private init() {}
 
-    private let db = Firestore.firestore()
     private let ttl: TimeInterval = 60 * 5 // 5 minutes
 
     private var authorIdToEntry: [String: Entry] = [:]
@@ -38,15 +42,12 @@ actor AuthorPrivacyCache {
     }
 
     /// Preload cache for the provided authors in a single batched pass.
-    /// Logs: Privacy.Cache warm authors=<n>
     func warm(authorIds: Set<String>) async {
         guard !authorIds.isEmpty else { return }
 
-        // Refresh following + blocked once per TTL
         async let _ = refreshFollowingIfNeeded()
         async let _ = refreshBlockedIfNeeded()
 
-        // Determine which authors are missing or stale
         let now = Date()
         var missing: [String] = []
         for id in authorIds {
@@ -60,56 +61,54 @@ actor AuthorPrivacyCache {
 
         SpotLogger.log(AuthorPrivacyCacheLogs.cacheWarm, details: ["authors": missing.count])
 
-        // Batch in chunks of up to 10 using documentId 'in' queries to avoid N+1
         let chunks: [[String]] = stride(from: 0, to: missing.count, by: 10).map {
             Array(missing[$0..<min($0 + 10, missing.count)])
         }
 
-        let results = await withTaskGroup(of: [String: Entry].self, returning: [String: Entry].self) { group in
-            for chunk in chunks {
-                group.addTask { [db] in
-                    var map: [String: Entry] = [:]
-                    do {
-                        let snap = try await db.collection("users").whereField(FieldPath.documentID(), in: chunk).getDocuments()
-                        let now = Date()
-                        for doc in snap.documents {
-                            let uid = doc.documentID
-                            let isPrivate = (doc.data()["isPrivate"] as? Bool) ?? false
-                            map[uid] = Entry(isPrivate: isPrivate, isFollowedByViewer: false, lastCheckedAt: now)
-                        }
-                        // Mark non-returned as hidden
-                        let returned = Set(snap.documents.map { $0.documentID })
-                        let missingFromChunk = Set(chunk).subtracting(returned)
-                        for uid in missingFromChunk {
-                            map[uid] = Entry(isPrivate: true, isFollowedByViewer: false, lastCheckedAt: Date())
-                        }
-                    } catch {
-                        SpotLogger.log(AuthorPrivacyCacheLogs.cacheWarmFailed, details: ["count": chunk.count, "error": error.localizedDescription])
-                    }
-                    return map
-                }
-            }
-            var combined: [String: Entry] = [:]
-            for await part in group {
-                for (k, v) in part { combined[k] = v }
-            }
-            return combined
+        struct UserPrivRow: Decodable {
+            let id: UUID
+            let is_private: Bool
         }
-        // Now merge results into actor state, computing isFollowed based on current cachedFollowing
+
+        var combined: [String: Entry] = [:]
+        for chunk in chunks {
+            let uuids = chunk.compactMap { UUID(uuidString: $0) }
+            guard !uuids.isEmpty else { continue }
+            do {
+                let rows: [UserPrivRow] = try await supabase
+                    .from("users")
+                    .select("id,is_private")
+                    .in("id", values: uuids)
+                    .execute()
+                    .value
+                let nowRow = Date()
+                let returned = Set(rows.map { $0.id.uuidString })
+                for r in rows {
+                    combined[r.id.uuidString] = Entry(
+                        isPrivate: r.is_private,
+                        isFollowedByViewer: false,
+                        lastCheckedAt: nowRow
+                    )
+                }
+                for uid in Set(chunk).subtracting(returned) {
+                    combined[uid] = Entry(isPrivate: true, isFollowedByViewer: false, lastCheckedAt: nowRow)
+                }
+            } catch {
+                SpotLogger.log(AuthorPrivacyCacheLogs.cacheWarmFailed, details: ["count": chunk.count, "error": error.localizedDescription])
+            }
+        }
+
         let now2 = Date()
-        for (uid, base) in results {
+        for (uid, base) in combined {
             let followed = cachedFollowing.contains(uid)
             authorIdToEntry[uid] = Entry(isPrivate: base.isPrivate, isFollowedByViewer: followed, lastCheckedAt: now2)
         }
     }
 
-    /// Returns whether a spot authored by `authorId` should be visible to the current viewer.
-    /// - Returns: true/false if known, or nil if cache-miss (will log and caller may decide to hide until warm()).
     func isAllowed(authorId: String) -> Bool? {
         guard let viewerId = SpotAuthBridge.currentUserId else { return true }
         if viewerId == authorId { return true }
 
-        // Blocked users drop regardless of privacy
         if cachedBlockedUsers.contains(authorId) { return false }
 
         if let entry = authorIdToEntry[authorId], Date().timeIntervalSince(entry.lastCheckedAt) < ttl {
@@ -121,7 +120,6 @@ actor AuthorPrivacyCache {
         return nil
     }
 
-    /// Apply privacy + blocked-user filter to spots. Will warm cache for unknown authors before evaluating.
     func filter(spots: [Spot]) async -> [Spot] {
         guard !spots.isEmpty else { return spots }
         let viewerId = SpotAuthBridge.currentUserId
@@ -141,7 +139,6 @@ actor AuthorPrivacyCache {
                     SpotLogger.log(AuthorPrivacyCacheLogs.privacyDropPrivateNotFollowed, details: ["spotId": s.id ?? "nil", "authorId": author])
                 }
             } else {
-                // Unknown author after warm should be rare; default-hide
                 SpotLogger.log(AuthorPrivacyCacheLogs.privacyDropUnknownAuthor, details: ["spotId": s.id ?? "nil", "authorId": author])
             }
         }
@@ -151,12 +148,11 @@ actor AuthorPrivacyCache {
     // MARK: Internals
 
     private func refreshFollowingIfNeeded() async {
-        guard let viewerId = SpotAuthBridge.currentUserId else { return }
+        guard let viewerId = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: viewerId) else { return }
         if Date().timeIntervalSince(followingFetchedAt) < ttl { return }
         do {
-            let doc = try await db.collection("users").document(viewerId).getDocument()
-            let arr = (doc.data()? ["following"] as? [String]) ?? []
-            cachedFollowing = Set(arr)
+            let ids = try await SocialGraphSupabase.followingIds(followerId: uid)
+            cachedFollowing = Set(ids)
             followingFetchedAt = Date()
         } catch {
             SpotLogger.log(AuthorPrivacyCacheLogs.refreshFollowingFailed, details: ["error": error.localizedDescription])
@@ -164,12 +160,17 @@ actor AuthorPrivacyCache {
     }
 
     private func refreshBlockedIfNeeded() async {
-        guard let viewerId = SpotAuthBridge.currentUserId else { return }
+        guard let viewerId = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: viewerId) else { return }
         if Date().timeIntervalSince(blockedFetchedAt) < ttl { return }
         do {
-            let doc = try await db.collection("users").document(viewerId).getDocument()
-            let arr = (doc.data()? ["blockedUsers"] as? [String]) ?? []
-            cachedBlockedUsers = Set(arr)
+            struct Row: Decodable { let blocked_user_id: UUID }
+            let rows: [Row] = try await supabase
+                .from("user_blocks")
+                .select("blocked_user_id")
+                .eq("blocker_id", value: uid)
+                .execute()
+                .value
+            cachedBlockedUsers = Set(rows.map { $0.blocked_user_id.uuidString })
             blockedFetchedAt = Date()
         } catch {
             SpotLogger.log(AuthorPrivacyCacheLogs.refreshBlockedUsersFailed, details: ["error": error.localizedDescription])

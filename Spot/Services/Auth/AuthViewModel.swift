@@ -7,8 +7,6 @@
 
 import Foundation
 import UIKit
-import FirebaseAuth
-import FirebaseFirestore
 import Supabase
 import AuthenticationServices
 
@@ -119,39 +117,18 @@ class AuthViewModel: ObservableObject {
     }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signUp(email: email, password: password) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let authResult):
-                    switch authResult {
-                    case .success:
-                        completion(.success(()))
-                    case .emailInUse(let emailInUseType):
-                        completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: emailInUseType.message])))
-                    }
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        }
+        AuthService.shared.signUp(
+            email: email,
+            password: password,
+            username: username,
+            profileImageURL: profileImageURL,
+            isPrivate: isPrivate,
+            completion: completion
+        )
     }
 
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.signIn(email: email, password: password) { (result: Result<AuthResult, Error>) in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let authResult):
-                    switch authResult {
-                    case .success:
-                        completion(.success(()))
-                    case .emailInUse:
-                        completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unexpected email in use during sign in"])))
-                    }
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        }
+        AuthService.shared.signIn(email: email, password: password, completion: completion)
     }
 
     /// Completes native Apple auth by exchanging the Apple identity token with Supabase.
@@ -172,7 +149,7 @@ class AuthViewModel: ObservableObject {
 
             if !parts.isEmpty {
                 let full = parts.joined(separator: " ")
-                try? await supabase.auth.update(
+                _ = try? await supabase.auth.update(
                     user: UserAttributes(
                         data: [
                             "full_name": .string(full),
@@ -427,22 +404,7 @@ class AuthViewModel: ObservableObject {
         AuthService.shared.updateEmail(newEmail) { result in
             switch result {
             case .failure(let error):
-                SpotLogger.log(AuthViewModelLogs.emailUpdateFallingBackToFirestore, details: ["error": error.localizedDescription])
-                Task {
-                    do {
-                        struct EmailPatch: Encodable { let email: String }
-                        try await supabase
-                            .from("users")
-                            .update(EmailPatch(email: newEmail))
-                            .eq("id", value: uid)
-                            .execute()
-                        await MainActor.run { completion(.success(())) }
-                    } catch {
-                        SpotLogger.log(AuthViewModelLogs.emailUpdateFirestoreFallbackFailed, details: ["error": error.localizedDescription])
-                        await MainActor.run { completion(.failure(error)) }
-                    }
-                }
-
+                completion(.failure(error))
             case .success:
                 Task {
                     do {
@@ -454,8 +416,7 @@ class AuthViewModel: ObservableObject {
                             .execute()
                         await MainActor.run { completion(.success(())) }
                     } catch {
-                        SpotLogger.log(AuthViewModelLogs.firebaseAuthUpdatedFirestoreSyncFailed, details: ["error": error.localizedDescription])
-                        await MainActor.run { completion(.success(())) }
+                        await MainActor.run { completion(.failure(error)) }
                     }
                 }
             }
@@ -583,7 +544,7 @@ class AuthViewModel: ObservableObject {
             await MainActor.run { self.isEmailVerified = verified }
             if verified, let uidString = userId, let uid = UUID(uuidString: uidString) {
                 struct VerifiedPatch: Encodable { let email_verified: Bool }
-                try? await supabase
+                _ = try? await supabase
                     .from("users")
                     .update(VerifiedPatch(email_verified: true))
                     .eq("id", value: uid)

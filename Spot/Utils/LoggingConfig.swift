@@ -92,7 +92,6 @@ struct LoggingConfig {
     
     static func enableNetworkComponentLogging() {
         ComponentLogging.spotService = true
-        ComponentLogging.spotUploader = true
         ComponentLogging.imageService = true
         DebugCategory.enable(.network)
         DebugCategory.enable(.image)

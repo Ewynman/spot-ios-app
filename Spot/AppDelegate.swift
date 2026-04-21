@@ -8,7 +8,6 @@
 import UIKit
 import FirebaseCore
 import FirebaseCrashlytics
-import FirebaseAppCheck
 import FirebaseAnalytics
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -19,14 +18,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Initialize Firebase early
         FirebaseApp.configure()
 
-        // Configure Firebase App Check
-        // DeviceCheck is not available on simulator; use debug provider there.
-        #if DEBUG || targetEnvironment(simulator)
-        AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
-        #else
-        // Physical device release: DeviceCheck (consider AppAttestProviderFactory for iOS 14+)
-        AppCheck.setAppCheckProviderFactory(DeviceCheckProviderFactory())
-        #endif
 
         // Enable Crashlytics collection
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
@@ -65,7 +56,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         ComponentLogging.likesViewModel = true
         ComponentLogging.bookmarksViewModel = true
         ComponentLogging.spotService = true
-        ComponentLogging.spotUploader = true
         ComponentLogging.imageService = true
         ComponentLogging.deepLinkRouter = true
         

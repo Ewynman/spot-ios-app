@@ -5,6 +5,7 @@ struct HomepageView: View {
     @StateObject private var feedVM = FeedViewModel()
     @State private var showVerifyToast = false
     @State private var showPostSuccessToast = false
+    @State private var postSuccessToastTask: Task<Void, Never>?
     // Tour
     @StateObject private var tourManager = HomeTourManager()
     @State private var coachFrames: [CoachTarget: CGRect] = [:]
@@ -70,10 +71,22 @@ struct HomepageView: View {
             tourManager.configure(userId: authVM.userId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { _ in
+            postSuccessToastTask?.cancel()
             showPostSuccessToast = true
+            postSuccessToastTask = Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await MainActor.run {
+                    withAnimation {
+                        showPostSuccessToast = false
+                    }
+                }
+            }
             Task {
                 await feedVM.refreshFeed()
             }
+        }
+        .onDisappear {
+            postSuccessToastTask?.cancel()
         }
     }
 }

@@ -7,7 +7,7 @@
 
 import SwiftUI
 import Foundation
-import FirebaseFirestore
+import Supabase
 
 @MainActor
 final class DeepLinkState: ObservableObject {
@@ -245,12 +245,18 @@ final class DeepLinkState: ObservableObject {
             }
             
             do {
-                let userDoc = try await Firestore.firestore()
-                    .collection("users")
-                    .document(userId)
-                    .getDocument()
-                
-                let isPro = userDoc.data()?["isPro"] as? Bool ?? false
+                guard let uid = UUID(uuidString: userId) else {
+                    throw NSError(domain: "DeepLinkState", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])
+                }
+                struct ProRow: Decodable { let is_pro: Bool }
+                let row: ProRow = try await supabase
+                    .from("users")
+                    .select("is_pro")
+                    .eq("id", value: uid)
+                    .single()
+                    .execute()
+                    .value
+                let isPro = row.is_pro
                 
                 await MainActor.run {
                     if isPro {

@@ -65,8 +65,8 @@ final class SubscriptionManager: ObservableObject {
         let transaction: Transaction
         switch result {
         case .unverified(_, let error):
-            SpotLogger.error(
-                "StoreKit: Unverified transaction in Transaction.updates",
+            SpotLogger.log(
+                SubscriptionManagerLogs.transactionUpdateUnverified,
                 details: ["error": "\(error)"]
             )
             return
@@ -77,13 +77,13 @@ final class SubscriptionManager: ObservableObject {
         let checker = ProEntitlementChecker(proProductIDs: productIds)
         let isPro = checker.grantsPro(forProductID: transaction.productID)
         if isPro {
-            SpotLogger.info(
-                "StoreKit: Verified Pro transaction in updates; finishing",
+            SpotLogger.log(
+                SubscriptionManagerLogs.transactionUpdateVerifiedProFinishing,
                 details: ["productID": transaction.productID]
             )
         } else {
-            SpotLogger.debug(
-                "StoreKit: Finishing transaction in updates (non-Pro product)",
+            SpotLogger.log(
+                SubscriptionManagerLogs.transactionUpdateFinishingNonPro,
                 details: ["productID": transaction.productID]
             )
         }
@@ -131,15 +131,18 @@ final class SubscriptionManager: ObservableObject {
 
     /// Start listening for StoreKit transaction updates for the app lifetime.
     /// This avoids missing successful purchases that complete outside the immediate purchase flow.
+    ///
+    /// Uses a `Task` (not `detached`) so the handler inherits `@MainActor` and may safely capture
+    /// `AuthViewModel` or other UI-bound state without `@Sendable` restrictions.
     func startTransactionUpdatesListener(
-        onEntitlementChanged: (@Sendable (Bool, Date?) async -> Void)? = nil
+        onEntitlementChanged: ((Bool, Date?) async -> Void)? = nil
     ) {
         guard transactionUpdatesTask == nil else { return }
-        transactionUpdatesTask = Task.detached(priority: .background) { [productIds] in
+        transactionUpdatesTask = Task(priority: .background) { [productIds] in
             let checker = ProEntitlementChecker(proProductIDs: productIds)
             for await update in Transaction.updates {
                 do {
-                    let transaction = try await Self.checkVerifiedStatic(update)
+                    let transaction = try Self.checkVerifiedStatic(update)
                     defer { Task { await transaction.finish() } }
 
                     guard checker.grantsPro(forProductID: transaction.productID) else { continue }

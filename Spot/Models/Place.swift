@@ -1,8 +1,7 @@
 import Foundation
-import FirebaseFirestore
 
 struct Place: Identifiable, Codable {
-    @DocumentID var id: String?
+    var id: String?
     var name: String
     var name_lower: String
     var latitude: Double

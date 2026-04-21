@@ -154,25 +154,19 @@ struct EditSpotView: View {
         isSaving = true
         Task {
             do {
-                if selectedImages.isEmpty {
-                    try await SpotUploader.shared.updateSpot(
-                        spotId: spotId,
-                        images: nil,
-                        vibeTag: selectedVibe,
-                        latitude: loc.coordinate.latitude,
-                        longitude: loc.coordinate.longitude,
-                        placeName: loc.placeName
-                    )
-                } else {
-                    try await SpotUploader.shared.updateSpot(
-                        spotId: spotId,
-                        images: selectedImages,
-                        vibeTag: selectedVibe,
-                        latitude: loc.coordinate.latitude,
-                        longitude: loc.coordinate.longitude,
-                        placeName: loc.placeName
-                    )
+                guard let sid = UUID(uuidString: spotId) else {
+                    throw NSError(domain: "EditSpotView", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid spot id"])
                 }
+                if !selectedImages.isEmpty {
+                    throw NSError(domain: "EditSpotView", code: 0, userInfo: [NSLocalizedDescriptionKey: "Image replacement in edit flow is temporarily unavailable."])
+                }
+                try await SpotSupabaseRepository.updateSpotMetadata(
+                    id: sid,
+                    vibeTag: selectedVibe,
+                    latitude: loc.coordinate.latitude,
+                    longitude: loc.coordinate.longitude,
+                    locationName: loc.placeName
+                )
                 var updated = spot
                 updated.vibeTag = selectedVibe
                 updated.latitude = loc.coordinate.latitude

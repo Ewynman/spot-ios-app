@@ -6,8 +6,6 @@
 //
 
 import Foundation
-import FirebaseAuth
-import FirebaseFirestore
 
 @MainActor
 class LikesViewModel: ObservableObject {
@@ -16,7 +14,7 @@ class LikesViewModel: ObservableObject {
     @Published var hasMore = true
     @Published var errorMessage: String?
 
-    private var lastCursor: DocumentSnapshot?
+    private var lastCursor: String?
     private var loadedSpotIds = Set<String>() // For deduplication within session
     private let pageSize = 24
 

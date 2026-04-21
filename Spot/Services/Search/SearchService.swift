@@ -1,16 +1,15 @@
 import Foundation
-import FirebaseFirestore
 
 final class SearchService {
     static let shared = SearchService()
     private init() {}
 
-    private let fs = FirestoreSearchDataSource()
+    private let fs = SpotSearchDataSource()
     private let privacy = AuthorPrivacyCache.shared
 
     // MARK: - Async/Await API (preferred)
 
-    func searchUsers(prefix: String, last: DocumentSnapshot? = nil) async throws -> SearchPage<[String: Any]> {
+    func searchUsers(prefix: String, last: String? = nil) async throws -> SearchPage<[String: Any]> {
         try await fs.searchUsers(prefix: prefix, last: last)
     }
 
@@ -22,25 +21,25 @@ final class SearchService {
         try await fs.searchVibeSuggestions(prefix: prefix)
     }
 
-    func fetchSpotsByLocation(_ locationLower: String, last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+    func fetchSpotsByLocation(_ locationLower: String, last: String? = nil) async throws -> SearchPage<Spot> {
         let page = try await fs.fetchSpotsByLocation(locationLower, last: last)
         let filtered = await privacy.filter(spots: page.items)
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
     }
 
-    func fetchSpotsByVibe(_ vibeLower: String, last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+    func fetchSpotsByVibe(_ vibeLower: String, last: String? = nil) async throws -> SearchPage<Spot> {
         let page = try await fs.fetchSpotsByVibe(vibeLower, last: last)
         let filtered = await privacy.filter(spots: page.items)
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
     }
 
-    func fetchSpotsByVibes(_ vibeLowers: [String], last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+    func fetchSpotsByVibes(_ vibeLowers: [String], last: String? = nil) async throws -> SearchPage<Spot> {
         let page = try await fs.fetchSpotsByVibes(vibeLowers, last: last)
         let filtered = await privacy.filter(spots: page.items)
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
     }
 
-    func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: DocumentSnapshot? = nil) async throws -> SearchPage<Spot> {
+    func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: String? = nil) async throws -> SearchPage<Spot> {
         let page = try await fs.fetchSpotsByLocationAndVibes(locationLower, vibeLowers: vibeLowers, last: last)
         let filtered = await privacy.filter(spots: page.items)
         return SearchPage(items: filtered, lastDocument: page.lastDocument)
@@ -48,7 +47,7 @@ final class SearchService {
 
     // MARK: - Callback API (legacy / UI)
 
-    func searchUsers(prefix: String, last: DocumentSnapshot? = nil, completion: @escaping (Result<SearchPage<[String: Any]>, Error>) -> Void) {
+    func searchUsers(prefix: String, last: String? = nil, completion: @escaping (Result<SearchPage<[String: Any]>, Error>) -> Void) {
         Task { [weak self] in
             guard self != nil else { return }
             do {
@@ -84,7 +83,7 @@ final class SearchService {
         }
     }
 
-    func fetchSpotsByLocation(_ locationLower: String, last: DocumentSnapshot? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
+    func fetchSpotsByLocation(_ locationLower: String, last: String? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -97,7 +96,7 @@ final class SearchService {
         }
     }
 
-    func fetchSpotsByVibe(_ vibeLower: String, last: DocumentSnapshot? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
+    func fetchSpotsByVibe(_ vibeLower: String, last: String? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -110,7 +109,7 @@ final class SearchService {
         }
     }
 
-    func fetchSpotsByVibes(_ vibeLowers: [String], last: DocumentSnapshot? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
+    func fetchSpotsByVibes(_ vibeLowers: [String], last: String? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -123,7 +122,7 @@ final class SearchService {
         }
     }
 
-    func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: DocumentSnapshot? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
+    func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: String? = nil, completion: @escaping (Result<SearchPage<Spot>, Error>) -> Void) {
         Task { [weak self] in
             guard let self else { return }
             do {

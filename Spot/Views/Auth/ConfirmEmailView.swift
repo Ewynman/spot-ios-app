@@ -1,5 +1,4 @@
 import SwiftUI
-import FirebaseFirestore
 
 struct ConfirmEmailView: View {
     @Environment(\.dismiss) private var dismiss
@@ -134,9 +133,6 @@ struct ConfirmEmailView: View {
         defer { isVerifying = false }
         do {
             try await authVM.verifySignupEmailOTP(code: otpCode)
-            if let uid = authVM.userId {
-                try? await Firestore.firestore().collection("users").document(uid).setData(["isVerified": true], merge: true)
-            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

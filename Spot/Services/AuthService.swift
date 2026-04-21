@@ -6,9 +6,6 @@
 //
 
 import Foundation
-import FirebaseAuth
-import FirebaseFirestore
-import FirebaseStorage
 import Supabase
 
 class AuthService {
@@ -18,43 +15,21 @@ class AuthService {
     // MARK: - Sign Up with Email-in-Use Handling
 
     func signUp(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
-        // Trim and lowercase email
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        Auth.auth().createUser(withEmail: cleanEmail, password: password) { [weak self] result, error in
-            if let error = error {
-                let nsError = error as NSError
-                if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
+        Task {
+            do {
+                _ = try await supabase.auth.signUp(email: cleanEmail, password: password)
+                await SupabaseUserService.shared.syncCurrentUser()
+                completion(.success(.success))
+            } catch {
+                let message = error.localizedDescription.lowercased()
+                if message.contains("already") || message.contains("exists") || message.contains("registered") {
                     SpotLogger.log(AuthServiceLogs.emailInUseDetected)
-                    Task { @MainActor in
+                    await MainActor.run {
                         AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "detected"])
                     }
                     completion(.success(.emailInUse(.passwordAccount)))
                 } else {
-                    completion(.failure(error))
-                }
-                return
-            }
-
-            guard let authResult = result else {
-                let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing auth result"])
-                completion(.failure(error))
-                return
-            }
-
-            // Create user document
-            self?.createUserDocument(for: authResult.user) { result in
-                switch result {
-                case .success:
-                    // Track signup event
-                    Task { @MainActor in
-                        AnalyticsService.shared.setUserId(authResult.user.uid)
-                        AnalyticsService.shared.logEvent("user_signup", parameters: [
-                            "email_verified": authResult.user.isEmailVerified
-                        ])
-                    }
-                    completion(.success(.success(authResult.user)))
-                case .failure(let error):
                     completion(.failure(error))
                 }
             }
@@ -65,20 +40,13 @@ class AuthService {
 
     func signIn(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        Auth.auth().signIn(withEmail: cleanEmail, password: password) { result, error in
-            if let error = error {
+        Task {
+            do {
+                _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
+                completion(.success(.success))
+            } catch {
                 completion(.failure(error))
-                return
             }
-
-            guard let authResult = result else {
-                let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing auth result"])
-                completion(.failure(error))
-                return
-            }
-
-            completion(.success(.success(authResult.user)))
         }
     }
 
@@ -120,38 +88,9 @@ class AuthService {
         try await supabase.auth.signOut()
     }
 
-    // MARK: - User Document Creation
-
-    private func createUserDocument(for user: FirebaseAuth.User, completion: @escaping (Result<Void, Error>) -> Void) {
-        let userData: [String: Any] = [
-            "email": user.email ?? "",
-            "username": user.email?.components(separatedBy: "@").first ?? "",
-            "createdAt": FieldValue.serverTimestamp(),
-            "isPrivate": false,
-            "isPro": false,
-            "isVerified": false,
-            "following": [],
-            "requestedFollows": [],
-            "blockedUsers": [],
-            "likedSpots": [],
-            "bookmarkedSpots": []
-        ]
-
-        Firestore.firestore()
-            .collection("users")
-            .document(user.uid)
-            .setData(userData) { error in
-                if let error = error {
-                    completion(.failure(error))
-                } else {
-                    completion(.success(()))
-                }
-            }
-    }
-
     // MARK: - Legacy/Callback API (to satisfy existing callers)
 
-    /// Verify Firestore user document exists for current auth user
+    /// Verify Supabase user row exists for current auth user
     func verifyUserExists(completion: @escaping (Bool) -> Void) {
         guard let uid = SpotAuthBridge.currentUserId else {
             SpotLogger.log(AuthServiceLogs.verifyUserExistsNoCurrentUser)
@@ -159,61 +98,57 @@ class AuthService {
             return
         }
         SpotLogger.log(AuthServiceLogs.verifyUserExistsChecking, details: ["uid": uid])
-        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
-            if let error = error {
+        Task {
+            do {
+                struct Row: Decodable { let id: UUID }
+                guard let uuid = UUID(uuidString: uid) else {
+                    completion(false)
+                    return
+                }
+                let rows: [Row] = try await supabase
+                    .from("users")
+                    .select("id")
+                    .eq("id", value: uuid)
+                    .limit(1)
+                    .execute()
+                    .value
+                let exists = !rows.isEmpty
+                if !exists {
+                    SpotLogger.log(AuthServiceLogs.missingFirestoreUserDoc, details: ["userId": uid])
+                    try? await supabase.auth.signOut()
+                }
+                completion(exists)
+            } catch {
                 SpotLogger.log(AuthServiceLogs.verifyUserExistsError, details: ["error": error.localizedDescription])
                 completion(false)
-                return
             }
-            let exists = snapshot?.exists ?? false
-            if !exists {
-                SpotLogger.log(AuthServiceLogs.missingFirestoreUserDoc, details: ["userId": uid])
-                Task { try? await supabase.auth.signOut() }
-            }
-            completion(exists)
         }
     }
 
     /// Completion-style sign up used by existing UI
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        Auth.auth().createUser(withEmail: cleanEmail, password: password) { result, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            guard let user = result?.user else {
-                completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing user"])) )
-                return
-            }
-            let userData: [String: Any] = [
-                "email": cleanEmail,
-                "username": username,
-                "profileImageURL": profileImageURL,
-                "createdAt": FieldValue.serverTimestamp(),
-                "isPrivate": isPrivate,
-                "isPro": false,
-                "isVerified": false,
-                "following": [],
-                "requestedFollows": [],
-                "blockedUsers": [],
-                "likedSpots": [],
-                "bookmarkedSpots": []
-            ]
-            Firestore.firestore().collection("users").document(user.uid).setData(userData) { err in
-                if let err = err {
-                    completion(.failure(err))
-                } else {
-                    // Track signup event
-                    Task { @MainActor in
-                        AnalyticsService.shared.setUserId(user.uid)
-                        AnalyticsService.shared.logEvent("user_signup", parameters: [
-                            "email_verified": user.isEmailVerified,
-                            "is_private": isPrivate
-                        ])
-                    }
-                    completion(.success(()))
+        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                _ = try await supabase.auth.signUp(
+                    email: cleanEmail,
+                    password: password,
+                    data: [
+                        "username": .string(cleanUsername),
+                        "is_private": .bool(isPrivate)
+                    ]
+                )
+                await SupabaseUserService.shared.syncCurrentUser()
+                await MainActor.run {
+                    AnalyticsService.shared.logEvent("user_signup", parameters: [
+                        "email_verified": false,
+                        "is_private": isPrivate
+                    ])
                 }
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
             }
         }
     }
@@ -234,90 +169,60 @@ class AuthService {
     // MARK: - Reauthentication / Account management (callback style for existing VM)
 
     func reauthenticate(withPassword password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let user = Auth.auth().currentUser, let email = user.email else {
-            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])) )
-            return
-        }
-        let credential = EmailAuthProvider.credential(withEmail: email, password: password)
-        user.reauthenticate(with: credential) { _, error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        Task {
+            do {
+                let user = try await supabase.auth.user()
+                guard let email = user.email else {
+                    throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])
+                }
+                _ = try await supabase.auth.signIn(email: email, password: password)
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
         }
     }
 
     func updateEmail(_ newEmail: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let user = Auth.auth().currentUser else {
-            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])) )
-            return
-        }
-        // Per Firebase Auth deprecation guidance, request verification before updating email
-        user.sendEmailVerification(beforeUpdatingEmail: newEmail) { error in
-            if let error = error {
-                completion(.failure(error))
-            } else {
-                // An email verification has been sent to the new address. The email will be updated after verification.
+        Task {
+            do {
+                try await supabase.auth.update(user: UserAttributes(email: newEmail))
                 SpotLogger.log(AuthServiceLogs.verificationEmailSentToNewAddress)
                 completion(.success(()))
+            } catch {
+                completion(.failure(error))
             }
         }
     }
 
     func updatePassword(_ newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let user = Auth.auth().currentUser else {
-            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])) )
-            return
-        }
-        user.updatePassword(to: newPassword) { error in
-            if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+        Task {
+            do {
+                try await supabase.auth.update(user: UserAttributes(password: newPassword))
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
         }
     }
 
     func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let user = Auth.auth().currentUser else {
-            completion(.failure(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No authenticated user"])) )
-            return
-        }
-        let uid = user.uid
-        // Re-authenticate then delete best-effort data and auth user
-        reauthenticate(withPassword: password) { result in
-            switch result {
-            case .failure(let error):
-                completion(.failure(error))
-            case .success:
-                let db = Firestore.firestore()
-                let storage = Storage.storage()
-
-                // Fetch user doc for possible profile image URL
-                db.collection("users").document(uid).getDocument { userSnap, _ in
-                    let profileURL = userSnap?.data()? ["profileImageURL"] as? String
-
-                    // Delete user's spots (docs + images) best effort
-                    db.collection("spots").whereField("userId", isEqualTo: uid).getDocuments { snapshot, _ in
-                        let group = DispatchGroup()
-                        if let docs = snapshot?.documents {
-                            for doc in docs {
-                                let data = doc.data()
-                                if let imageURL = data["imageURL"] as? String, !imageURL.isEmpty, let url = URL(string: imageURL), url.scheme == "https" {
-                                    group.enter()
-                                    storage.reference(forURL: imageURL).delete { _ in group.leave() }
-                                }
-                                group.enter()
-                                doc.reference.delete { _ in group.leave() }
-                            }
-                        }
-                        if let profileURL, let url = URL(string: profileURL), url.scheme == "https" {
-                            group.enter()
-                            storage.reference(forURL: profileURL).delete { _ in group.leave() }
-                        }
-                        group.notify(queue: .main) {
-                            // Delete user document
-                            db.collection("users").document(uid).delete { _ in
-                                user.delete { err in
-                                    if let err = err { completion(.failure(err)) } else { completion(.success(())) }
-                                }
-                            }
+        Task {
+            do {
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    reauthenticate(withPassword: password) { result in
+                        switch result {
+                        case .success: cont.resume()
+                        case .failure(let error): cont.resume(throwing: error)
                         }
                     }
                 }
+                struct EmptyParams: Encodable {}
+                _ = try? await supabase.rpc("delete_my_account", params: EmptyParams()).execute()
+                try await supabase.auth.signOut()
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
             }
         }
     }
@@ -359,7 +264,7 @@ class AuthService {
 // MARK: - Auth Result Types
 
 enum AuthResult {
-    case success(FirebaseAuth.User)
+    case success
     case emailInUse(EmailInUseType)
 }
 

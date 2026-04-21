@@ -6,9 +6,7 @@
 //
 
 import SwiftUI
-import FirebaseCore
 import FirebaseCrashlytics
-import FirebaseAppCheck
 
 @main
 struct SpotApp: App {
@@ -39,8 +37,8 @@ struct SpotApp: App {
                         .environmentObject(PermissionManager.shared)
                         .task {
                             SubscriptionManager.shared.startTransactionUpdatesListener { [weak authViewModel] hasPro, expirationDate in
-                                guard hasPro else { return }
-                                await authViewModel?.setProActive(true, proUntil: expirationDate)
+                                guard hasPro, let authViewModel else { return }
+                                await authViewModel.setProActive(true, proUntil: expirationDate)
                             }
                             _ = await FreshInstallDetector.shared.handleFreshInstall()
                             deepLinkState.processPendingDeepLinks()

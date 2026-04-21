@@ -1,8 +1,7 @@
 import Foundation
-import FirebaseFirestore
 
 struct User: Identifiable, Codable {
-    @DocumentID var id: String?
+    var id: String?
     var username: String
     var profileImageURL: String?
     var isPrivate: Bool

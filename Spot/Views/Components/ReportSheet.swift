@@ -6,8 +6,7 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
-import FirebaseAuth
+import Supabase
 
 enum ReportReason: String, CaseIterable {
     case inappropriate = "inappropriate"
@@ -192,19 +191,32 @@ struct ReportSheet: View {
         isSubmitting = true
 
         do {
-            // Submit report to Firestore
-            let reportData: [String: Any] = [
-                "spotId": spotId,
-                "reporterId": reporterId,
-                "ownerId": ownerId,
-                "reason": reason.rawValue,
-                "details": details.trimmingCharacters(in: .whitespacesAndNewlines),
-                "createdAt": FieldValue.serverTimestamp(),
-                "platform": "iOS",
-                "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            ]
-
-            try await Firestore.firestore().collection("reports").addDocument(data: reportData)
+            guard let reporterUUID = UUID(uuidString: reporterId),
+                  let ownerUUID = UUID(uuidString: ownerId),
+                  let spotUUID = UUID(uuidString: spotId) else {
+                throw NSError(domain: "ReportSheet", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid report IDs"])
+            }
+            struct ReportInsert: Encodable {
+                let spot_id: UUID
+                let reporter_id: UUID
+                let owner_id: UUID
+                let reason: String
+                let details: String
+                let platform: String
+                let app_version: String
+            }
+            try await supabase
+                .from("reports")
+                .insert(ReportInsert(
+                    spot_id: spotUUID,
+                    reporter_id: reporterUUID,
+                    owner_id: ownerUUID,
+                    reason: reason.rawValue,
+                    details: details.trimmingCharacters(in: .whitespacesAndNewlines),
+                    platform: "iOS",
+                    app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+                ))
+                .execute()
 
             // Block user if requested
             if shouldBlockUser {

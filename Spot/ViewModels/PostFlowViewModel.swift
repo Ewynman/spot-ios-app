@@ -8,26 +8,29 @@
 
 import Foundation
 import SwiftUI
-import FirebaseFirestore
 import UIKit
 
+@MainActor
 class PostFlowViewModel: ObservableObject {
     @Published var currentStep = 1
     @Published var selectedImages: [UIImage] = []
     @Published var selectedLocation: LocationData?
     @Published var selectedVibe: String = ""
-    @Published var isUploading = false
-    @Published var isPosting = false
+    /// True only while JPEG-encoding and handing off to `SpotPublishCoordinator` (brief).
+    @Published var isEncodingPost = false
     @Published var showToast = false
     @Published var toastMessage = ""
     @Published var toastIsError = false
     @Published var showSuccessBanner = false
 
-    var onPostSuccess: ((Spot) -> Void)?
-    var onShouldDismiss: (() -> Void)?
+    /// Called on the main thread immediately after a publish job is queued (e.g. switch to Home tab).
+    var onPostQueued: (() -> Void)?
 
     /// Injected by PostFlowView from environment; used instead of Auth.auth().
     weak var authViewModel: AuthViewModel?
+
+    /// Override in tests; production uses `SpotPublishCoordinator.shared`.
+    var spotPublisher: SpotPublishing = SpotPublishCoordinator.shared
 
     let totalSteps = 3
 
@@ -65,8 +68,7 @@ class PostFlowViewModel: ObservableObject {
     }
 
     func submitPost() {
-        guard !isPosting else { return }
-        isPosting = true
+        guard !isEncodingPost else { return }
         SpotLogger.log(PostFlowViewModelLogs.userCompletedPostFlow)
         SpotLogger.log(PostFlowViewModelLogs.postData, details: ["images": selectedImages.count, "location": selectedLocation?.placeName ?? "None", "vibe": selectedVibe])
 
@@ -77,152 +79,51 @@ class PostFlowViewModel: ObservableObject {
               location.coordinate.longitude != 0
         else {
             showToastWith(message: "All fields are required to post a spot.", isError: true)
-            isPosting = false
             return
         }
 
-        isUploading = true
-        let imagesToUpload = selectedImages
+        guard let userId = currentUserId, !userId.isEmpty else {
+            showToastWith(message: "You need to be signed in to post.", isError: true)
+            return
+        }
+
+        isEncodingPost = true
         let vibe = selectedVibe
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
         let placeName = location.placeName
+        let images = selectedImages
 
-        if imagesToUpload.count <= 1, let image = imagesToUpload.first {
-            SpotUploader.shared.uploadSpot(
-                image: image,
-                vibeTag: vibe,
-                latitude: lat,
-                longitude: lon,
-                placeName: placeName
-            ) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.isUploading = false
-                    switch result {
-                    case .success:
-                        if let userId = self?.currentUserId {
-                            SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: vibe)
-                        }
-                        Task { await self?.awaitModerationAndFinish() }
-                    case .failure(let error):
-                        self?.showToastWith(message: error.localizedDescription, isError: true)
-                        SpotLogger.log(PostFlowViewModelLogs.spotUploadFailed, details: ["error": error.localizedDescription])
-                        self?.isPosting = false
-                    }
-                }
-            }
+        let jpegs: [Data] = images.compactMap { $0.jpegData(compressionQuality: 0.85) }
+        guard jpegs.count == images.count, !jpegs.isEmpty else {
+            showToastWith(message: "Could not prepare images. Try different photos.", isError: true)
+            isEncodingPost = false
             return
         }
 
-        SpotUploader.shared.uploadSpot(
-            images: imagesToUpload,
+        let draft = SpotPublishDraft(
+            imageJPEGs: jpegs,
             vibeTag: vibe,
             latitude: lat,
             longitude: lon,
-            placeName: placeName
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isUploading = false
-                switch result {
-                case .success:
-                    if let userId = self?.currentUserId {
-                        SpotUploader.incrementUserVibeStat(userId: userId, vibeTag: vibe)
-                    }
-                    Task { await self?.awaitModerationAndFinish() }
-                case .failure(let error):
-                    self?.showToastWith(message: error.localizedDescription, isError: true)
-                    SpotLogger.log(PostFlowViewModelLogs.spotUploadFailed, details: ["error": error.localizedDescription])
-                    self?.isPosting = false
-                }
-            }
+            placeName: placeName,
+            userId: userId
+        )
+
+        spotPublisher.enqueue(draft: draft) { [weak self] in
+            guard let self else { return }
+            self.resetComposerAfterQueued()
+            self.onPostQueued?()
+            self.isEncodingPost = false
         }
     }
 
-    private func awaitModerationAndFinish() async {
-        guard let uid = currentUserId else {
-            await MainActor.run { isPosting = false }
-            return
-        }
-        let db = Firestore.firestore()
-        do {
-            let snap = try await db.collection("spots")
-                .whereField("userId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 1)
-                .getDocuments()
-            guard let doc = snap.documents.first else {
-                await MainActor.run { isPosting = false }
-                return
-            }
-            let spotRef = doc.reference
-            SpotLogger.log(PostFlowViewModelLogs.moderationCheckBegin, details: ["spotId": doc.documentID])
-
-            for _ in 0..<20 {
-                let latest = try await spotRef.getDocument()
-                if await evaluateModeration(doc: latest) { return }
-                try await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            SpotLogger.log(PostFlowViewModelLogs.moderationCheckTimeout, details: ["spotId": doc.documentID])
-            await MainActor.run {
-                showToastWith(message: "We couldn't verify your image yet. Please retry.", isError: true)
-                isPosting = false
-            }
-        } catch {
-            SpotLogger.log(PostFlowViewModelLogs.moderationGateError, details: ["error": error.localizedDescription])
-            await MainActor.run { isPosting = false }
-        }
-    }
-
-    private func evaluateModeration(doc: DocumentSnapshot) async -> Bool {
-        let data = doc.data() ?? [:]
-        let moderation = data["moderation"] as? [String: Any]
-        let status = moderation?["status"] as? String ?? "pending"
-        let scores = moderation?["scores"] as? [String: Any]
-
-        if status == "approved" {
-            let (ok, reason) = ModerationPolicy.evaluate(scores: scores)
-            if ok {
-                SpotLogger.log(PostFlowViewModelLogs.moderationCheckApproved, details: ["spotId": doc.documentID, "scores": String(describing: scores)])
-                if var spot = try? doc.data(as: Spot.self) {
-                    spot.id = doc.documentID
-                    let postedSpot = spot
-                    await MainActor.run {
-                        AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID, parameters: [
-                            "vibe_tag": postedSpot.vibeTag ?? "",
-                            "has_multiple_images": (postedSpot.imageURLs?.count ?? 0) > 1
-                        ])
-                        onPostSuccess?(postedSpot)
-                        isPosting = false
-                        onShouldDismiss?()
-                    }
-                } else {
-                    await MainActor.run {
-                        AnalyticsService.shared.trackUserAction("spot_posted", contentType: "spot", contentId: doc.documentID)
-                        onPostSuccess?(Spot(id: doc.documentID))
-                        isPosting = false
-                        onShouldDismiss?()
-                    }
-                }
-                return true
-            } else {
-                SpotLogger.log(PostFlowViewModelLogs.postBlockedByModeration, details: ["reason": reason ?? "over_threshold", "spotId": doc.documentID])
-                await MainActor.run {
-                    showToastWith(message: "This photo violates our guidelines and can't be posted.", isError: true)
-                    isPosting = false
-                }
-                return true
-            }
-        } else if status == "rejected" {
-            SpotLogger.log(PostFlowViewModelLogs.moderationCheckRejected, details: ["spotId": doc.documentID, "scores": String(describing: scores)])
-            try? await doc.reference.delete()
-            await MainActor.run {
-                showToastWith(message: "This photo violates our guidelines and can't be posted.", isError: true)
-                isPosting = false
-            }
-            return true
-        } else {
-            SpotLogger.log(PostFlowViewModelLogs.moderationCheckPending, details: ["spotId": doc.documentID])
-            return false
+    private func resetComposerAfterQueued() {
+        selectedImages = []
+        selectedLocation = nil
+        selectedVibe = ""
+        withAnimation(.easeInOut(duration: 0.25)) {
+            currentStep = 1
         }
     }
 

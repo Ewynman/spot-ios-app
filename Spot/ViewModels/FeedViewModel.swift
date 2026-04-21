@@ -106,6 +106,10 @@ class FeedViewModel: ObservableObject {
             SpotLogger.log(FeedViewModelLogs.deleteRequestedWithoutId)
             return
         }
+        guard let uuid = UUID(uuidString: id) else {
+            SpotLogger.log(FeedViewModelLogs.deleteInvalidSpotId, details: ["spotId": id])
+            return
+        }
         if deletingSpotIds.contains(id) { return }
         deletingSpotIds.insert(id)
 
@@ -116,7 +120,7 @@ class FeedViewModel: ObservableObject {
 
         do {
             SpotLogger.log(FeedViewModelLogs.deletingSpot, details: ["spotId": id])
-            try await SpotService.shared.deleteSpot(spot)
+            try await SpotSupabaseRepository.deleteSpot(id: uuid)
             deletingSpotIds.remove(id)
             loadMapSpots(forceRefresh: true)
         } catch {

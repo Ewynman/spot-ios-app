@@ -105,7 +105,7 @@ class PermissionManager: NSObject, ObservableObject {
         let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
 
         if !hasRequested && locationStatus == .notDetermined {
-        SpotLogger.log(PermissionManagerLogs.locationPermissionRequesting)
+            SpotLogger.log(PermissionManagerLogs.locationPermissionRequesting)
             Task { @MainActor in
                 AnalyticsService.shared.trackPermissionRequest(type: "location", action: "auto")
             }
@@ -167,13 +167,9 @@ class PermissionManager: NSObject, ObservableObject {
     func dismissNotificationBanner() {
         showNotificationBanner = false
     }
-}
 
-// MARK: - CLLocationManagerDelegate
-
-extension PermissionManager: CLLocationManagerDelegate {
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        let newStatus = manager.authorizationStatus
+    /// Core Location calls the delegate off the main actor; keep updates on `@MainActor` here.
+    private func applyLocationAuthorizationChange(_ newStatus: CLAuthorizationStatus) {
         locationStatus = newStatus
 
         switch newStatus {
@@ -193,6 +189,17 @@ extension PermissionManager: CLLocationManagerDelegate {
             break
         @unknown default:
             break
+        }
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+
+extension PermissionManager: CLLocationManagerDelegate {
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let newStatus = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            self?.applyLocationAuthorizationChange(newStatus)
         }
     }
 }
