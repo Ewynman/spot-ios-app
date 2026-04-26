@@ -7,134 +7,140 @@ private let postImageMaxPixelSize: CGFloat = 1600
 
 struct PhotoSelectionView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var permissionManager: PermissionManager
     @Binding var selectedImages: [UIImage]
+    let draftCount: Int
+    let onOpenDrafts: () -> Void
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var replacePickerItem: PhotosPickerItem?
     @State private var showCamera = false
+    @State private var showPhotoSettingsAlert = false
+    @State private var showCameraSettingsAlert = false
+    @State private var selectedPhotoIndex: Int = 0
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             // Header
-            VStack(spacing: 8) {
-                Text("Select Your Spot")
-                    .font(FontManager.sectionHeader())
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Create a Spot")
+                        .font(FontManager.sectionHeader())
+                        .foregroundColor(Constants.Colors.primary)
+                    Text(selectedImages.isEmpty ? "Start with photos, or continue a saved draft." : "Review, reorder, replace, and add photos.")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Button(action: onOpenDrafts) {
+                    VStack(spacing: 2) {
+                        Text("Drafts")
+                            .font(.caption.weight(.semibold))
+                        Text("\(draftCount)")
+                            .font(.caption2)
+                    }
                     .foregroundColor(Constants.Colors.primary)
-
-                Text("Choose a photo to share your spot")
-                    .font(FontManager.primaryText())
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Constants.Colors.primary, lineWidth: 1))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 24)
 
-            // Image grid (selected + placeholders)
-            if true {
-                VStack(spacing: 16) {
-                    let maxCount = authVM.isPro ? 5 : 1
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        // Existing images with remove buttons
+            if selectedImages.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 28))
+                        .foregroundColor(Constants.Colors.primary)
+                    Text("Add at least one photo to continue")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 200)
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(style: StrokeStyle(lineWidth: 1, dash: [6])).foregroundColor(Constants.Colors.primary))
+                    .padding(.horizontal, 24)
+            } else {
+                VStack(spacing: 12) {
+                    TabView(selection: $selectedPhotoIndex) {
                         ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, image in
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(height: 110)
-                                    .frame(maxWidth: .infinity)
-                                    .clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Constants.Colors.primary, lineWidth: 1)
-                                    )
-
-                                Button {
-                                    selectedImages.remove(at: idx)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white)
-                                        .background(Color.black.opacity(0.6).clipShape(Circle()))
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .padding(6)
-
-                                // Reorder controls
-                                HStack(spacing: 8) {
-                                    if idx > 0 {
-                                        Button { moveImage(from: idx, to: idx - 1) } label: {
-                                            Image(systemName: "chevron.left.circle.fill").foregroundColor(.white)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                    if idx < selectedImages.count - 1 {
-                                        Button { moveImage(from: idx, to: idx + 1) } label: {
-                                            Image(systemName: "chevron.right.circle.fill").foregroundColor(.white)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                    }
-                                }
-                                .padding(.top, 6)
-                                .padding(.trailing, 38)
-                            }
-                        }
-
-                        // Placeholder tiles
-                        let remaining = max(0, maxCount - selectedImages.count)
-                        if remaining > 0 {
-                            if authVM.isPro {
-                                // Pro: all placeholders are "+" gallery tiles (no camera tile in grid)
-                                ForEach(0..<remaining, id: \.self) { _ in
-                                    PhotosPicker(selection: $photoPickerItems, maxSelectionCount: remaining, matching: .images) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(style: StrokeStyle(lineWidth: 1, dash: [6]))
-                                                .foregroundColor(Constants.Colors.primary)
-                                                .frame(height: 110)
-                                            Image(systemName: "plus")
-                                                .font(.system(size: 24, weight: .bold))
-                                                .foregroundColor(Constants.Colors.primary)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            } else {
-                                // Free: show camera tile + single-select "+" tiles
-                                Button { showCamera = true } label: {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(style: StrokeStyle(lineWidth: 1, dash: [6]))
-                                            .foregroundColor(Constants.Colors.primary)
-                                            .frame(height: 110)
-                                        Image(systemName: "camera")
-                                            .font(.system(size: 22, weight: .bold))
-                                            .foregroundColor(Constants.Colors.primary)
-                                    }
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                let gallerySlots = max(0, remaining - 1)
-                                ForEach(0..<gallerySlots, id: \.self) { _ in
-                                    PhotosPicker(selection: $photoPickerItems, maxSelectionCount: 1, matching: .images) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(style: StrokeStyle(lineWidth: 1, dash: [6]))
-                                                .foregroundColor(Constants.Colors.primary)
-                                                .frame(height: 110)
-                                            Image(systemName: "plus")
-                                                .font(.system(size: 24, weight: .bold))
-                                                .foregroundColor(Constants.Colors.primary)
-                                        }
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .tag(idx)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 300)
+                                .clipped()
+                                .cornerRadius(16)
+                                .padding(.horizontal, 24)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 300)
 
-                    if !selectedImages.isEmpty {
-                        Button("Clear Photos") { selectedImages.removeAll() }
-                            .buttonStyle(PlainButtonStyle())
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
+                    HStack {
+                        Text("\(selectedPhotoIndex + 1) of \(selectedImages.count)")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        PhotosPicker(selection: $replacePickerItem, matching: .images) {
+                            Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Constants.Colors.primary)
+
+                        Button {
+                            deleteSelectedImage()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.red)
+                    }
+                    .padding(.horizontal, 24)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, image in
+                                VStack(spacing: 6) {
+                                    Button {
+                                        selectedPhotoIndex = idx
+                                    } label: {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 62, height: 62)
+                                            .clipped()
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(idx == selectedPhotoIndex ? Constants.Colors.primary : Color.clear, lineWidth: 2)
+                                            )
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    HStack(spacing: 4) {
+                                        Button { moveImage(from: idx, to: idx - 1) } label: {
+                                            Image(systemName: "arrow.left.circle")
+                                        }
+                                        .disabled(idx == 0)
+                                        Button { moveImage(from: idx, to: idx + 1) } label: {
+                                            Image(systemName: "arrow.right.circle")
+                                        }
+                                        .disabled(idx == selectedImages.count - 1)
+                                    }
+                                    .foregroundColor(Constants.Colors.primary)
+                                    .font(.caption)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 24)
                     }
                 }
             }
@@ -142,7 +148,7 @@ struct PhotoSelectionView: View {
             // Additional actions
             VStack(spacing: 20) {
                 // Gallery button for first add when grid is empty or for additional adds
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: max(1, (authVM.isPro ? 5 : 1) - selectedImages.count), matching: .images) {
+                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: max(1, maxPhotoCount - selectedImages.count), matching: .images) {
                     HStack(spacing: 12) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 24))
@@ -162,6 +168,16 @@ struct PhotoSelectionView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(photoSelectionDisabled || selectedImages.count >= maxPhotoCount)
+
+                if photoSelectionDisabled {
+                    Button("Enable Photo Access in Settings") {
+                        showPhotoSettingsAlert = true
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+                }
 
                 // Divider
                 HStack {
@@ -179,7 +195,7 @@ struct PhotoSelectionView: View {
                 .padding(.horizontal, 32)
 
                 // Camera Button
-                Button(action: { showCamera = true }) {
+                Button(action: { openCameraIfPermitted() }) {
                     HStack(spacing: 12) {
                         Image(systemName: "camera")
                             .font(.system(size: 24))
@@ -201,14 +217,17 @@ struct PhotoSelectionView: View {
                 .buttonStyle(PlainButtonStyle())
                 .buttonStyle(PlainButtonStyle())
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 24)
 
             Spacer()
+        }
+        .onAppear {
+            permissionManager.updatePermissionStatuses()
         }
         .task(id: photoPickerItems) {
             guard !photoPickerItems.isEmpty else { return }
             var newImages: [UIImage] = []
-            let maxCount = authVM.isPro ? 5 : 1
+            let maxCount = maxPhotoCount
             for item in photoPickerItems.prefix(maxCount) {
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
@@ -219,16 +238,38 @@ struct PhotoSelectionView: View {
             if !newImages.isEmpty {
                 SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
                 // Append up to the max allowed count
-                let available = max(0, (authVM.isPro ? 5 : 1) - selectedImages.count)
+                let available = max(0, maxPhotoCount - selectedImages.count)
                 if available > 0 {
                     selectedImages.append(contentsOf: newImages.prefix(available))
+                    selectedPhotoIndex = max(0, selectedImages.count - 1)
                 }
             } else {
                 SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
             }
         }
+        .task(id: replacePickerItem) {
+            guard let replacePickerItem else { return }
+            defer { self.replacePickerItem = nil }
+            guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedImages.count else { return }
+            if let data = try? await replacePickerItem.loadTransferable(type: Data.self),
+               let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
+                selectedImages[selectedPhotoIndex] = uiImage
+            }
+        }
         .sheet(isPresented: $showCamera) {
-            CameraView(selectedImages: $selectedImages, maxCount: authVM.isPro ? 5 : 1)
+            CameraView(selectedImages: $selectedImages, maxCount: maxPhotoCount)
+        }
+        .alert("Photo Access Needed", isPresented: $showPhotoSettingsAlert) {
+            Button("Open Settings") { permissionManager.openPhotoSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please allow photo library access in Settings to choose from gallery.")
+        }
+        .alert("Camera Access Needed", isPresented: $showCameraSettingsAlert) {
+            Button("Open Settings") { permissionManager.openCameraSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please allow camera access in Settings to take a photo.")
         }
     }
 }
@@ -237,7 +278,7 @@ struct PhotoSelectionView: View {
     StatefulImagesWrapper { binding in
         let auth = AuthViewModel()
         auth.isPro = true
-        return PhotoSelectionView(selectedImages: binding)
+        return PhotoSelectionView(selectedImages: binding, draftCount: 2, onOpenDrafts: {})
             .environmentObject(auth)
     }
 }
@@ -250,10 +291,51 @@ private struct StatefulImagesWrapper<Content: View>: View {
 
 // MARK: - Helpers
 private extension PhotoSelectionView {
+    var maxPhotoCount: Int { authVM.isPro ? 5 : 1 }
+
+    var photoSelectionDisabled: Bool {
+        permissionManager.photoStatus == .denied || permissionManager.photoStatus == .restricted
+    }
+
     func moveImage(from: Int, to: Int) {
         guard from != to, from >= 0, to >= 0, from < selectedImages.count, to < selectedImages.count else { return }
         let img = selectedImages.remove(at: from)
         selectedImages.insert(img, at: to)
+        if selectedPhotoIndex == from {
+            selectedPhotoIndex = to
+        } else if from < selectedPhotoIndex && to >= selectedPhotoIndex {
+            selectedPhotoIndex -= 1
+        } else if from > selectedPhotoIndex && to <= selectedPhotoIndex {
+            selectedPhotoIndex += 1
+        }
+    }
+
+    func deleteSelectedImage() {
+        guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedImages.count else { return }
+        selectedImages.remove(at: selectedPhotoIndex)
+        selectedPhotoIndex = max(0, min(selectedPhotoIndex, selectedImages.count - 1))
+    }
+
+    func openCameraIfPermitted() {
+        permissionManager.updatePermissionStatuses()
+        switch permissionManager.cameraStatus {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            permissionManager.requestCameraPermission()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                permissionManager.updatePermissionStatuses()
+                if permissionManager.cameraStatus == .authorized {
+                    showCamera = true
+                } else if permissionManager.cameraStatus == .denied || permissionManager.cameraStatus == .restricted {
+                    showCameraSettingsAlert = true
+                }
+            }
+        case .denied, .restricted:
+            showCameraSettingsAlert = true
+        @unknown default:
+            showCameraSettingsAlert = true
+        }
     }
 }
 

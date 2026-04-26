@@ -16,7 +16,7 @@ struct FeedFlags {
     static var enableDiagnosticLogging: Bool = false
 
     /// TTL for persistent seen tracking (in hours, 0 = disabled)
-    static var persistentSeenTTL: TimeInterval = 0 // 0 = disabled
+    static var persistentSeenTTL: TimeInterval = 24 * 7 // 7 days
 
     /// Unified page size across all feed components
     static let pageSize: Int = 24

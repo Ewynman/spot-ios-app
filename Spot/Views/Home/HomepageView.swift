@@ -6,6 +6,7 @@ struct HomepageView: View {
     @State private var showVerifyToast = false
     @State private var showPostSuccessToast = false
     @State private var postSuccessToastTask: Task<Void, Never>?
+    @State private var postSuccessRefreshTask: Task<Void, Never>?
     // Tour
     @StateObject private var tourManager = HomeTourManager()
     @State private var coachFrames: [CoachTarget: CGRect] = [:]
@@ -70,9 +71,13 @@ struct HomepageView: View {
             }
             tourManager.configure(userId: authVM.userId)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { notification in
             postSuccessToastTask?.cancel()
+            postSuccessRefreshTask?.cancel()
             showPostSuccessToast = true
+            if let postedSpot = notification.userInfo?["postedSpot"] as? Spot {
+                feedVM.insertNewSpot(postedSpot)
+            }
             postSuccessToastTask = Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await MainActor.run {
@@ -81,12 +86,27 @@ struct HomepageView: View {
                     }
                 }
             }
-            Task {
-                await feedVM.refreshFeed()
+            postSuccessRefreshTask = Task {
+                await refreshFeedForRecentPost()
             }
         }
         .onDisappear {
             postSuccessToastTask?.cancel()
+            postSuccessRefreshTask?.cancel()
+        }
+    }
+
+    private func refreshFeedForRecentPost() async {
+        // Backend writes can be slightly delayed; do a short retry burst so the new post
+        // reliably appears near the top when returning from Post flow.
+        for attempt in 0..<3 {
+            await feedVM.refreshFeed()
+            if feedVM.spots.first?.userId == authVM.userId {
+                break
+            }
+            if attempt < 2 {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
         }
     }
 }

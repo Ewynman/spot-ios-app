@@ -72,6 +72,8 @@ struct SpotCard: View {
     @State private var thumbnailFailed: Bool = false
     @State private var reportedImageFailure: Bool = false
     @State private var retryToken: UUID = UUID()
+    @State private var currentSpot: Spot
+    @State private var showVibeTagsSheet = false
 
     init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil, onImageFailure: ((Spot) -> Void)? = nil, onImageRetry: ((Spot) -> Void)? = nil) {
         self.spot = spot
@@ -82,6 +84,7 @@ struct SpotCard: View {
         self.backAction = backAction
         self.onImageFailure = onImageFailure
         self.onImageRetry = onImageRetry
+        _currentSpot = State(initialValue: spot)
     }
 
     var body: some View {
@@ -101,20 +104,20 @@ struct SpotCard: View {
         .background(Constants.Colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
-            isLiked = authVM.likedSpots.contains(spot.safeId)
-            isSaved = authVM.bookmarkedSpots.contains(spot.safeId)
+            isLiked = authVM.likedSpots.contains(currentSpot.safeId)
+            isSaved = authVM.bookmarkedSpots.contains(currentSpot.safeId)
             let currentUserId = userId ?? authVM.userId ?? ""
-            let ownerId = spot.userId ?? ""
+            let ownerId = currentSpot.userId ?? ""
             let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
             SpotLogger.log(SpotCardLogs.spotCardAppear, details: [
                 "source": source,
-                "spotId": spot.safeId,
+                "spotId": currentSpot.safeId,
                 "ownerId": ownerId.isEmpty ? "nil" : ownerId,
                 "currentUserId": currentUserId.isEmpty ? "nil" : currentUserId,
                 "isOwner": isOwner
             ])
             if currentUserId.isEmpty || ownerId.isEmpty {
-                SpotLogger.log(SpotCardLogs.ownerGateMissingInputs, details: ["source": source, "spotId": spot.safeId])
+                SpotLogger.log(SpotCardLogs.ownerGateMissingInputs, details: ["source": source, "spotId": currentSpot.safeId])
             }
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
@@ -133,20 +136,45 @@ struct SpotCard: View {
             menuButtonFrame = frame
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(spot: spot)
+            ShareSheet(spot: currentSpot)
         }
         .sheet(isPresented: $showReportSheet) {
-            ReportSheet(spot: spot)
+            ReportSheet(spot: currentSpot)
         }
         .sheet(isPresented: $showCollectionPicker) {
-            CollectionPickerSheet(spotId: spot.safeId, onDone: { showCollectionPicker = false }) {
+            CollectionPickerSheet(spotId: currentSpot.safeId, onDone: { showCollectionPicker = false }) {
                 // Mark as saved when user successfully saves to collection
                 isSaved = true
             }
         }
         .sheet(isPresented: $showEditSheet) {
-            EditSpotView(spot: spot) { _ in }
+            EditSpotView(spot: currentSpot) { updatedSpot in
+                currentSpot = updatedSpot
+            }
                 .environmentObject(authVM)
+        }
+        .sheet(isPresented: $showVibeTagsSheet) {
+            VStack(spacing: 16) {
+                Capsule()
+                    .fill(Color.gray.opacity(0.4))
+                    .frame(width: 42, height: 5)
+                    .padding(.top, 8)
+                Text("Vibe Tags")
+                    .font(FontManager.sectionHeader())
+                    .foregroundColor(Constants.Colors.primary)
+                ForEach(currentSpot.displayVibeTags, id: \.self) { tag in
+                    Text(tag)
+                        .font(FontManager.primaryText())
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Constants.Colors.accent)
+                        .cornerRadius(12)
+                }
+                Spacer()
+            }
+            .presentationDetents([.fraction(0.4)])
+            .background(Constants.Colors.background)
         }
     }
 
@@ -168,14 +196,14 @@ struct SpotCard: View {
                 .cornerRadius(8)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    SpotLogger.log(SpotCardLogs.backButtonTapped, details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.backButtonTapped, details: ["spotId": currentSpot.safeId, "source": source])
                     backAction()
                 }
                 .zIndex(10)
-            } else if showUserInfo, let userId = spot.userId {
+            } else if showUserInfo, let userId = currentSpot.userId {
                 NavigationLink(value: Route.profile(userId)) {
                     HStack(spacing: 8) {
-                        if let urlString = spot.userProfileImageURL,
+                        if let urlString = currentSpot.userProfileImageURL,
                            let url = URL(string: urlString) {
                             AsyncImage(url: url) { img in
                                 img.resizable()
@@ -203,7 +231,7 @@ struct SpotCard: View {
                                 )
                         }
 
-                        Text(spot.username ?? "")
+                        Text(currentSpot.username ?? "")
                             .font(FontManager.primaryText())
                             .fontWeight(.semibold)
                             .foregroundColor(Constants.Colors.primary)
@@ -218,7 +246,7 @@ struct SpotCard: View {
 
             Spacer()
 
-            if let location = spot.locationName, !location.isEmpty {
+            if let location = currentSpot.locationName, !location.isEmpty {
                 Text(cityState(from: location))
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
@@ -251,9 +279,9 @@ struct SpotCard: View {
     }
 
     @ViewBuilder private var spotImage: some View {
-        if let urls = spot.imageURLs, !urls.isEmpty {
-            SpotImageGallery(urls: urls, fallback: spot.imageURL)
-        } else if let thumb = spot.thumbnailURL, let turl = URL(string: thumb) {
+        if let urls = currentSpot.imageURLs, !urls.isEmpty {
+            SpotImageGallery(urls: urls, fallback: currentSpot.imageURL)
+        } else if let thumb = currentSpot.thumbnailURL, let turl = URL(string: thumb) {
             RemoteImage(url: turl, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
@@ -279,7 +307,7 @@ struct SpotCard: View {
                         .onAppear {
                             let host = URL(string: thumb)?.host ?? "unknown"
                             SpotLogger.log(SpotCardLogs.imageThumbnailLoadFailed, details: [
-                                "spotId": spot.safeId,
+                                "spotId": currentSpot.safeId,
                                 "source": source,
                                 "thumbHost": host,
                                 "thumbUrl": thumb,
@@ -293,12 +321,12 @@ struct SpotCard: View {
                             thumbnailFailed = true
                             if !reportedImageFailure {
                                 reportedImageFailure = true
-                                onImageFailure?(spot)
+                                onImageFailure?(currentSpot)
                             }
                         }
                         .overlay(alignment: .bottomTrailing) {
                             Button {
-                                retryToken = UUID(); onImageRetry?(spot)
+                                retryToken = UUID(); onImageRetry?(currentSpot)
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "arrow.clockwise")
@@ -321,7 +349,7 @@ struct SpotCard: View {
             }
             .id(retryToken)
             .overlay(fullImageOverlay)
-        } else if let urlString = spot.imageURL, let url = URL(string: urlString) {
+        } else if let urlString = currentSpot.imageURL, let url = URL(string: urlString) {
             RemoteImage(url: url, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
@@ -338,7 +366,7 @@ struct SpotCard: View {
                        .cornerRadius(12)
                         .onAppear {
                             SpotLogger.log(SpotCardLogs.spotImageLoaded, details: [
-                                "spotId": spot.safeId,
+                                "spotId": currentSpot.safeId,
                                 "source": source,
                                 "hasThumb": false,
                                 "url": urlString
@@ -355,7 +383,7 @@ struct SpotCard: View {
                         .onAppear {
                             let host = url.host ?? "unknown"
                             SpotLogger.log(SpotCardLogs.imageFullSizeLoadFailed, details: [
-                                "spotId": spot.safeId,
+                                "spotId": currentSpot.safeId,
                                 "source": source,
                                 "fullHost": host,
                                 "fullUrl": urlString,
@@ -368,11 +396,11 @@ struct SpotCard: View {
                             ])
                             if !reportedImageFailure {
                                 reportedImageFailure = true
-                                onImageFailure?(spot)
+                                onImageFailure?(currentSpot)
                             }
                         }
                         .overlay(alignment: .bottomTrailing) {
-                            Button { retryToken = UUID(); onImageRetry?(spot) } label: {
+                            Button { retryToken = UUID(); onImageRetry?(currentSpot) } label: {
                                 HStack(spacing: 6) { Image(systemName: "arrow.clockwise"); Text("Retry") }
                                     .font(FontManager.primaryText())
                                     .padding(.horizontal, 10)
@@ -400,10 +428,10 @@ struct SpotCard: View {
                 .cornerRadius(12)
                 .onAppear {
                     SpotLogger.log(SpotCardLogs.imagePlaceholderUsed, details: [
-                        "spotId": spot.safeId,
+                        "spotId": currentSpot.safeId,
                         "source": source,
                         "hasThumb": false,
-                        "url": spot.imageURL ?? "nil"
+                        "url": currentSpot.imageURL ?? "nil"
                     ])
                 }
         }
@@ -411,7 +439,7 @@ struct SpotCard: View {
 
     private var fullImageOverlay: some View {
         Group {
-            if let full = spot.imageURL, let furl = URL(string: full), spot.imageURLs?.isEmpty ?? true {
+            if let full = currentSpot.imageURL, let furl = URL(string: full), currentSpot.imageURLs?.isEmpty ?? true {
                 RemoteImage(url: furl, transaction: Transaction(animation: .default)) { phase in
                     switch phase {
                     case .empty:
@@ -428,7 +456,7 @@ struct SpotCard: View {
                                     PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
                                 }
                                 SpotLogger.log(SpotCardLogs.spotImageLoaded, details: [
-                                    "spotId": spot.safeId,
+                                    "spotId": currentSpot.safeId,
                                     "source": source,
                                     "hasThumb": true,
                                     "url": full
@@ -438,7 +466,7 @@ struct SpotCard: View {
                         Color.clear.onAppear {
                             let host = URL(string: full)?.host ?? "unknown"
                             SpotLogger.log(SpotCardLogs.imageFullSizeLoadFailed, details: [
-                                "spotId": spot.safeId,
+                                "spotId": currentSpot.safeId,
                                 "source": source,
                                 "fullHost": host,
                                 "fullUrl": full,
@@ -451,7 +479,7 @@ struct SpotCard: View {
                             ])
                             if !reportedImageFailure {
                                 reportedImageFailure = true
-                                onImageFailure?(spot)
+                                onImageFailure?(currentSpot)
                             }
                         }
                     @unknown default:
@@ -468,7 +496,7 @@ struct SpotCard: View {
         HStack {
             HStack(spacing: 16) {
                 Button {
-                    guard !isLoadingLike, let spotId = spot.id, authVM.userId != nil else { return }
+                    guard !isLoadingLike, let spotId = currentSpot.id, authVM.userId != nil else { return }
                     isLiked.toggle()
                     isLoadingLike = true
                     if isLiked {
@@ -486,7 +514,7 @@ struct SpotCard: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button {
-                    guard !isLoadingSave, let spotId = spot.id, authVM.userId != nil else { return }
+                    guard !isLoadingSave, let spotId = currentSpot.id, authVM.userId != nil else { return }
                     if !isSaved, !authVM.isPro, authVM.bookmarkedSpots.count >= 50 {
                         NotificationCenter.default.post(name: .showPaywall, object: nil)
                         return
@@ -515,7 +543,7 @@ struct SpotCard: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button {
-                    SpotLogger.log(SpotCardLogs.menuTapped, details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.menuTapped, details: ["spotId": currentSpot.safeId, "source": source])
                     showCustomMenu = true
                 } label: {
                     Text("⋮")
@@ -535,15 +563,22 @@ struct SpotCard: View {
 
             Spacer()
 
-            if let vibe = spot.vibeTag, !vibe.isEmpty {
-                Text(vibe)
-                    .font(FontManager.primaryText())
-                    .foregroundColor(Constants.Colors.primary)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 12)
-                    .background(Constants.Colors.accent)
-                    .cornerRadius(12)
-                    .measure(target: .vibeTag)
+            if let firstVibe = currentSpot.displayVibeTags.first {
+                Button {
+                    if currentSpot.displayVibeTags.count > 1 {
+                        showVibeTagsSheet = true
+                    }
+                } label: {
+                    Text(currentSpot.displayVibeTags.count > 1 ? "\(firstVibe) +\(currentSpot.displayVibeTags.count - 1)" : firstVibe)
+                        .font(FontManager.primaryText())
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(Constants.Colors.accent)
+                        .cornerRadius(12)
+                        .measure(target: .vibeTag)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.horizontal, 16)
@@ -582,13 +617,13 @@ struct SpotCard: View {
 
     private var customMenuContent: some View {
         let currentUserId = userId ?? authVM.userId ?? ""
-        let ownerId = spot.userId ?? ""
+        let ownerId = currentSpot.userId ?? ""
         let isOwner = (!currentUserId.isEmpty && !ownerId.isEmpty && currentUserId == ownerId)
 
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 showCustomMenu = false
-                SpotLogger.log(SpotCardLogs.shareTapped, details: ["spotId": spot.safeId, "source": source])
+                SpotLogger.log(SpotCardLogs.shareTapped, details: ["spotId": currentSpot.safeId, "source": source])
                 showShareSheet = true
             } label: {
                 HStack {
@@ -622,7 +657,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.log(SpotCardLogs.reportTapped, details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.reportTapped, details: ["spotId": currentSpot.safeId, "source": source])
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -639,7 +674,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    if let targetUserId = spot.userId {
+                    if let targetUserId = currentSpot.userId {
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)
@@ -680,7 +715,7 @@ struct SpotCard: View {
 
                 Button {
                     showCustomMenu = false
-                    SpotLogger.log(SpotCardLogs.deleteTapped, details: ["spotId": spot.safeId, "source": source])
+                    SpotLogger.log(SpotCardLogs.deleteTapped, details: ["spotId": currentSpot.safeId, "source": source])
                     showDeleteConfirm = true
                 } label: {
                     HStack {

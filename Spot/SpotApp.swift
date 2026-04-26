@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseCrashlytics
+import UIKit
 
 @main
 struct SpotApp: App {
@@ -16,7 +17,9 @@ struct SpotApp: App {
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    init() {}
+    init() {
+        configureGlobalBackButtonAppearance()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -46,5 +49,29 @@ struct SpotApp: App {
                 }
             }
         }
+    }
+}
+
+private extension SpotApp {
+    func configureGlobalBackButtonAppearance() {
+        let imageConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .bold)
+        let backImage = UIImage(systemName: "chevron.left", withConfiguration: imageConfig)
+
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(Color(hex: "#F5F3EF"))
+        appearance.shadowColor = .clear
+        appearance.setBackIndicatorImage(backImage, transitionMaskImage: backImage)
+
+        let navBar = UINavigationBar.appearance()
+        navBar.standardAppearance = appearance
+        navBar.scrollEdgeAppearance = appearance
+        navBar.compactAppearance = appearance
+        navBar.tintColor = UIColor(Color(hex: "#1D2C24"))
+
+        UIBarButtonItem.appearance().setBackButtonTitlePositionAdjustment(
+            UIOffset(horizontal: -1000, vertical: 0),
+            for: .default
+        )
     }
 }

@@ -17,6 +17,10 @@
 	<false/>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Spot sends you alerts about new spots nearby</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Spot needs access to your photos so you can post spots from your gallery.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Spot needs camera access so you can capture new spot photos.</string>
 	<key>Supabase</key>
 	<dict>
 		<key>url</key>

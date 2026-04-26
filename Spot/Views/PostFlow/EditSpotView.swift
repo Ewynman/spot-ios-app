@@ -13,6 +13,8 @@ struct EditSpotView: View {
     @State private var selectedImages: [UIImage] = []
     @State private var selectedLocation: LocationData?
     @State private var selectedVibe: String = ""
+    @State private var selectedVibes: [String] = []
+    @State private var showingMap = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showToast = false
@@ -23,8 +25,12 @@ struct EditSpotView: View {
         NavigationStack {
             VStack(spacing: 16) {
                 // Images (optional replacement)
-                PhotoSelectionView(selectedImages: $selectedImages)
+                PhotoSelectionView(selectedImages: $selectedImages, draftCount: 0, onOpenDrafts: {})
                     .environmentObject(authVM)
+
+                if existingImageURLs.isEmpty == false {
+                    existingImagesSection
+                }
 
                 // Location
                 VStack(spacing: 8) {
@@ -69,7 +75,7 @@ struct EditSpotView: View {
                 }
 
                 // Vibe
-                VibeSelectionView(selectedVibe: $selectedVibe)
+                VibeSelectionView(selectedVibes: $selectedVibes, maxVibes: selectedImages.count > 1 ? 5 : 3)
                     .environmentObject(authVM)
 
                 Spacer()
@@ -97,6 +103,14 @@ struct EditSpotView: View {
                 }
             }
             .onAppear { seedFromSpot() }
+            .sheet(isPresented: $showingMap) {
+                if let loc = mapSeedLocation {
+                    LocationMapView(location: loc) { newLoc in
+                        selectedLocation = newLoc
+                        showingMap = false
+                    }
+                }
+            }
             .overlay(alignment: .top) {
                 VStack(spacing: 8) {
                     if showToast, let msg = errorMessage {
@@ -111,6 +125,8 @@ struct EditSpotView: View {
                 .padding(.top, 8)
             }
         }
+        .preferredColorScheme(.light)
+        .background(Constants.Colors.background.ignoresSafeArea())
     }
 
     private func seedFromSpot() {
@@ -125,30 +141,42 @@ struct EditSpotView: View {
         }
         // Vibe
         selectedVibe = spot.vibeTag ?? ""
-        // Do not auto-download images; user can replace if they want.
+        selectedVibes = spot.displayVibeTags
     }
 
-    private func presentMap() {
-        // Present the existing map sheet used in post flow
-        // We’ll emulate by toggling a sheet via Notification to keep code light.
-        // For now, reuse by pushing a temporary sheet
-        let loc = selectedLocation ?? LocationData(
+    private var existingImageURLs: [String] {
+        if let urls = spot.imageURLs, !urls.isEmpty {
+            return urls
+        }
+        if let single = spot.imageURL, !single.isEmpty {
+            return [single]
+        }
+        return []
+    }
+
+    private var mapSeedLocation: LocationData? {
+        if let selectedLocation {
+            return selectedLocation
+        }
+        guard spot.latitude != nil, spot.longitude != nil else {
+            return nil
+        }
+        return LocationData(
             coordinate: CLLocationCoordinate2D(latitude: spot.latitude ?? 0, longitude: spot.longitude ?? 0),
             placeName: spot.locationName ?? "",
             address: nil,
             isCustomName: false
         )
-        // Inline sheet
-        let host = UIHostingController(rootView: LocationMapView(location: loc, onConfirm: { newLoc in
-            self.selectedLocation = newLoc
-        }))
-        host.modalPresentationStyle = .formSheet
-        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController?.present(host, animated: true)
+    }
+
+    private func presentMap() {
+        showingMap = true
     }
 
     private func save() {
         guard !isSaving else { return }
-        guard let loc = selectedLocation, !selectedVibe.isEmpty, let spotId = spot.id else {
+        let primaryVibe = selectedVibes.first ?? selectedVibe
+        guard let loc = selectedLocation, !primaryVibe.isEmpty, let spotId = spot.id else {
             errorMessage = "Please select location and vibe"; toastIsError = true; withAnimation { showToast = true }; return
         }
         isSaving = true
@@ -162,13 +190,14 @@ struct EditSpotView: View {
                 }
                 try await SpotSupabaseRepository.updateSpotMetadata(
                     id: sid,
-                    vibeTag: selectedVibe,
+                    vibeTags: selectedVibes.isEmpty ? [primaryVibe] : selectedVibes,
                     latitude: loc.coordinate.latitude,
                     longitude: loc.coordinate.longitude,
                     locationName: loc.placeName
                 )
                 var updated = spot
-                updated.vibeTag = selectedVibe
+                updated.vibeTag = primaryVibe
+                updated.vibeTags = selectedVibes.isEmpty ? [primaryVibe] : selectedVibes
                 updated.latitude = loc.coordinate.latitude
                 updated.longitude = loc.coordinate.longitude
                 updated.locationName = loc.placeName
@@ -188,6 +217,35 @@ struct EditSpotView: View {
                     toastIsError = true
                     withAnimation { showToast = true }
                 }
+            }
+        }
+    }
+
+    private var existingImagesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Current Images")
+                .font(FontManager.primaryText())
+                .foregroundColor(Constants.Colors.primary)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(existingImageURLs, id: \.self) { urlString in
+                        if let url = URL(string: urlString) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                default:
+                                    Image("image_placeholder").resizable().scaledToFill()
+                                }
+                            }
+                            .frame(width: 100, height: 100)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
             }
         }
     }

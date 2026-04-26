@@ -54,7 +54,7 @@ final class FeedRanker {
         var seenKeys = Set<String>()
         var perCreator: [String: Int] = [:]
 
-        func push(_ s: Spot) {
+        func push(_ s: Spot, enforceCreatorCap: Bool) {
             // Build a robust key so we don't drop items if id is temporarily nil
             let key: String = {
                 if let id = s.id { return "id:\(id)" }
@@ -68,19 +68,26 @@ final class FeedRanker {
             }
             // creator cap
             let author = s.userId ?? "_"
-            if (perCreator[author] ?? 0) >= creatorCap { return }
+            if enforceCreatorCap && (perCreator[author] ?? 0) >= creatorCap { return }
             picked.append(s)
             seenKeys.insert(key)
             perCreator[author] = (perCreator[author] ?? 0) + 1
         }
 
-        for s in followees.prefix(fTarget) { push(s) }
-        for s in global.prefix(gTarget) { push(s) }
+        for s in followees.prefix(fTarget) { push(s, enforceCreatorCap: true) }
+        for s in global.prefix(gTarget) { push(s, enforceCreatorCap: true) }
 
         // Backfill if underfilled
         if picked.count < pageSize {
-            for s in followees where picked.count < pageSize { push(s) }
-            for s in global where picked.count < pageSize { push(s) }
+            for s in followees where picked.count < pageSize { push(s, enforceCreatorCap: true) }
+            for s in global where picked.count < pageSize { push(s, enforceCreatorCap: true) }
+        }
+
+        // Final safety backfill: if still underfilled (e.g. one creator dominates),
+        // relax creator cap so we still return a full page.
+        if picked.count < pageSize {
+            for s in followees where picked.count < pageSize { push(s, enforceCreatorCap: false) }
+            for s in global where picked.count < pageSize { push(s, enforceCreatorCap: false) }
         }
 
         return picked

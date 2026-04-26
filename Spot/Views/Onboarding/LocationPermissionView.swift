@@ -18,6 +18,8 @@ struct LocationPermissionView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var permissionManager: PermissionManager
     @State private var navigateToNotifications = false
+    @State private var navigateToPhoto = false
+    @State private var navigateToCamera = false
     @State private var navigateToSignup = false
     @State private var navigateToLogin = false
     @State private var navigateToPostAuthSetup = false
@@ -72,9 +74,13 @@ struct LocationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            permissionManager.requestLocationPermission()
+                            if permissionManager.locationStatus == .denied || permissionManager.locationStatus == .restricted {
+                                permissionManager.openLocationSettings()
+                            } else {
+                                permissionManager.requestLocationPermission()
+                            }
                         }) {
-                            Text("Enable Location")
+                            Text(permissionManager.locationStatus == .denied || permissionManager.locationStatus == .restricted ? "Open Settings" : "Enable Location")
                                 .font(FontManager.buttonText())
                                 .foregroundColor(Constants.Colors.buttonText)
                                 .frame(maxWidth: .infinity)
@@ -114,6 +120,24 @@ struct LocationPermissionView: View {
                 }
             }())
         }
+        .navigationDestination(isPresented: $navigateToPhoto) {
+            PhotoPermissionView(authDestination: {
+                switch authDestination {
+                case .signup: return .signup
+                case .login: return .login
+                case .postAuthSetup: return .postAuthSetup
+                }
+            }())
+        }
+        .navigationDestination(isPresented: $navigateToCamera) {
+            CameraPermissionView(authDestination: {
+                switch authDestination {
+                case .signup: return .signup
+                case .login: return .login
+                case .postAuthSetup: return .postAuthSetup
+                }
+            }())
+        }
         .navigationDestination(isPresented: $navigateToSignup) {
             SignupView()
         }
@@ -129,10 +153,16 @@ struct LocationPermissionView: View {
             permissionManager.updatePermissionStatuses()
             let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
             let notificationsGranted = permissionManager.notificationStatus == .authorized
+            let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
+            let cameraGranted = permissionManager.cameraStatus == .authorized
             
-            if locationGranted && notificationsGranted {
+            if locationGranted && notificationsGranted && photoGranted && cameraGranted {
                 // Both granted, skip to destination
                 goToAuthDestination()
+            } else if locationGranted && notificationsGranted && photoGranted {
+                navigateToCamera = true
+            } else if locationGranted && notificationsGranted {
+                navigateToPhoto = true
             } else if locationGranted {
                 // Location granted, skip to notifications
                 pushToNotifications()
@@ -142,8 +172,15 @@ struct LocationPermissionView: View {
             if newStatus != .notDetermined {
                 // Check if notifications are already granted
                 permissionManager.updatePermissionStatuses()
-                if permissionManager.notificationStatus == .authorized {
+                let notificationsGranted = permissionManager.notificationStatus == .authorized
+                let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
+                let cameraGranted = permissionManager.cameraStatus == .authorized
+                if notificationsGranted && photoGranted && cameraGranted {
                     goToAuthDestination()
+                } else if notificationsGranted && photoGranted {
+                    navigateToCamera = true
+                } else if notificationsGranted {
+                    navigateToPhoto = true
                 } else {
                     pushToNotifications()
                 }

@@ -17,6 +17,7 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var thumbnailURL: String?
     var imageURLs: [String]?
     var vibeTag: String?
+    var vibeTags: [String]?
     var latitude: Double?
     var longitude: Double?
     var locationName: String?
@@ -36,6 +37,7 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         imageURL: String? = nil,
         thumbnailURL: String? = nil,
         vibeTag: String? = nil,
+        vibeTags: [String]? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil,
         locationName: String? = nil,
@@ -54,6 +56,7 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         self.thumbnailURL = thumbnailURL
         self.imageURLs = imageURLs
         self.vibeTag = vibeTag
+        self.vibeTags = vibeTags ?? (vibeTag.map { [$0] } ?? [])
         self.latitude = latitude
         self.longitude = longitude
         self.locationName = locationName
@@ -92,5 +95,15 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+
+    var displayVibeTags: [String] {
+        if let vibeTags, !vibeTags.isEmpty {
+            return vibeTags
+        }
+        if let vibeTag, !vibeTag.isEmpty {
+            return [vibeTag]
+        }
+        return []
     }
 }

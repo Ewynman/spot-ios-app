@@ -139,6 +139,7 @@ struct SettingsView: View {
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
+
                 }
                 .padding(16)
             }

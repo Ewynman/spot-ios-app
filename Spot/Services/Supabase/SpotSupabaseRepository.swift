@@ -179,12 +179,15 @@ enum SpotSupabaseRepository {
 
     static func updateSpotMetadata(
         id: UUID,
-        vibeTag: String,
+        vibeTags: [String],
         latitude: Double,
         longitude: Double,
         locationName: String
     ) async throws {
-        let vibeId = try await resolveOrCreateVibeTagId(displayName: vibeTag)
+        guard let primaryVibe = vibeTags.first else {
+            throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
+        }
+        let vibeId = try await resolveOrCreateVibeTagId(displayName: primaryVibe)
         let trimmedPlace = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         struct SpotUpdate: Encodable {
@@ -521,7 +524,7 @@ enum SpotSupabaseRepository {
     static func publishSpotFromDraft(
         userId: UUID,
         imageJPEGs: [Data],
-        vibeTag: String,
+        vibeTags: [String],
         latitude: Double,
         longitude: Double,
         locationName: String
@@ -538,7 +541,10 @@ enum SpotSupabaseRepository {
             .execute()
             .value
 
-        let vibeId = try await resolveOrCreateVibeTagId(displayName: vibeTag)
+        guard let primaryVibe = vibeTags.first else {
+            throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
+        }
+        let vibeId = try await resolveOrCreateVibeTagId(displayName: primaryVibe)
 
         struct SpotInsert: Encodable {
             let user_id: UUID

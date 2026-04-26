@@ -164,12 +164,21 @@ struct LocationSelectionView: View {
 
                         Spacer()
 
-                        Button("Change") {
-                            selectedLocation = nil
+                        VStack(alignment: .trailing, spacing: 8) {
+                            Button("Adjust Pin") {
+                                showingMap = true
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Constants.Colors.primary)
+
+                            Button("Change") {
+                                selectedLocation = nil
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
                     }
                     .padding()
                     .background(Color.white)

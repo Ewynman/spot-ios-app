@@ -12,6 +12,7 @@ struct MapView: View {
     @State private var selectedSpot: Spot?
     @State private var hasPerformedInitialFit: Bool = false
     @State private var regionLoadTask: Task<Void, Never>?
+    @State private var refitRequestID: Int = 0
 
     @Environment(\.verticalSizeClass) private var vSize
 
@@ -20,46 +21,56 @@ struct MapView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .bottom) {
-                ClusteredSpotMap(spots: mapVM.visibleSpots, onRegionChanged: { _ in
-                    // Region changes don't need to reload - we show all spots
-                }) { spot, coord in
-                    select(spot, coord)
+        NavigationStack {
+            GeometryReader { geo in
+                ZStack(alignment: .bottom) {
+                    ClusteredSpotMap(spots: mapVM.visibleSpots, refitRequestID: refitRequestID, onRegionChanged: { _ in
+                        // Region changes don't need to reload - we show all spots
+                    }) { spot, coord in
+                        select(spot, coord)
+                    }
+                }
+                // Bottom inset drives the "split" layout; the Map stays alive (prevents Metal crash).
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    bottomInset(height: openPanelHeight(in: geo.size))
+                }
+                // Paint content background…
+                .background(Constants.Colors.background)
+                // …and also paint the TOP safe-area (status/notch) to match your app background.
+                .background(Constants.Colors.background.ignoresSafeArea())
+                .onAppear {
+                    locationManager.startUpdatingLocation()
+                    performInitialFitIfNeeded()
+                    mapVM.loadAllSpots()
+                }
+                .onDisappear {
+                    locationManager.stopUpdatingLocation()
+                    // Clear selected spot to ensure map resources are released before navigation
+                    selectedSpot = nil
+                    mapVM.clearVisibleSpots()
+                    // Cancel any pending region load tasks
+                    regionLoadTask?.cancel()
+                    regionLoadTask = nil
+                }
+                .onChange(of: locationManager.userLocation) { oldLocation, newLocation in
+                    // Zoom to user location when it first becomes available
+                    if oldLocation == nil && newLocation != nil && selectedSpot == nil && !hasPerformedInitialFit {
+                        updateCameraToUser()
+                        hasPerformedInitialFit = true
+                    }
+                }
+                .onChange(of: mapVM.visibleSpots) { _, _ in
+                    performInitialFitIfNeeded()
                 }
             }
-            // Bottom inset drives the "split" layout; the Map stays alive (prevents Metal crash).
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                bottomInset(height: openPanelHeight(in: geo.size))
-            }
-            // Paint content background…
-            .background(Constants.Colors.background)
-            // …and also paint the TOP safe-area (status/notch) to match your app background.
-            .background(Constants.Colors.background.ignoresSafeArea())
-            .onAppear {
-                locationManager.startUpdatingLocation()
-                performInitialFitIfNeeded()
-                mapVM.loadAllSpots()
-            }
-            .onDisappear { 
-                locationManager.stopUpdatingLocation()
-                // Clear selected spot to ensure map resources are released before navigation
-                selectedSpot = nil
-                mapVM.clearVisibleSpots()
-                // Cancel any pending region load tasks
-                regionLoadTask?.cancel()
-                regionLoadTask = nil
-            }
-            .onChange(of: locationManager.userLocation) { oldLocation, newLocation in
-                // Zoom to user location when it first becomes available
-                if oldLocation == nil && newLocation != nil && selectedSpot == nil && !hasPerformedInitialFit {
-                    updateCameraToUser()
-                    hasPerformedInitialFit = true
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .profile(let userId):
+                    ProfileView(userId: userId, fromNavigationPush: true)
+                        .navigationBarBackButtonHidden(true)
                 }
             }
-            .onChange(of: mapVM.visibleSpots) { _, _ in
-                performInitialFitIfNeeded()
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -91,7 +102,7 @@ struct MapView: View {
     private func closePanel() {
         SpotLogger.log(MapViewLogs.homeSheetClose)
         selectedSpot = nil
-        // no-op; cluster map maintains region
+        refitRequestID += 1
     }
 
     private func updateCameraToUser() {
@@ -167,6 +178,7 @@ private struct SpotMap: View {
 // MARK: - UIKit-backed clustered map
 private struct ClusteredSpotMap: UIViewRepresentable {
     let spots: [Spot]
+    let refitRequestID: Int
     var onRegionChanged: ((MKCoordinateRegion) -> Void)?
     let onSelect: (Spot, CLLocationCoordinate2D) -> Void
 
@@ -195,6 +207,14 @@ private struct ClusteredSpotMap: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
+        if context.coordinator.lastRefitRequestID != refitRequestID {
+            context.coordinator.lastRefitRequestID = refitRequestID
+            let spotAnnotations = map.annotations.compactMap { $0 as? SpotPointAnnotation }
+            if !spotAnnotations.isEmpty {
+                map.showAnnotations(spotAnnotations, animated: true)
+            }
+        }
+
         let existing = map.annotations.compactMap { $0 as? SpotPointAnnotation }
         let existingIds = Set(existing.map { $0.spot.id })
         let newIds = Set(spots.map { $0.id })
@@ -254,7 +274,11 @@ private struct ClusteredSpotMap: UIViewRepresentable {
         let parent: ClusteredSpotMap
         var initialRegionSet = false
         var hasZoomedToUserLocation = false
-        init(_ parent: ClusteredSpotMap) { self.parent = parent }
+        var lastRefitRequestID: Int
+        init(_ parent: ClusteredSpotMap) {
+            self.parent = parent
+            self.lastRefitRequestID = parent.refitRequestID
+        }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if annotation is MKUserLocation { return nil }
@@ -351,7 +375,7 @@ private struct FullBleedPanel: View {
                 source: "Map"
             )
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 24)
         }
         // Full-bleed, no rounded corners/shadows; covers home indicator.
         .background(Constants.Colors.background)

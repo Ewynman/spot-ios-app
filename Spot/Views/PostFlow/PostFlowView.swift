@@ -10,6 +10,7 @@ struct PostFlowView: View {
     @State private var isVerifyingEmail: Bool = true
     @State private var showVerifyEmailAlert: Bool = false
     @State private var showConfirmEmailSheet: Bool = false
+    @State private var showDraftsSheet: Bool = false
 
     /// Fires on the main thread right after the publish pipeline accepts the draft (composer resets; use to e.g. switch tabs).
     var onPostQueued: (() -> Void)?
@@ -61,11 +62,21 @@ struct PostFlowView: View {
                         Group {
                             switch viewModel.currentStep {
                             case 1:
-                                PhotoSelectionView(selectedImages: $viewModel.selectedImages)
+                                PhotoSelectionView(
+                                    selectedImages: $viewModel.selectedImages,
+                                    draftCount: viewModel.availableDrafts.count,
+                                    onOpenDrafts: {
+                                        showDraftsSheet = true
+                                        viewModel.refreshDrafts()
+                                    }
+                                )
                             case 2:
                                 LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
                             case 3:
-                                VibeSelectionView(selectedVibe: $viewModel.selectedVibe)
+                                VibeSelectionView(
+                                    selectedVibes: $viewModel.selectedVibes,
+                                    maxVibes: viewModel.selectedImages.count > 1 ? 5 : 3
+                                )
                             default:
                                 EmptyView()
                             }
@@ -78,11 +89,20 @@ struct PostFlowView: View {
                         NavigationButtonsView(
                             currentStep: $viewModel.currentStep,
                             totalSteps: viewModel.totalSteps,
-                            canProceed: viewModel.canProceedToNextStep && !viewModel.isEncodingPost,
+                            canProceed: viewModel.currentStep == viewModel.totalSteps
+                                ? viewModel.canSubmitPost && !viewModel.isEncodingPost
+                                : viewModel.canProceedToNextStep && !viewModel.isEncodingPost,
+                            canSaveDraft: viewModel.canSaveDraft && !viewModel.isEncodingPost,
                             isBusy: viewModel.isEncodingPost,
                             onBack: { viewModel.goBack() },
                             onNext: { viewModel.goNext() },
-                            onFinish: { viewModel.submitPost() }
+                            onFinish: { viewModel.submitPost() },
+                            onSaveDraft: {
+                                if viewModel.saveDraftManually() {
+                                    onPostQueued?()
+                                    dismiss()
+                                }
+                            }
                         )
                     }
                 }
@@ -114,6 +134,8 @@ struct PostFlowView: View {
         .task {
             viewModel.authViewModel = authVM
             viewModel.onPostQueued = onPostQueued
+            _ = viewModel.loadPersistedDraftIfAvailable()
+            viewModel.refreshDrafts()
             isVerifyingEmail = true
             _ = await authVM.checkVerificationStatus()
             isVerifyingEmail = false
@@ -128,6 +150,28 @@ struct PostFlowView: View {
                 showVerifyEmailAlert = false
                 showRulesIfNeeded()
             }
+        }
+        .onChange(of: viewModel.selectedImages) { _, _ in
+            viewModel.persistDraftSnapshot()
+        }
+        .onChange(of: viewModel.selectedLocation) { _, _ in
+            viewModel.persistDraftSnapshot()
+        }
+        .onChange(of: viewModel.selectedVibe) { _, _ in
+            viewModel.persistDraftSnapshot()
+        }
+        .onChange(of: viewModel.selectedVibes) { _, vibes in
+            viewModel.selectedVibe = vibes.first ?? ""
+            viewModel.persistDraftSnapshot()
+        }
+        .onChange(of: viewModel.currentStep) { _, _ in
+            viewModel.persistDraftSnapshot()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { _ in
+            viewModel.clearPersistedDraft()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .spotDidPostFailed)) { _ in
+            viewModel.handlePublishFailure()
         }
         .alert("Verify your email", isPresented: $showVerifyEmailAlert) {
             Button("Open verification") {
@@ -151,6 +195,18 @@ struct PostFlowView: View {
                 showRulesSheet = false
             })
             .environmentObject(authVM)
+        }
+        .sheet(isPresented: $showDraftsSheet) {
+            DraftsSheetView(
+                drafts: viewModel.availableDrafts,
+                onResume: { draft in
+                    viewModel.resumeDraft(id: draft.id)
+                    showDraftsSheet = false
+                },
+                onDeleteConfirmed: { draft in
+                    viewModel.deleteDraft(id: draft.id)
+                }
+            )
         }
     }
 
@@ -183,10 +239,12 @@ struct NavigationButtonsView: View {
     @Binding var currentStep: Int
     let totalSteps: Int
     let canProceed: Bool
+    let canSaveDraft: Bool
     let isBusy: Bool
     let onBack: () -> Void
     let onNext: () -> Void
     let onFinish: () -> Void
+    let onSaveDraft: () -> Void
 
     var body: some View {
         HStack(spacing: 16) {
@@ -218,9 +276,143 @@ struct NavigationButtonsView: View {
             }
             .disabled(!canProceed || isBusy)
             .buttonStyle(PlainButtonStyle())
+
+            if currentStep == totalSteps {
+                Menu {
+                    Button("Post", action: onFinish)
+                        .disabled(!canProceed || isBusy)
+                    Button("Save as Draft", action: onSaveDraft)
+                        .disabled(!canSaveDraft || isBusy)
+                } label: {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(12)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 1))
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
+    }
+}
+
+struct DraftsSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    let drafts: [PostComposerDraftSummary]
+    let onResume: (PostComposerDraftSummary) -> Void
+    let onDeleteConfirmed: (PostComposerDraftSummary) -> Void
+    @State private var pendingDeleteDraft: PostComposerDraftSummary?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if drafts.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("No drafts yet")
+                            .font(FontManager.sectionHeader())
+                            .foregroundColor(Constants.Colors.primary)
+                        Text("Start a new spot and save it here before posting.")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+                } else {
+                    List {
+                        ForEach(drafts) { draft in
+                            Button(action: { onResume(draft) }) {
+                                HStack(spacing: 12) {
+                                    Group {
+                                        if let image = PostDraftStore.loadPreviewImage(fileName: draft.previewImageFileName) {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                        } else {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 12).fill(Constants.Colors.accent.opacity(0.35))
+                                                Image(systemName: "photo")
+                                                    .foregroundColor(Constants.Colors.primary)
+                                            }
+                                        }
+                                    }
+                                    .frame(width: 68, height: 68)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(draft.placeName ?? "Untitled draft") • \(draft.updatedAt.formatted(date: .abbreviated, time: .omitted))")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(Constants.Colors.primary)
+                                        Text(draft.status == .autosaved ? "Unfinished" : "Saved draft")
+                                            .font(.caption2)
+                                            .foregroundColor(Constants.Colors.primary.opacity(0.8))
+                                        if !draft.vibeTags.isEmpty {
+                                            Text(draft.vibeTags.prefix(2).joined(separator: " • "))
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(12)
+                                .background(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Constants.Colors.primary.opacity(0.12), lineWidth: 1)
+                                )
+                                .cornerRadius(14)
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    pendingDeleteDraft = draft
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Constants.Colors.background)
+                }
+            }
+            .navigationTitle("Drafts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    CustomBackButton {
+                        dismiss()
+                    }
+                }
+            }
+            .background(Constants.Colors.background.ignoresSafeArea())
+            .overlay {
+                if pendingDeleteDraft != nil {
+                    CustomConfirmationDialog(
+                        title: "Delete draft?",
+                        message: "This removes the draft permanently.",
+                        confirmTitle: "Delete",
+                        cancelTitle: "Cancel",
+                        onConfirm: {
+                            if let draft = pendingDeleteDraft {
+                                onDeleteConfirmed(draft)
+                            }
+                            pendingDeleteDraft = nil
+                        },
+                        onCancel: {
+                            pendingDeleteDraft = nil
+                        }
+                    )
+                    .transition(.opacity)
+                }
+            }
+        }
     }
 }
 

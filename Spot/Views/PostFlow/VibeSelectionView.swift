@@ -1,108 +1,78 @@
 import SwiftUI
 
 struct VibeSelectionView: View {
-    @Binding var selectedVibe: String
+    @Binding var selectedVibes: [String]
+    let maxVibes: Int
     @EnvironmentObject var authVM: AuthViewModel
     @State private var customVibe: String = ""
     @State private var validationMessage: String?
+    @State private var recentAndFrequent: [String] = []
 
     private let vibeTags = Constants.VibeTags.defaultTags
 
     var body: some View {
-        VStack(spacing: Constants.Layout.Spacing.extraLarge) {
+        VStack(spacing: Constants.Layout.Spacing.large) {
             // Header
             VStack(spacing: 8) {
                 Text("Pick Your Vibe")
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
 
-                Text("Select one vibe that best captures the mood or feeling of your spot. It helps others understand the experience in a glance.")
+                Text("Select up to \(maxVibes) vibes that best capture your spot.")
                     .font(FontManager.primaryText())
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
-            // Vibe Tags Grid
             ScrollView {
-                // User custom vibe tags (Pro)
-                if authVM.isPro, !authVM.customVibeTags.isEmpty {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack {
+                        Text("\(selectedVibes.count)/\(maxVibes) selected")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                    }
+                    .padding(.horizontal, Constants.Layout.Padding.horizontal)
+
+                    customVibeInput
+
+                    if !recentAndFrequent.isEmpty {
+                        vibeSection(
+                            title: "Recent & Frequent",
+                            vibes: recentAndFrequent
+                        )
+                    }
+
+                    if authVM.isPro, !authVM.customVibeTags.isEmpty {
+                        vibeSection(
+                            title: "Your Vibes",
+                            vibes: authVM.customVibeTags
+                        )
+                    }
+
                     VStack(alignment: .leading, spacing: Constants.Layout.Spacing.small) {
-                        Text("Your tags")
+                        Text("Default Vibes")
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
                             .padding(.horizontal, Constants.Layout.Padding.horizontal)
-
                         LazyVGrid(columns: [
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: Constants.Layout.Spacing.medium) {
-                            ForEach(authVM.customVibeTags, id: \.self) { vibe in
+                        ], spacing: 12) {
+                            ForEach(vibeTags.filter { !authVM.customVibeTags.contains($0) }, id: \.self) { vibe in
                                 VibeTagButton(
                                     vibe: vibe,
-                                    isSelected: selectedVibe == vibe,
+                                    isSelected: selectedVibes.contains(vibe),
                                     onTap: {
                                         SpotLogger.log(VibeSelectionViewLogs.vibeSelected, details: ["vibe": vibe])
-                                        selectedVibe = vibe
+                                        toggleVibe(vibe)
                                     }
                                 )
                             }
                         }
                         .padding(.horizontal, Constants.Layout.Padding.horizontal)
                     }
-                }
-
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 12) {
-                    ForEach(vibeTags, id: \.self) { vibe in
-                        VibeTagButton(
-                            vibe: vibe,
-                            isSelected: selectedVibe == vibe,
-                            onTap: {
-                                SpotLogger.log(VibeSelectionViewLogs.vibeSelected, details: ["vibe": vibe])
-                                selectedVibe = vibe
-                            }
-                        )
-                    }
-                }
-                .padding(.horizontal, Constants.Layout.Padding.horizontal)
-                // Custom vibe (Pro)
-                VStack(spacing: Constants.Layout.Spacing.small) {
-                    HStack {
-                        Text("Custom vibe tag")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                        Spacer()
-                        Text("\(customVibe.count)/\(Constants.Limits.vibeTagMaxLength)")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .padding(.horizontal, Constants.Layout.Padding.horizontal)
-
-                    HStack(spacing: Constants.Layout.Spacing.small) {
-                        TextField("e.g. Golden Hour", text: $customVibe)
-                            .textInputAutocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .foregroundColor(Constants.Colors.primary)
-                            .padding(Constants.Layout.Padding.verticalMedium)
-                            .background(Color.white)
-                            .cornerRadius(Constants.Layout.CornerRadius.medium)
-                            .overlay(RoundedRectangle(cornerRadius: Constants.Layout.CornerRadius.medium).stroke(Constants.Colors.primary, lineWidth: 1))
-
-                        Button(action: useCustomVibe) {
-                            Text("Use")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.buttonText)
-                                .padding(.horizontal, Constants.Layout.Padding.verticalMedium)
-                                .padding(.vertical, Constants.Layout.Padding.verticalSmall)
-                                .background(Constants.Colors.primary)
-                                .cornerRadius(Constants.Layout.CornerRadius.small)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    .padding(.horizontal, Constants.Layout.Padding.horizontal)
 
                     if let msg = validationMessage {
                         Text(msg)
@@ -111,9 +81,15 @@ struct VibeSelectionView: View {
                             .padding(.horizontal, Constants.Layout.Padding.horizontal)
                     }
                 }
+                .padding(.top, 4)
+                .padding(.bottom, 140)
             }
-
-            Spacer()
+        }
+        .onAppear {
+            reloadRecentAndFrequent()
+        }
+        .onChange(of: selectedVibes) { _, _ in
+            reloadRecentAndFrequent()
         }
     }
 
@@ -126,7 +102,7 @@ struct VibeSelectionView: View {
         switch validator.validate(customVibe) {
         case .ok(let tag):
             validationMessage = nil
-            selectedVibe = tag
+            toggleVibe(tag)
             // Persist globally and on the user profile for reuse
             Task {
                 await VibeTagService.shared.ensureExistsAndAttachToUser(name: tag, userId: authVM.userId)
@@ -137,6 +113,8 @@ struct VibeSelectionView: View {
                     }
                 }
             }
+            customVibe = ""
+            reloadRecentAndFrequent()
         case .tooShort:
             validationMessage = Constants.ValidationMessages.vibeTooShort
         case .tooLong:
@@ -144,6 +122,88 @@ struct VibeSelectionView: View {
         case .blocked:
             validationMessage = Constants.ValidationMessages.vibeBlocked
         }
+    }
+
+    private func toggleVibe(_ vibe: String) {
+        if selectedVibes.contains(vibe) {
+            selectedVibes.removeAll { $0 == vibe }
+            return
+        }
+        if selectedVibes.count >= maxVibes {
+            validationMessage = "You can select up to \(maxVibes) vibe tags."
+            return
+        }
+        validationMessage = nil
+        selectedVibes.append(vibe)
+        reloadRecentAndFrequent()
+    }
+
+    private var customVibeInput: some View {
+        VStack(spacing: Constants.Layout.Spacing.small) {
+            HStack {
+                Text("Create a custom vibe")
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+                Spacer()
+                Text("\(customVibe.count)/\(Constants.Limits.vibeTagMaxLength)")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, Constants.Layout.Padding.horizontal)
+
+            HStack(spacing: Constants.Layout.Spacing.small) {
+                TextField("e.g. Golden Hour", text: $customVibe)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
+                    .foregroundColor(Constants.Colors.primary)
+                    .padding(Constants.Layout.Padding.verticalMedium)
+                    .background(Color.white)
+                    .cornerRadius(Constants.Layout.CornerRadius.medium)
+                    .overlay(RoundedRectangle(cornerRadius: Constants.Layout.CornerRadius.medium).stroke(Constants.Colors.primary, lineWidth: 1))
+
+                Button(action: useCustomVibe) {
+                    Text("Use")
+                        .font(FontManager.primaryText())
+                        .foregroundColor(Constants.Colors.buttonText)
+                        .padding(.horizontal, Constants.Layout.Padding.verticalMedium)
+                        .padding(.vertical, Constants.Layout.Padding.verticalSmall)
+                        .background(Constants.Colors.primary)
+                        .cornerRadius(Constants.Layout.CornerRadius.small)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.horizontal, Constants.Layout.Padding.horizontal)
+        }
+    }
+
+    private func vibeSection(title: String, vibes: [String]) -> some View {
+        VStack(alignment: .leading, spacing: Constants.Layout.Spacing.small) {
+            Text(title)
+                .font(FontManager.primaryText())
+                .foregroundColor(Constants.Colors.primary)
+                .padding(.horizontal, Constants.Layout.Padding.horizontal)
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: Constants.Layout.Spacing.medium) {
+                ForEach(vibes, id: \.self) { vibe in
+                    VibeTagButton(
+                        vibe: vibe,
+                        isSelected: selectedVibes.contains(vibe),
+                        onTap: {
+                            SpotLogger.log(VibeSelectionViewLogs.vibeSelected, details: ["vibe": vibe])
+                            toggleVibe(vibe)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, Constants.Layout.Padding.horizontal)
+        }
+    }
+
+    private func reloadRecentAndFrequent() {
+        recentAndFrequent = VibeTagUsageStore.recentAndFrequent(excluding: selectedVibes)
     }
 }
 
@@ -175,5 +235,5 @@ struct VibeTagButton: View {
 }
 
 #Preview {
-    VibeSelectionView(selectedVibe: .constant(""))
+    VibeSelectionView(selectedVibes: .constant([]), maxVibes: 3)
 }

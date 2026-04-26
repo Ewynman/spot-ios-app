@@ -354,6 +354,9 @@ struct ProfileView: View {
                             // Map tab
                             ProfileMapView(spots: viewModel.spots, onSpotTap: { tapped in
                                 selectedSpot = tapped
+                            }, onDeleteSpot: { spot in
+                                pendingDeleteSpot = spot
+                                showDeleteConfirm = true
                             }, onCollapseChange: { expanded in
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { isMapExpanded = expanded }
                             })
@@ -515,10 +518,23 @@ struct ProfileView: View {
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) {
-                if let spot = pendingDeleteSpot { Task { await viewModel.deleteSpot(spot) } }
+                if let spot = pendingDeleteSpot {
+                    Task {
+                        await viewModel.deleteSpot(spot)
+                        selectedSpot = nil
+                        isMapExpanded = false
+                    }
+                }
                 pendingDeleteSpot = nil
             }
             Button("Cancel", role: .cancel) { pendingDeleteSpot = nil }
+        }
+        .onChange(of: viewModel.spots) { _, spots in
+            guard let selectedSpot else { return }
+            if !spots.contains(where: { $0.id == selectedSpot.id }) {
+                self.selectedSpot = nil
+                isMapExpanded = false
+            }
         }
         .onChange(of: authVM.isPro) { _, newValue in
             if userId == nil || userId == authVM.userId {

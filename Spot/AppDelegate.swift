@@ -36,12 +36,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Configure logging defaults.
         LoggingConfig.configure()
 
-        #if DEBUG
-        // Keep noisy logs in debug only.
-        LoggingConfig.enableAllDebugLogging()
-        SpotLogger.setMinimumLevel(.debug)
-        #endif
-
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,

@@ -15,12 +15,14 @@ struct ProfileMapView: View {
 
     @Environment(\.verticalSizeClass) private var vSize
     private var onSpotTap: ((Spot) -> Void)?
+    private var onDeleteSpot: ((Spot) -> Void)?
     private var onCollapseChange: ((Bool) -> Void)?
 
     // MARK: - Init
-    init(spots: [Spot], onSpotTap: ((Spot) -> Void)? = nil, onCollapseChange: ((Bool) -> Void)? = nil) {
+    init(spots: [Spot], onSpotTap: ((Spot) -> Void)? = nil, onDeleteSpot: ((Spot) -> Void)? = nil, onCollapseChange: ((Bool) -> Void)? = nil) {
         self.spots = spots
         self.onSpotTap = onSpotTap
+        self.onDeleteSpot = onDeleteSpot
         self.onCollapseChange = onCollapseChange
 
         if let region = Self.regionToFit(spots) {
@@ -100,7 +102,10 @@ struct ProfileMapView: View {
             ProfileFullBleedPanel(
                 spot: spot,
                 onBackToAll: { backToAll() },
-                onClose: { closePanel() }
+                onClose: { closePanel() },
+                onDelete: {
+                    onDeleteSpot?(spot)
+                }
             )
             .frame(height: height)
             .transition(.move(edge: .bottom))
@@ -418,6 +423,7 @@ private struct ProfileFullBleedPanel: View {
     let spot: Spot
     var onBackToAll: () -> Void
     var onClose: () -> Void
+    var onDelete: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -443,7 +449,7 @@ private struct ProfileFullBleedPanel: View {
                 spot: spot,
                 showUserInfo: true,
                 userId: nil,
-                onDelete: { },
+                onDelete: onDelete,
                 source: "ProfileMap"
             )
             .padding(.horizontal, 16)

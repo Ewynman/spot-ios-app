@@ -26,6 +26,7 @@ final class FeedRepository: ObservableObject {
     private let pageSize = FeedFlags.pageSize
     private let privacy = AuthorPrivacyCache.shared
     private var seenSpotIds: Set<String> = []
+    private let persistentSeenKey = "feed.persistentSeen.v1"
 
     var moreAvailable: Bool {
         !globalExhausted || followeeMoreAvailable
@@ -41,7 +42,12 @@ final class FeedRepository: ObservableObject {
         followeeMoreAvailable = false
         seenSpotIds = []
 
-        FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
+        if !FeedFlags.disablePersistentDedupe {
+            seenSpotIds = loadPersistentSeen()
+            FeedDiagnostics.logColdStart(seenSetSize: seenSpotIds.count, isApplied: true)
+        } else {
+            FeedDiagnostics.logColdStart(seenSetSize: 0, isApplied: false)
+        }
 
         do {
             guard let uidString = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: uidString) else {
@@ -63,6 +69,12 @@ final class FeedRepository: ObservableObject {
             await privacy.warm(authorIds: Set((g + f.items).compactMap { $0.userId }))
             let gatedGlobal = await privacy.filter(spots: g)
             let gatedFollowees = await privacy.filter(spots: f.items)
+            var unseenGlobal = filterUnseen(gatedGlobal)
+            let unseenFollowees = filterUnseen(gatedFollowees)
+            if unseenGlobal.count < pageSize && !globalExhausted {
+                let topUp = await fetchAdditionalGlobalUnseen(targetCount: pageSize - unseenGlobal.count)
+                unseenGlobal.append(contentsOf: topUp)
+            }
 
             let ctx = FeedRanker.Context(
                 followeeIds: followeesSet,
@@ -70,10 +82,11 @@ final class FeedRepository: ObservableObject {
                 userLocation: currentUserLocation(),
                 seenSpotIds: seenSpotIds
             )
-            let rankedFollowees = gatedFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
-            let rankedGlobal = gatedGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedFollowees = unseenFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedGlobal = unseenGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
 
             let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
+            markSeen(blended)
 
             SpotLogger.log(FeedRepositoryLogs.loadInitial, details: [
                 "followees": rankedFollowees.count,
@@ -81,6 +94,8 @@ final class FeedRepository: ObservableObject {
                 "blended": blended.count
             ])
             await MainActor.run { self.spots = blended }
+        } catch is CancellationError {
+            SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": "cancelled"])
         } catch {
             SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": error.localizedDescription])
         }
@@ -108,6 +123,12 @@ final class FeedRepository: ObservableObject {
             await privacy.warm(authorIds: Set((g + f.items).compactMap { $0.userId }))
             let gatedGlobal = await privacy.filter(spots: g)
             let gatedFollowees = await privacy.filter(spots: f.items)
+            var unseenGlobal = filterUnseen(gatedGlobal)
+            let unseenFollowees = filterUnseen(gatedFollowees)
+            if unseenGlobal.count < pageSize && !globalExhausted {
+                let topUp = await fetchAdditionalGlobalUnseen(targetCount: pageSize - unseenGlobal.count)
+                unseenGlobal.append(contentsOf: topUp)
+            }
 
             let ctx = FeedRanker.Context(
                 followeeIds: followeesSet,
@@ -115,8 +136,8 @@ final class FeedRepository: ObservableObject {
                 userLocation: currentUserLocation(),
                 seenSpotIds: seenSpotIds
             )
-            let rankedFollowees = gatedFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
-            let rankedGlobal = gatedGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedFollowees = unseenFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+            let rankedGlobal = unseenGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
             let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
 
             let existingIds = Set(self.spots.compactMap { $0.id })
@@ -124,15 +145,92 @@ final class FeedRepository: ObservableObject {
                 if let id = spot.id { return !existingIds.contains(id) }
                 return true
             }
+            markSeen(newUnique)
             SpotLogger.log(FeedRepositoryLogs.loadMore, details: [
                 "followees": rankedFollowees.count,
                 "global": rankedGlobal.count,
                 "appending": newUnique.count
             ])
             await MainActor.run { self.spots.append(contentsOf: newUnique) }
+        } catch is CancellationError {
+            SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: ["error": "cancelled"])
         } catch {
             SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: ["error": error.localizedDescription])
         }
+    }
+
+    private func filterUnseen(_ spots: [Spot]) -> [Spot] {
+        guard !seenSpotIds.isEmpty else { return spots }
+        return spots.filter { spot in
+            guard let id = spot.id else { return true }
+            let unseen = !seenSpotIds.contains(id)
+            if !unseen {
+                FeedDiagnostics.logExclusion(reason: "persistent_seen", source: "FeedRepository.filterUnseen", spot: spot)
+            }
+            return unseen
+        }
+    }
+
+    private func markSeen(_ spots: [Spot]) {
+        guard !FeedFlags.disablePersistentDedupe else { return }
+        let now = Date().timeIntervalSince1970
+        var persisted = loadPersistentSeenMap()
+        for id in spots.compactMap(\.id) {
+            seenSpotIds.insert(id)
+            persisted[id] = now
+        }
+        savePersistentSeenMap(persisted)
+    }
+
+    private func loadPersistentSeen() -> Set<String> {
+        Set(loadPersistentSeenMap().keys)
+    }
+
+    private func loadPersistentSeenMap() -> [String: TimeInterval] {
+        guard
+            let raw = UserDefaults.standard.dictionary(forKey: persistentSeenKey) as? [String: TimeInterval]
+        else { return [:] }
+        guard FeedFlags.persistentSeenTTL > 0 else { return raw }
+        let now = Date().timeIntervalSince1970
+        let maxAge = FeedFlags.persistentSeenTTL * 3600
+        return raw.filter { now - $0.value <= maxAge }
+    }
+
+    private func savePersistentSeenMap(_ map: [String: TimeInterval]) {
+        UserDefaults.standard.set(map, forKey: persistentSeenKey)
+    }
+
+    private func fetchAdditionalGlobalUnseen(targetCount: Int) async -> [Spot] {
+        guard targetCount > 0 else { return [] }
+        var collected: [Spot] = []
+        var attempts = 0
+        let maxAttempts = 8
+
+        while collected.count < targetCount && !globalExhausted && attempts < maxAttempts {
+            attempts += 1
+            do {
+                let next = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: pageSize, offset: globalNextOffset)
+                advanceGlobalState(fetched: next)
+                if next.isEmpty { break }
+                await privacy.warm(authorIds: Set(next.compactMap { $0.userId }))
+                let gated = await privacy.filter(spots: next)
+                let unseen = filterUnseen(gated)
+                if !unseen.isEmpty {
+                    collected.append(contentsOf: unseen)
+                }
+            } catch {
+                SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: [
+                    "error": error.localizedDescription,
+                    "phase": "global_top_up"
+                ])
+                break
+            }
+        }
+
+        if collected.count > targetCount {
+            return Array(collected.prefix(targetCount))
+        }
+        return collected
     }
 
     private func advanceGlobalState(fetched: [Spot]) {

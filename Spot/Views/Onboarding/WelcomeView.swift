@@ -16,6 +16,8 @@ struct WelcomeView: View {
     @ObservedObject private var permissionManager = PermissionManager.shared
     @State private var navigateToLocation = false
     @State private var navigateToNotifications = false
+    @State private var navigateToPhoto = false
+    @State private var navigateToCamera = false
     @State private var navigateToSignup = false
     @State private var navigateToLogin = false
     @State private var authDestination: AuthDestination = .signup
@@ -102,6 +104,14 @@ struct WelcomeView: View {
                     NotificationPermissionView(authDestination: authDestination == .login ? .login : .signup)
                         .environmentObject(permissionManager)
                 }
+                .navigationDestination(isPresented: $navigateToPhoto) {
+                    PhotoPermissionView(authDestination: authDestination == .login ? .login : .signup)
+                        .environmentObject(permissionManager)
+                }
+                .navigationDestination(isPresented: $navigateToCamera) {
+                    CameraPermissionView(authDestination: authDestination == .login ? .login : .signup)
+                        .environmentObject(permissionManager)
+                }
                 .navigationDestination(isPresented: $navigateToSignup) {
                     SignupView()
                 }
@@ -117,9 +127,15 @@ struct WelcomeView: View {
         permissionManager.updatePermissionStatuses()
         let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
         let notificationsGranted = permissionManager.notificationStatus == .authorized
+        let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
+        let cameraGranted = permissionManager.cameraStatus == .authorized
 
-        if locationGranted && notificationsGranted {
+        if locationGranted && notificationsGranted && photoGranted && cameraGranted {
             routeToDestination(destination)
+        } else if locationGranted && notificationsGranted && photoGranted {
+            navigateToCamera = true
+        } else if locationGranted && notificationsGranted {
+            navigateToPhoto = true
         } else if locationGranted {
             navigateToNotifications = true
         } else {

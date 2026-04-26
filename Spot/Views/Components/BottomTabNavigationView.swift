@@ -20,20 +20,41 @@ private struct PublishBannerView: View {
     let title: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .tint(Constants.Colors.primary)
+        VStack(spacing: 8) {
             Text(title)
                 .font(FontManager.primaryText())
                 .foregroundColor(Constants.Colors.primary)
-            Spacer(minLength: 0)
-        }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            ProgressView()
+                .progressViewStyle(.linear)
+                .tint(Constants.Colors.primary)
+                .scaleEffect(x: 1, y: 0.8, anchor: .center)
+                .frame(maxWidth: .infinity)
+                .background(
+                    Capsule()
+                        .fill(Constants.Colors.primary.opacity(0.12))
+                        .frame(height: 4)
+                        .offset(y: 1)
+                )
+                .clipShape(Capsule())
+                .overlay(alignment: .center) {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 4)
+                }
+                .frame(height: 8)
+            }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.white)
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
-        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(Constants.Colors.background)
+        .overlay(
+            Rectangle()
+                .fill(Color.gray.opacity(0.15))
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
 }
 

@@ -16,12 +16,15 @@ class PostFlowViewModel: ObservableObject {
     @Published var selectedImages: [UIImage] = []
     @Published var selectedLocation: LocationData?
     @Published var selectedVibe: String = ""
+    @Published var selectedVibes: [String] = []
     /// True only while JPEG-encoding and handing off to `SpotPublishCoordinator` (brief).
     @Published var isEncodingPost = false
     @Published var showToast = false
     @Published var toastMessage = ""
     @Published var toastIsError = false
     @Published var showSuccessBanner = false
+    @Published var availableDrafts: [PostComposerDraftSummary] = []
+    @Published var activeDraftID: String?
 
     /// Called on the main thread immediately after a publish job is queued (e.g. switch to Home tab).
     var onPostQueued: (() -> Void)?
@@ -33,6 +36,7 @@ class PostFlowViewModel: ObservableObject {
     var spotPublisher: SpotPublishing = SpotPublishCoordinator.shared
 
     let totalSteps = 3
+    private let genericPostFailureMessage = "Error Posting Spot Try Again Later"
 
     var isEmailVerified: Bool {
         authViewModel?.isEmailVerified ?? false
@@ -46,9 +50,17 @@ class PostFlowViewModel: ObservableObject {
         switch currentStep {
         case 1: return !selectedImages.isEmpty
         case 2: return selectedLocation != nil
-        case 3: return !selectedVibe.isEmpty
+        case 3: return !selectedVibes.isEmpty
         default: return false
         }
+    }
+
+    var canSaveDraft: Bool {
+        !selectedImages.isEmpty || selectedLocation != nil || !selectedVibes.isEmpty
+    }
+
+    var canSubmitPost: Bool {
+        !selectedImages.isEmpty && selectedLocation != nil && !selectedVibes.isEmpty
     }
 
     func goBack() {
@@ -73,7 +85,7 @@ class PostFlowViewModel: ObservableObject {
         SpotLogger.log(PostFlowViewModelLogs.postData, details: ["images": selectedImages.count, "location": selectedLocation?.placeName ?? "None", "vibe": selectedVibe])
 
         guard let location = selectedLocation,
-              !selectedVibe.isEmpty,
+              !selectedVibes.isEmpty,
               !location.placeName.isEmpty,
               location.coordinate.latitude != 0,
               location.coordinate.longitude != 0
@@ -87,8 +99,11 @@ class PostFlowViewModel: ObservableObject {
             return
         }
 
+        persistDraftSnapshot()
+        VibeTagUsageStore.recordUsage(tags: selectedVibes)
+
         isEncodingPost = true
-        let vibe = selectedVibe
+        let vibes = selectedVibes
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
         let placeName = location.placeName
@@ -104,11 +119,12 @@ class PostFlowViewModel: ObservableObject {
 
             let draft = SpotPublishDraft(
                 imageJPEGs: jpegs,
-                vibeTag: vibe,
+                vibeTags: vibes,
                 latitude: lat,
                 longitude: lon,
                 placeName: placeName,
-                userId: userId
+                userId: userId,
+                sourceDraftID: self.activeDraftID
             )
 
             self.spotPublisher.enqueue(draft: draft) { [weak self] in
@@ -124,6 +140,7 @@ class PostFlowViewModel: ObservableObject {
         selectedImages = []
         selectedLocation = nil
         selectedVibe = ""
+        selectedVibes = []
         withAnimation(.easeInOut(duration: 0.25)) {
             currentStep = 1
         }
@@ -136,6 +153,45 @@ class PostFlowViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             withAnimation { self?.showToast = false }
         }
+    }
+
+    func persistDraftSnapshot() {
+        activeDraftID = PostDraftStore.save(
+            step: currentStep,
+            images: selectedImages,
+            selectedLocation: selectedLocation,
+            selectedVibes: selectedVibes,
+            draftID: activeDraftID,
+            status: .autosaved
+        )
+        refreshDrafts()
+    }
+
+    func loadPersistedDraftIfAvailable() -> Bool {
+        guard let loaded = PostDraftStore.loadAutosavedDraft() else { return false }
+        selectedImages = loaded.images
+        selectedLocation = loaded.location
+        selectedVibes = loaded.draft.vibeTags
+        selectedVibe = loaded.draft.vibeTags.first ?? ""
+        currentStep = min(max(loaded.draft.step, 1), totalSteps)
+        activeDraftID = loaded.draft.id
+        refreshDrafts()
+        return true
+    }
+
+    func clearPersistedDraft() {
+        if let activeDraftID {
+            PostDraftStore.deleteDraft(id: activeDraftID)
+            self.activeDraftID = nil
+        } else {
+            PostDraftStore.clearAutosave()
+        }
+        refreshDrafts()
+    }
+
+    func handlePublishFailure() {
+        showToastWith(message: genericPostFailureMessage, isError: true)
+        persistDraftSnapshot()
     }
 
     private func encodeImagesForUpload(_ images: [UIImage]) async -> [Data]? {
@@ -154,5 +210,62 @@ class PostFlowViewModel: ObservableObject {
                 continuation.resume(returning: output)
             }
         }
+    }
+
+    func refreshDrafts() {
+        availableDrafts = PostDraftStore.listDrafts()
+    }
+
+    @discardableResult
+    func saveDraftManually() -> Bool {
+        guard canSaveDraft else {
+            showToastWith(message: "Add photos, location, or vibes before saving.", isError: true)
+            return false
+        }
+        activeDraftID = PostDraftStore.save(
+            step: currentStep,
+            images: selectedImages,
+            selectedLocation: selectedLocation,
+            selectedVibes: selectedVibes,
+            draftID: activeDraftID == "autosave" ? nil : activeDraftID,
+            status: .saved
+        )
+        VibeTagUsageStore.recordUsage(tags: selectedVibes)
+        PostDraftStore.clearAutosave()
+        resetComposerForDraftExit()
+        refreshDrafts()
+        showToastWith(message: "Draft saved", isError: false)
+        return true
+    }
+
+    func resumeDraft(id: String) {
+        guard let loaded = PostDraftStore.loadDraft(id: id) else {
+            showToastWith(message: "Could not open that draft.", isError: true)
+            return
+        }
+        selectedImages = loaded.images
+        selectedLocation = loaded.location
+        selectedVibes = loaded.draft.vibeTags
+        selectedVibe = loaded.draft.vibeTags.first ?? ""
+        currentStep = min(max(loaded.draft.step, 1), totalSteps)
+        activeDraftID = loaded.draft.id
+        refreshDrafts()
+    }
+
+    func deleteDraft(id: String) {
+        PostDraftStore.deleteDraft(id: id)
+        if activeDraftID == id {
+            activeDraftID = nil
+        }
+        refreshDrafts()
+    }
+
+    private func resetComposerForDraftExit() {
+        selectedImages = []
+        selectedLocation = nil
+        selectedVibe = ""
+        selectedVibes = []
+        currentStep = 1
+        activeDraftID = nil
     }
 }

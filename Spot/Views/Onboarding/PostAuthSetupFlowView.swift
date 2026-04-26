@@ -10,6 +10,7 @@ struct PostAuthSetupFlowView: View {
     @State private var username: String = ""
     @State private var originalUsername: String = ""
     @State private var selectedProfileImage: UIImage?
+    @State private var existingProfileImageURL: String?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var isSavingProfile: Bool = false
     @State private var errorMessage: String?
@@ -65,6 +66,28 @@ struct PostAuthSetupFlowView: View {
                             .frame(width: 104, height: 104)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                    } else if let existingProfileImageURL, let url = URL(string: existingProfileImageURL) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 104, height: 104)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                            default:
+                                Circle()
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: 104, height: 104)
+                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 38))
+                                            .foregroundColor(Constants.Colors.primary)
+                                    )
+                            }
+                        }
                     } else {
                         Circle()
                             .fill(Constants.Colors.background)
@@ -116,6 +139,7 @@ struct PostAuthSetupFlowView: View {
             await MainActor.run {
                 username = row.username
                 originalUsername = row.username
+                existingProfileImageURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
     }
@@ -128,7 +152,7 @@ struct PostAuthSetupFlowView: View {
             errorMessage = "Username is required."
             return
         }
-        guard let image = selectedProfileImage else {
+        guard selectedProfileImage != nil || !(existingProfileImageURL?.isEmpty ?? true) else {
             errorMessage = "Profile picture is required."
             return
         }
@@ -159,16 +183,19 @@ struct PostAuthSetupFlowView: View {
                 }
             }
 
-            guard let data = image.jpegData(compressionQuality: 0.7) else {
-                errorMessage = "Failed to process image."
-                return
+            var avatarURLToPersist = existingProfileImageURL
+            if let image = selectedProfileImage {
+                guard let data = image.jpegData(compressionQuality: 0.7) else {
+                    errorMessage = "Failed to process image."
+                    return
+                }
+                avatarURLToPersist = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uid)
             }
-            let avatarURL = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uid)
 
             struct Patch: Encodable {
                 let username: String
                 let username_lower: String
-                let profile_image_url: String
+                let profile_image_url: String?
             }
 
             try await supabase
@@ -176,7 +203,7 @@ struct PostAuthSetupFlowView: View {
                 .update(Patch(
                     username: trimmed,
                     username_lower: trimmed.lowercased(),
-                    profile_image_url: avatarURL
+                    profile_image_url: avatarURLToPersist
                 ))
                 .eq("id", value: uid)
                 .execute()

@@ -21,9 +21,20 @@ enum Constants {
         static let firstRun = "firstRun"
         static let notificationsRequested = "notificationsRequested"
         static let locationPermissionRequested = "locationPermissionRequested"
+        static let photoPermissionRequested = "photoPermissionRequested"
+        static let cameraPermissionRequested = "cameraPermissionRequested"
         static let lastKnownLocationStatus = "lastKnownLocationStatus"
         static let lastKnownNotificationStatus = "lastKnownNotificationStatus"
         static let promptPermsOnNextLogin = "promptPermsOnNextLogin"
+        static let homeTourAccepted = "homeTourAccepted"
+        static let debugLoggingEnabled = "debugLoggingEnabled"
+        static let logSpotCard = "logSpotCard"
+        static let logPrivacy = "logPrivacy"
+        static let logFeedComponent = "logFeedComponent"
+        static let logPostFlow = "logPostFlow"
+        static let logAuth = "logAuth"
+        static let logNetworkComponent = "logNetworkComponent"
+        static let logDeepLink = "logDeepLink"
     }
 
     enum Analytics {

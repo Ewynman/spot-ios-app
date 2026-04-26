@@ -98,10 +98,31 @@ final class SpotLogger {
     // MARK: - Configuration
     static var minimumLevel: LogLevel = .info // Default to info, debug requires category enablement
     static var enableAllDebug: Bool = false   // Master switch for all debug logs
+    private static let defaults = UserDefaults.standard
+
+    #if DEBUG
+    static var debugLoggingEnabled: Bool {
+        get {
+            if defaults.object(forKey: Constants.UserDefaultsKeys.debugLoggingEnabled) == nil {
+                defaults.set(true, forKey: Constants.UserDefaultsKeys.debugLoggingEnabled)
+            }
+            return defaults.bool(forKey: Constants.UserDefaultsKeys.debugLoggingEnabled)
+        }
+        set {
+            defaults.set(newValue, forKey: Constants.UserDefaultsKeys.debugLoggingEnabled)
+        }
+    }
+    #endif
 
     static func setMinimumLevel(_ level: LogLevel) {
         minimumLevel = level
     }
+
+    #if DEBUG
+    static func setDebugLoggingEnabled(_ isEnabled: Bool) {
+        debugLoggingEnabled = isEnabled
+    }
+    #endif
 
     // MARK: - Structured Log Entry
 
@@ -202,6 +223,9 @@ final class SpotLogger {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.spotapp.spot", category: "SpotLogger")
 
     private static func shouldLogDebug(category: DebugCategory, file: String) -> Bool {
+        #if DEBUG
+        guard debugLoggingEnabled else { return false }
+        #endif
         // Always log if master switch is on
         if enableAllDebug { return true }
         // Check component-specific flag
@@ -235,6 +259,9 @@ final class SpotLogger {
     }
 
     private static func log(_ level: LogLevel, message: String, file: String, function: String, line: Int) {
+        #if DEBUG
+        guard debugLoggingEnabled else { return }
+        #endif
         guard level >= minimumLevel else { return }
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let logMessage = "[SpotLogger][\(level.rawValue)] \(fileName):\(line) | \(function) | \(message)"

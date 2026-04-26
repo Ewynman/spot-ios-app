@@ -17,6 +17,8 @@ struct NotificationPermissionView: View {
     let authDestination: AuthDestination
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var permissionManager: PermissionManager
+    @State private var navigateToPhoto = false
+    @State private var navigateToCamera = false
     @State private var navigateToSignup = false
     @State private var navigateToLogin = false
     @State private var navigateToPostAuthSetup = false
@@ -72,9 +74,15 @@ struct NotificationPermissionView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            permissionManager.requestNotificationPermission()
+                            if permissionManager.notificationStatus == .denied ||
+                                permissionManager.notificationStatus == .provisional ||
+                                permissionManager.notificationStatus == .ephemeral {
+                                permissionManager.openNotificationSettings()
+                            } else {
+                                permissionManager.requestNotificationPermission()
+                            }
                         }) {
-                            Text("Allow Notifications")
+                            Text(permissionManager.notificationStatus == .authorized ? "Notifications Enabled" : (permissionManager.notificationStatus == .notDetermined ? "Allow Notifications" : "Open Settings"))
                                 .font(FontManager.buttonText())
                                 .foregroundColor(Constants.Colors.buttonText)
                                 .frame(maxWidth: .infinity)
@@ -102,6 +110,12 @@ struct NotificationPermissionView: View {
         .navigationDestination(isPresented: $navigateToSignup) {
             SignupView()
         }
+        .navigationDestination(isPresented: $navigateToPhoto) {
+            PhotoPermissionView(authDestination: authDestination)
+        }
+        .navigationDestination(isPresented: $navigateToCamera) {
+            CameraPermissionView(authDestination: authDestination)
+        }
         .navigationDestination(isPresented: $navigateToLogin) {
             LoginView()
         }
@@ -114,14 +128,28 @@ struct NotificationPermissionView: View {
             permissionManager.updatePermissionStatuses()
             if permissionManager.notificationStatus == .authorized {
                 // Already granted, skip to auth destination.
-                goToAuthDestination()
+                goToNextPermissionOrDestination()
             }
         }
         .onChange(of: permissionManager.notificationStatus) { _, newStatus in
-            if newStatus != .notDetermined {
-                goToAuthDestination()
+            if newStatus == .authorized {
+                goToNextPermissionOrDestination()
             }
         }
+    }
+
+    private func goToNextPermissionOrDestination() {
+        let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
+        let cameraGranted = permissionManager.cameraStatus == .authorized
+        if !photoGranted {
+            navigateToPhoto = true
+            return
+        }
+        if !cameraGranted {
+            navigateToCamera = true
+            return
+        }
+        goToAuthDestination()
     }
 
     private func goToAuthDestination() {

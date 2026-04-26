@@ -13,21 +13,68 @@ struct LoggingConfig {
     /// Configure debug logging categories
     /// Call this in AppDelegate or App init to control what debug logs are enabled
     static func configure() {
-        // Default: All debug categories disabled for production
-        // Enable specific categories as needed for debugging
-        
-        // Example: Enable UI and Navigation debug logs
-        // DebugCategory.enable(.ui)
-        // DebugCategory.enable(.navigation)
-        
-        // Example: Enable all debug logs (use sparingly)
-        // DebugCategory.enableAll()
-        
-        // Example: Enable only feed debugging
-        // DebugCategory.enable(.feed)
-        
-        // Set minimum log level (info = show info + error, debug = show all if categories enabled)
-        SpotLogger.setMinimumLevel(.info)
+        let defaults: [String: Any] = [
+            Constants.UserDefaultsKeys.debugLoggingEnabled: true,
+            Constants.UserDefaultsKeys.logSpotCard: false,
+            Constants.UserDefaultsKeys.logPrivacy: false,
+            Constants.UserDefaultsKeys.logFeedComponent: false,
+            Constants.UserDefaultsKeys.logPostFlow: false,
+            Constants.UserDefaultsKeys.logAuth: false,
+            Constants.UserDefaultsKeys.logNetworkComponent: false,
+            Constants.UserDefaultsKeys.logDeepLink: false
+        ]
+        UserDefaults.standard.register(defaults: defaults)
+
+        // Reset all dynamic logging flags before applying selected presets.
+        DebugCategory.disableAll()
+        SpotLogger.enableAllDebug = false
+        ComponentLogging.spotCard = false
+        ComponentLogging.profileView = false
+        ComponentLogging.searchView = false
+        ComponentLogging.feedView = false
+        ComponentLogging.authorPrivacyCache = false
+        ComponentLogging.feedRepository = false
+        ComponentLogging.feedRanker = false
+        ComponentLogging.spotService = false
+        ComponentLogging.authService = false
+        ComponentLogging.imageService = false
+        ComponentLogging.deepLinkRouter = false
+        ComponentLogging.authViewModel = false
+        ComponentLogging.likesViewModel = false
+        ComponentLogging.bookmarksViewModel = false
+        ComponentLogging.postFlow = false
+        ComponentLogging.locationSelection = false
+        ComponentLogging.photoSelection = false
+        FeedFlags.enableDiagnosticLogging = false
+
+    #if DEBUG
+        SpotLogger.setMinimumLevel(.debug)
+        SpotLogger.setDebugLoggingEnabled(UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.debugLoggingEnabled))
+
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logSpotCard) {
+            enableSpotCardLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logPrivacy) {
+            enablePrivacyLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logFeedComponent) {
+            enableFeedComponentLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logPostFlow) {
+            enablePostFlowLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logAuth) {
+            enableAuthLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logNetworkComponent) {
+            enableNetworkComponentLogging()
+        }
+        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logDeepLink) {
+            enableDeepLinkLogging()
+        }
+#else
+        SpotLogger.setMinimumLevel(.error)
+#endif
     }
     
     // MARK: - Category-Based Presets (Simple)

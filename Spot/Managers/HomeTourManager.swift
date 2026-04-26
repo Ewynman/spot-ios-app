@@ -5,9 +5,8 @@ final class HomeTourManager: ObservableObject {
         case username, location, vibe, likeSave
     }
 
-    // Per-user persistence
     private var storage = UserDefaults.standard
-    private var storageKey: String = "hasSeenHomeTour.global"
+    private let storageKey: String = Constants.UserDefaultsKeys.homeTourAccepted
     @Published var hasSeenHomeTour: Bool = false
     @Published var isWelcomePresented: Bool = false
     @Published var isCoachPresented: Bool = false
@@ -18,8 +17,16 @@ final class HomeTourManager: ObservableObject {
     }
 
     func configure(userId: String?) {
-        storageKey = "hasSeenHomeTour." + (userId ?? "guest")
         hasSeenHomeTour = storage.bool(forKey: storageKey)
+        // Migrate old per-user keys so users who already completed tour
+        // remain completed after moving to a single global key.
+        if !hasSeenHomeTour {
+            let legacyKey = "hasSeenHomeTour." + (userId ?? "guest")
+            if storage.bool(forKey: legacyKey) {
+                storage.set(true, forKey: storageKey)
+                hasSeenHomeTour = true
+            }
+        }
     }
 
     func startIfNeeded(isFirstSessionAfterSignup: Bool) {
