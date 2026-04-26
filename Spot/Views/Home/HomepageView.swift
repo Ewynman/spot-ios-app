@@ -38,7 +38,15 @@ struct HomepageView: View {
                         onDeleteSpot: { spot in
                             Task { await feedVM.delete(spot: spot) }
                         },
-                        onFirstItemAppeared: { feedVM.recordFirstItemIfNeeded() }
+                        onFirstItemAppeared: { feedVM.recordFirstItemIfNeeded() },
+                        refreshErrorMessage: feedVM.refreshErrorMessage,
+                        emptyStatus: feedVM.emptyStatus?.status,
+                        onCellAppear: { spot in
+                            FeedEventService.recordImpression(spot: spot)
+                        },
+                        onCellDisappear: { spot in
+                            FeedEventService.recordCellLeftViewport(spot: spot)
+                        }
                     )
                 }
             }

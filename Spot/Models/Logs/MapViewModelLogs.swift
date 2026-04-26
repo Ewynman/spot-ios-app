@@ -2,7 +2,8 @@
 //  MapViewModelLogs.swift
 //  Spot
 //
-//  Log definitions for MapViewModel.
+//  Log definitions for MapViewModel: viewport fetch lifecycle and
+//  visibleSpots merge/trim semantics.
 //
 
 import Foundation
@@ -10,18 +11,33 @@ import Foundation
 enum MapViewModelLogs: SpotLog {
     case mapLoadedAllSpots
     case loadAllSpotsFailed
+    case viewportFetchStarted
+    case viewportFetchFinished
+    case viewportFetchCancelled
+    case visibleSpotsMerged
+    case visibleSpotsTrimmed
 
     var tag: String { "MapViewModel" }
     var level: LogLevel {
         switch self {
         case .mapLoadedAllSpots: return .info
         case .loadAllSpotsFailed: return .error
+        case .viewportFetchStarted: return .debug
+        case .viewportFetchFinished: return .info
+        case .viewportFetchCancelled: return .debug
+        case .visibleSpotsMerged: return .debug
+        case .visibleSpotsTrimmed: return .debug
         }
     }
     var message: String {
         switch self {
         case .mapLoadedAllSpots: return "Map loaded all spots"
         case .loadAllSpotsFailed: return "Failed to load all spots for map"
+        case .viewportFetchStarted: return "Viewport fetch started"
+        case .viewportFetchFinished: return "Viewport fetch finished"
+        case .viewportFetchCancelled: return "Viewport fetch cancelled"
+        case .visibleSpotsMerged: return "Visible spots merged from viewport result"
+        case .visibleSpotsTrimmed: return "Visible spots trimmed to cap"
         }
     }
 }

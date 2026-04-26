@@ -28,6 +28,7 @@ struct LoggingConfig {
         // Reset all dynamic logging flags before applying selected presets.
         DebugCategory.disableAll()
         SpotLogger.enableAllDebug = false
+        SpotLogger.mapOnlyLoggingEnabled = true
         ComponentLogging.spotCard = false
         ComponentLogging.profileView = false
         ComponentLogging.searchView = false

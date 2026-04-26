@@ -53,6 +53,7 @@ struct SpotCard: View {
     var onDelete: (() -> Void)?
     var source: String = "Unknown"
     var backAction: (() -> Void)?
+    var backButtonText: String = "Back to profile"
     var onImageFailure: ((Spot) -> Void)?
     var onImageRetry: ((Spot) -> Void)?
     @State private var showDeleteConfirm: Bool = false
@@ -75,13 +76,14 @@ struct SpotCard: View {
     @State private var currentSpot: Spot
     @State private var showVibeTagsSheet = false
 
-    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil, onImageFailure: ((Spot) -> Void)? = nil, onImageRetry: ((Spot) -> Void)? = nil) {
+    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil, backButtonText: String = "Back to profile", onImageFailure: ((Spot) -> Void)? = nil, onImageRetry: ((Spot) -> Void)? = nil) {
         self.spot = spot
         self.showUserInfo = showUserInfo
         self.userId = userId
         self.onDelete = onDelete
         self.source = source
         self.backAction = backAction
+        self.backButtonText = backButtonText
         self.onImageFailure = onImageFailure
         self.onImageRetry = onImageRetry
         _currentSpot = State(initialValue: spot)
@@ -186,7 +188,7 @@ struct SpotCard: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Constants.Colors.primary)
-                    Text("Back to profile")
+                    Text(backButtonText)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
                 }
@@ -203,6 +205,7 @@ struct SpotCard: View {
             } else if showUserInfo, let userId = currentSpot.userId {
                 NavigationLink(value: Route.profile(userId)) {
                     HStack(spacing: 8) {
+                        // (event recorded via simultaneousGesture below)
                         if let urlString = currentSpot.userProfileImageURL,
                            let url = URL(string: urlString) {
                             AsyncImage(url: url) { img in
@@ -242,6 +245,9 @@ struct SpotCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    FeedEventService.record(.profileTap, spotId: currentSpot.id, metadata: ["targetUserId": userId])
+                })
             }
 
             Spacer()
@@ -280,7 +286,7 @@ struct SpotCard: View {
 
     @ViewBuilder private var spotImage: some View {
         if let urls = currentSpot.imageURLs, !urls.isEmpty {
-            SpotImageGallery(urls: urls, fallback: currentSpot.imageURL)
+            SpotImageGallery(urls: urls, fallback: currentSpot.imageURL, spotId: currentSpot.id)
         } else if let thumb = currentSpot.thumbnailURL, let turl = URL(string: thumb) {
             RemoteImage(url: turl, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
@@ -510,6 +516,7 @@ struct SpotCard: View {
 
             if let firstVibe = currentSpot.displayVibeTags.first {
                 Button {
+                    FeedEventService.record(.vibeTap, spotId: currentSpot.id, metadata: ["vibe": firstVibe])
                     if currentSpot.displayVibeTags.count > 1 {
                         showVibeTagsSheet = true
                     }
@@ -569,6 +576,7 @@ struct SpotCard: View {
             Button {
                 showCustomMenu = false
                 SpotLogger.log(SpotCardLogs.shareTapped, details: ["spotId": currentSpot.safeId, "source": source])
+                FeedEventService.record(.share, spotId: currentSpot.id)
                 showShareSheet = true
             } label: {
                 HStack {
@@ -603,6 +611,7 @@ struct SpotCard: View {
                 Button {
                     showCustomMenu = false
                     SpotLogger.log(SpotCardLogs.reportTapped, details: ["spotId": currentSpot.safeId, "source": source])
+                    FeedEventService.record(.reportAuthor, spotId: currentSpot.id)
                     showReportSheet = true
                 } label: {
                     HStack {
@@ -620,6 +629,7 @@ struct SpotCard: View {
                 Button {
                     showCustomMenu = false
                     if let targetUserId = currentSpot.userId {
+                        FeedEventService.record(.blockAuthor, spotId: currentSpot.id, metadata: ["targetUserId": targetUserId])
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--
+  SpotDevLocation.gpx
+
+  Default simulator location for the Spot scheme. Referenced from
+  Spot.xcscheme via <LocationScenarioReference> so that
+  CLLocationManager delivers real didUpdateLocations callbacks while
+  running on the iOS Simulator. Coordinates intentionally match the
+  developer's home neighborhood (NJ, near NYC) so the discovery map,
+  ProfileMapView, and post-flow place suggestions all behave as if
+  on a real device. Edit the lat/lon to test elsewhere.
+
+  See: Apple → Simulating Location with a GPX File.
+-->
+<gpx version="1.1" creator="Spot" xmlns="http://www.topografix.com/GPX/1/1">
+    <wpt lat="40.867449" lon="-74.025070">
+        <name>Spot Dev (NJ)</name>
+        <time>2026-04-26T00:00:00Z</time>
+    </wpt>
+</gpx>

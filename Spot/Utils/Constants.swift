@@ -15,6 +15,27 @@ enum Constants {
         static let primary = Color(hex: "#1D2C24")         // Button color, icon, and main text color
         static let textPrimary = Color(hex: "#1D2C24")     // Main text color (all text except button text)
         static let accent = Color(hex: "#DEE6D8")          // Accent color for vibe tags only
+
+        // MARK: - Map redesign
+
+        /// Branded green for spot map markers (refined silhouette of `primary`).
+        static let mapMarkerGreen = Color(hex: "#1D2C24")
+        /// Cream-ish dot inside the spot pin to improve readability over green map tiles.
+        static let mapMarkerDot = Color(hex: "#F5F3EF")
+        /// Subtle stroke on the marker outline.
+        static let mapMarkerStroke = Color(hex: "#0F1A14")
+        /// Soft-cluster background fill (organic dot-cloud, no numeric bubbles).
+        static let mapDensityFill = Color(hex: "#1D2C24").opacity(0.85)
+        /// Filter-match highlight (accent ring/badge); subtle so it doesn't clash with green.
+        static let mapFilterMatch = Color(hex: "#7AA382")
+        /// Selected pin glow ring.
+        static let mapSelectedGlow = Color(hex: "#1D2C24").opacity(0.20)
+        /// Pro gold ring for the user-location avatar marker.
+        static let proGold = Color(hex: "#C9A24A")
+        /// Regular green ring for the user-location avatar marker.
+        static let mapAvatarRing = Color(hex: "#1D2C24")
+        /// Halo shown when location is updating.
+        static let mapAvatarHalo = Color(hex: "#1D2C24").opacity(0.18)
     }
 
     enum UserDefaultsKeys {
@@ -114,6 +135,79 @@ enum Constants {
         static let largePageSize = 100
         static let extraLargePageSize = 200
         static let maxPageSize = 500
+    }
+
+    /// Map-redesign tuning. All numeric thresholds, animation timings, and
+    /// memory caps used by the discovery and profile maps live here so they
+    /// can be unit-tested and adjusted without touching view code.
+    enum MapDesign {
+        /// Default visible radius (meters) when the map opens around the user.
+        /// Used for denied-location fallback and other non-GPS fallbacks.
+        static let initialRadiusMeters: Double = 4_000
+
+        /// Tighter radius for the first camera center on a real user fix —
+        /// keeps the map at neighborhood zoom instead of a wide metro ring.
+        static let initialNeighborhoodRadiusMeters: Double = 3_200
+
+        /// Span thresholds (degrees) used to choose a density mode. Anything
+        /// at or below `localSpan` shows individual pins; below
+        /// `citySpan` shows individuals + slight overlap offsets; above that
+        /// drops to soft clusters.
+        static let localSpan: Double = 0.04
+        static let citySpan: Double = 0.30
+
+        /// Maximum pins kept in `MapViewModel.visibleSpots` after merging
+        /// fresh viewport results with pre-existing pins. Keeps memory in
+        /// check across long pan sessions.
+        static let visibleSpotsCap: Int = 250
+
+        /// Maximum pins rendered at far zooms (cluster mode) — anything over
+        /// this is reduced to soft cluster blobs.
+        static let farZoomPinCap: Int = 60
+
+        /// Spot pin point size on the map (the inner rounded dot, in points).
+        static let pinSize: CGFloat = 22
+        /// Selected pin scale.
+        static let pinSelectedScale: CGFloat = 1.28
+        /// Pressed pin scale.
+        static let pinPressedScale: CGFloat = 0.92
+
+        /// User-location avatar marker diameter.
+        static let avatarMarkerSize: CGFloat = 38
+        /// Avatar ring stroke width.
+        static let avatarRingWidth: CGFloat = 3
+
+        /// Pin entry animation min/max stagger and per-pin delay.
+        static let pinEntryDuration: Double = 0.28
+        static let pinStaggerStep: Double = 0.012
+        static let pinStaggerCap: Double = 0.25
+
+        /// Selection spring response/damping.
+        static let selectSpringResponse: Double = 0.32
+        static let selectSpringDamping: Double = 0.82
+
+        /// Region debounce range — small pans use the lower bound, fast
+        /// gestures use the upper bound (see `SharedSpotMap`).
+        static let regionDebounceFastNs: UInt64 = 180_000_000   // 180 ms
+        static let regionDebounceSlowNs: UInt64 = 380_000_000   // 380 ms
+
+        /// Camera offset (in points) used to keep a selected pin visually
+        /// above the bottom preview panel.
+        static let selectedPinCameraLift: CGFloat = 90
+
+        /// Quantization grid (degrees) used to detect overlapping pins for
+        /// radial offset. ~5e-5 ≈ 5 m at the equator, matching what users
+        /// perceive as "the same place".
+        static let overlapBucketSize: Double = 0.00005
+        /// Radial offset distance (meters) applied to overlapping pins.
+        static let overlapOffsetMeters: Double = 12
+
+        /// Maximum proportion of the screen the map preview panel may consume
+        /// before its inner content scrolls. Prevents the panel from pushing
+        /// controls off-screen on small devices.
+        static let panelMaxScreenFraction: CGFloat = 0.70
+        /// Minimum panel height so the SpotCard header stays usable.
+        static let panelMinHeight: CGFloat = 280
     }
 }
 

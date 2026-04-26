@@ -22,7 +22,12 @@ final class SearchViewModel: ObservableObject {
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
-            Task { await self.performSearch(force: true) }
+            Task {
+                if self.segment == .vibes {
+                    await self.loadAllVibeTags()
+                }
+                await self.performSearch(force: true)
+            }
         }
     }
 
@@ -53,7 +58,18 @@ final class SearchViewModel: ObservableObject {
 
     func performSearch(force: Bool = false) async {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty { clear(); return }
+        if q.isEmpty {
+            if segment == .vibes {
+                if allVibeTags.isEmpty {
+                    await loadAllVibeTags()
+                }
+                vibes = allVibeTags
+                SpotLogger.log(SearchViewModelLogs.searchVibesSuggestions, details: ["count": vibes.count, "defaultList": true])
+            } else {
+                clear()
+            }
+            return
+        }
 
         switch segment {
         case .users:

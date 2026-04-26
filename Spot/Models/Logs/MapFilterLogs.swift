@@ -1,0 +1,37 @@
+//
+//  MapFilterLogs.swift
+//  Spot
+//
+//  Log definitions for the Pro-only map filter UI (filter sheet open,
+//  filters applied/cleared, and gated-tap upsell events for non-Pro users).
+//
+
+import Foundation
+
+enum MapFilterLogs: SpotLog {
+    case filterSheetOpened
+    case filterApplied
+    case filterCleared
+    case filterGatedTapped
+    case filterMatchHighlighted
+
+    var tag: String { "MapFilter" }
+    var level: LogLevel {
+        switch self {
+        case .filterSheetOpened: return .info
+        case .filterApplied: return .info
+        case .filterCleared: return .info
+        case .filterGatedTapped: return .info
+        case .filterMatchHighlighted: return .debug
+        }
+    }
+    var message: String {
+        switch self {
+        case .filterSheetOpened: return "Map filter sheet opened"
+        case .filterApplied: return "Map filter applied"
+        case .filterCleared: return "Map filter cleared"
+        case .filterGatedTapped: return "Map filter gated for non-Pro user"
+        case .filterMatchHighlighted: return "Map filter match highlighted"
+        }
+    }
+}

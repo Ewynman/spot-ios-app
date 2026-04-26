@@ -47,23 +47,11 @@ struct SearchView: View {
                         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { vm.segment = seg } }
                     }
                     Spacer()
-                    // Show filter button for Pro users: on vibes tab OR when viewing a location grid
-                    if authVM.isPro && (vm.segment == .vibes || (vm.gridTitle != nil && !vm.gridIsVibe)) {
+                    // Show filter button for Pro users only while viewing a location grid
+                    if authVM.isPro && (vm.gridTitle != nil && !vm.gridIsVibe) {
                         Button {
                             showFilters = true
                             Task { await vm.loadAllVibeTags() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "line.3.horizontal.decrease.circle")
-                                Text("Filter")
-                            }
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    } else if !authVM.isPro && vm.segment == .vibes {
-                        Button {
-                            NotificationCenter.default.post(name: .showPaywall, object: nil)
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "line.3.horizontal.decrease.circle")
@@ -176,9 +164,19 @@ struct SearchView: View {
                                     userId: nil,
                                     onDelete: nil,
                                     source: "SearchGrid",
-                                    backAction: { withAnimation { self.selectedGridSpot = nil } }
+                                    backAction: { withAnimation { self.selectedGridSpot = nil } },
+                                    backButtonText: "Back to search results"
                                 )
                                 .transition(.opacity)
+                                .simultaneousGesture(
+                                    DragGesture(minimumDistance: 24)
+                                        .onEnded { value in
+                                            let didSwipeLeft = value.translation.width < -70 || value.predictedEndTranslation.width < -120
+                                            if didSwipeLeft {
+                                                withAnimation { self.selectedGridSpot = nil }
+                                            }
+                                        }
+                                )
                             } else {
                                 if vm.gridSpots.isEmpty && !vm.isLoadingGrid && !vm.hasMoreGrid {
                                     Text("No results found")

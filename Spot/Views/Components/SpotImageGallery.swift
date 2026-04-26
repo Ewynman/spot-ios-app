@@ -3,8 +3,14 @@ import SwiftUI
 struct SpotImageGallery: View {
     let urls: [String]
     let fallback: String?
+    /// Optional: when set, allows the gallery to lazily fetch the full image
+    /// array for this spot the first time the user pages past the primary
+    /// image. Used by the v2 home feed where each row only carries its primary.
+    var spotId: String? = nil
     @State private var selection: Int = 0
     @State private var failedIndices: Set<Int> = []
+    @State private var lazilyLoaded: [String] = []
+    @State private var didRequestFullSet = false
 
     var body: some View {
         let all = orderedURLs
@@ -60,11 +66,17 @@ struct SpotImageGallery: View {
             if selection >= all.count {
                 selection = 0
             }
+            requestFullSetIfNeeded()
+        }
+        .onChange(of: selection) { _, newValue in
+            // Trigger lazy hydration the moment the user actually pages.
+            if newValue > 0 { requestFullSetIfNeeded() }
         }
     }
 
     private var orderedURLs: [String] {
-        let base = urls.isEmpty ? (fallback.map { [$0] } ?? []) : urls
+        let combined = urls + lazilyLoaded
+        let base = combined.isEmpty ? (fallback.map { [$0] } ?? []) : combined
         var seen = Set<String>()
         let unique = base.filter { seen.insert($0).inserted }
         let sorted = unique.sorted { lhs, rhs in
@@ -74,6 +86,26 @@ struct SpotImageGallery: View {
             return !leftBad && rightBad
         }
         return sorted
+    }
+
+    /// On the v2 home feed each row carries only its primary image. The first
+    /// time the user opens or pages this gallery, fetch the full array.
+    private func requestFullSetIfNeeded() {
+        guard !didRequestFullSet else { return }
+        guard let spotId, let uuid = UUID(uuidString: spotId) else { return }
+        // Heuristic: if we already have multiple unique URLs, the caller has
+        // already provided the full set and we don't need to fetch.
+        if Set(urls).count > 1 { return }
+        didRequestFullSet = true
+        Task {
+            let all = await FeedAPI.fetchAllImageURLs(for: uuid)
+            await MainActor.run {
+                let extra = all.filter { !urls.contains($0) }
+                if !extra.isEmpty {
+                    lazilyLoaded = extra
+                }
+            }
+        }
     }
 
     private func isLikelyPlaceholderURL(_ raw: String) -> Bool {

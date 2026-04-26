@@ -140,6 +140,23 @@ struct SettingsView: View {
                         }
                     }
 
+                    #if DEBUG
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Debug")
+                            NavigationLink {
+                                AlgorithmDebugView()
+                            } label: {
+                                settingsRow(
+                                    title: "Algorithm snapshot",
+                                    icon: "sparkles",
+                                    subtitle: "Raw user_feed_profiles row"
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    #endif
                 }
                 .padding(16)
             }

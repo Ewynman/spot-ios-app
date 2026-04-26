@@ -22,6 +22,7 @@ struct ProfileView: View {
     @State private var showLikesNav: Bool = false
     @State private var showBookmarksNav: Bool = false
     @State private var showFollowRequestsNav: Bool = false
+    @State private var showAlgorithmNav: Bool = false
     @State private var isMapExpanded: Bool = false
 
     @Environment(\.dismiss) private var dismiss
@@ -452,6 +453,24 @@ struct ProfileView: View {
                         Divider()
                     }
 
+                    if userId == nil || userId == authVM.userId {
+                        Button {
+                            withAnimation { showMenu = false }
+                            showAlgorithmNav = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "sparkles")
+                                Text("Your Algorithm")
+                                    .font(FontManager.primaryText())
+                            }
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+                    }
+
                     Button {
                         withAnimation { showMenu = false }
                         showSettingsNav = true
@@ -515,6 +534,10 @@ struct ProfileView: View {
         }
         .navigationDestination(isPresented: $showFollowRequestsNav) {
             FollowRequestsView()
+        }
+        .navigationDestination(isPresented: $showAlgorithmNav) {
+            FeedProfileView()
+                .environmentObject(authVM)
         }
         .alert("Delete this spot? This can't be undone.", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) {

@@ -1,66 +1,121 @@
+//
+//  MapView.swift
+//  Spot
+//
+//  Discovery map. Redesigned to:
+//   * use the shared `SharedSpotMap` host (single MKMapView, reused
+//     annotations, light mode, no POIs, no MapKit numeric clusters),
+//   * render a branded user-location avatar marker (green ring / gold
+//     ring for Pro) instead of the default blue dot,
+//   * show a stable soft-cluster + individual-pin density model,
+//   * fix the IMG_9741 panel overflow bug via `MapSpotPreviewCard` +
+//     `MapPanelHeight.clamp`,
+//   * fetch viewport spots after pan/zoom settles,
+//   * surface a Pro-only filter pill row (hidden for non-Pro), and
+//   * emit structured map logs for screen lifecycle, panel state,
+//     density transitions, recenter taps, and (debug) memory snapshots.
+//
+
 import SwiftUI
 import MapKit
 import CoreLocation
 
 @MainActor
 struct MapView: View {
+
+    // MARK: - State
+
     @StateObject private var mapVM = MapViewModel()
     @StateObject private var locationManager = LocationManager.shared
     @EnvironmentObject var authVM: AuthViewModel
 
-    @State private var cameraPosition: MapCameraPosition
     @State private var selectedSpot: Spot?
+    @State private var selectedSpotCoordinate: CLLocationCoordinate2D?
+    @State private var cameraIntent: SharedSpotMapCameraIntent = .none
     @State private var hasPerformedInitialFit: Bool = false
-    @State private var regionLoadTask: Task<Void, Never>?
-    @State private var refitRequestID: Int = 0
+    /// `true` once the camera has been programmatically centered on the
+    /// viewer's real location. Subsequent location updates do not re-zoom
+    /// (the user can manually pan or tap recenter) — but if we never got a
+    /// fix at appear time, the first fix from `.onReceive` triggers it.
+    @State private var hasCenteredOnUser: Bool = false
+    @State private var lastRegionFromMap: MKCoordinateRegion?
+
+    @State private var filterState: SpotMapFilterState = .empty
+    @State private var showVibePicker: Bool = false
 
     @Environment(\.verticalSizeClass) private var vSize
 
-    init(spots: [Spot] = []) {
-        _cameraPosition = State(initialValue: .region(LocationManager.shared.getUserRegion()))
-    }
+    init(spots _: [Spot] = []) {}
+
+    // MARK: - Body
 
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
                 ZStack(alignment: .bottom) {
-                    ClusteredSpotMap(spots: mapVM.visibleSpots, refitRequestID: refitRequestID, onRegionChanged: { _ in
-                        // Region changes don't need to reload - we show all spots
-                    }) { spot, coord in
-                        select(spot, coord)
-                    }
+                    SharedSpotMap(
+                        spots: mapVM.visibleSpots,
+                        selectedSpotId: selectedSpot?.id,
+                        filter: filterState,
+                        savedSpotIds: Set(authVM.bookmarkedSpots),
+                        likedSpotIds: Set(authVM.likedSpots),
+                        followedUserIds: [],
+                        allowSoftClusters: false,
+                        userMarker: userMarker,
+                        suppressDefaultUserDot: true,
+                        cameraIntent: cameraIntent,
+                        onSelect: { spot, coord in
+                            select(
+                                spot,
+                                coord,
+                                mapHeight: geo.size.height,
+                                bottomSafeArea: geo.safeAreaInsets.bottom
+                            )
+                        },
+                        onDeselect: { /* tap-on-empty deselect handled by panel close */ },
+                        onRegionChanged: { region in
+                            lastRegionFromMap = region
+                            cameraIntent = .none
+                            if FeedFlags.useSupabaseMapRPC {
+                                mapVM.loadForRegion(region)
+                            }
+                        }
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+
+                    MapControlsOverlay(
+                        filterState: filterPillBinding,
+                        availableVibeTags: Constants.VibeTags.defaultTags,
+                        onOpenVibePicker: { showVibePicker = true },
+                        canRecenter: locationManager.userLocation != nil,
+                        onRecenter: recenterOnUser,
+                        bottomReservedHeight: selectedSpot == nil
+                            ? 0
+                            : openPanelHeight(in: geo.size, safe: geo.safeAreaInsets.bottom).height
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                    .allowsHitTesting(true)
                 }
-                // Bottom inset drives the "split" layout; the Map stays alive (prevents Metal crash).
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    bottomInset(height: openPanelHeight(in: geo.size))
+                    bottomInset(geo: geo)
                 }
-                // Paint content background…
                 .background(Constants.Colors.background)
-                // …and also paint the TOP safe-area (status/notch) to match your app background.
                 .background(Constants.Colors.background.ignoresSafeArea())
-                .onAppear {
-                    locationManager.startUpdatingLocation()
-                    performInitialFitIfNeeded()
-                    mapVM.loadAllSpots()
+                .onAppear { onAppear(geo: geo) }
+                .onDisappear { onDisappear() }
+                .onReceive(locationManager.$userLocation) { newValue in
+                    onUserLocationReceived(newValue)
                 }
-                .onDisappear {
-                    locationManager.stopUpdatingLocation()
-                    // Clear selected spot to ensure map resources are released before navigation
-                    selectedSpot = nil
-                    mapVM.clearVisibleSpots()
-                    // Cancel any pending region load tasks
-                    regionLoadTask?.cancel()
-                    regionLoadTask = nil
+                .onChange(of: filterState) { _, newValue in
+                    syncMapSelectionWithActiveFilter(newValue)
                 }
-                .onChange(of: locationManager.userLocation) { oldLocation, newLocation in
-                    // Zoom to user location when it first becomes available
-                    if oldLocation == nil && newLocation != nil && selectedSpot == nil && !hasPerformedInitialFit {
-                        updateCameraToUser()
-                        hasPerformedInitialFit = true
-                    }
-                }
-                .onChange(of: mapVM.visibleSpots) { _, _ in
-                    performInitialFitIfNeeded()
+                .sheet(isPresented: $showVibePicker) {
+                    MapVibeFilterSheet(
+                        state: $filterState,
+                        vibeTags: Constants.VibeTags.defaultTags,
+                        onClose: { showVibePicker = false }
+                    )
+                    .presentationDetents([.medium, .large])
                 }
             }
             .navigationDestination(for: Route.self) { route in
@@ -74,311 +129,282 @@ struct MapView: View {
         }
     }
 
-    // MARK: - Inset content
+    // MARK: - Bottom inset (preview card)
+
     @ViewBuilder
-    private func bottomInset(height: CGFloat) -> some View {
+    private func bottomInset(geo: GeometryProxy) -> some View {
         if let spot = selectedSpot {
-            FullBleedPanel(spot: spot, onClose: { closePanel() })
-                .frame(height: height)
-                .transition(.move(edge: .bottom))
-                .animation(.spring(response: 0.32, dampingFraction: 0.85), value: selectedSpot != nil)
+            let height = openPanelHeight(in: geo.size, safe: geo.safeAreaInsets.bottom)
+            MapSpotPreviewCard(
+                spot: spot,
+                source: "Map",
+                onClose: { closePanel() }
+            )
+            .frame(height: height.height)
+            .transition(.move(edge: .bottom))
+            .animation(.spring(response: Constants.MapDesign.selectSpringResponse,
+                               dampingFraction: Constants.MapDesign.selectSpringDamping),
+                       value: selectedSpot != nil)
         } else {
             Color.clear.frame(height: 0)
         }
     }
 
-    // Dynamic panel height (no hardcoding)
-    private func openPanelHeight(in size: CGSize) -> CGFloat {
-        let base: CGFloat = (vSize == .compact) ? size.height * 0.40 : size.height * 0.55
-        return min(max(base, 280), size.height * 0.92)
+    /// Computes the safe panel height + emits a `panelHeightClamped` log if
+    /// the requested height was reduced by the safe-area / max-fraction
+    /// clamp. This is the IMG_9741 fix point.
+    private func openPanelHeight(in size: CGSize, safe: CGFloat) -> (height: CGFloat, wasClamped: Bool) {
+        // Keep more map visible while still showing enough of the spot card.
+        let base: CGFloat = (vSize == .compact) ? size.height * 0.30 : size.height * 0.36
+        let clamp = MapPanelHeight.clamp(
+            requested: base,
+            availableHeight: size.height,
+            bottomSafeArea: safe
+        )
+        if clamp.wasClamped {
+            SpotLogger.log(MapViewLogs.panelHeightClamped, details: [
+                "requested": Int(base),
+                "applied": Int(clamp.height),
+                "screen": Int(size.height),
+                "bottomSafe": Int(safe)
+            ])
+        }
+        return clamp
+    }
+
+    // MARK: - Lifecycle hooks
+
+    private func onAppear(geo: GeometryProxy) {
+        SpotLogger.log(MapViewLogs.mapAppeared)
+        MemoryDebugLogger.snapshot("map_appear")
+        // Re-arm the one-shot auto-center every time the map tab appears.
+        hasCenteredOnUser = false
+        mapBottomNavDidAppearAndRequestLocationBreakpoint()
+        if authVM.userId != nil {
+            authVM.refreshUserFlags()
+        }
+        performInitialFitIfNeeded()
+
+        guard FeedFlags.useSupabaseMapRPC else {
+            mapVM.loadAllSpots()
+            return
+        }
+
+        // Best path: we already have a real or cached location fix →
+        // jump straight to it. `userLocation` may have been seeded from
+        // the persisted last-known-good fix at LocationManager init,
+        // which keeps the map useful on cold starts and on simulators
+        // without a configured location.
+        if let fix = locationManager.userLocation {
+            centerOnUser(coordinate: fix.coordinate, animated: false, source: "appear_fix")
+            return
+        }
+
+        // No fix yet. Do NOT call `getUserRegion()` here because that
+        // returns the Miami fallback and immediately fetches the wrong
+        // viewport. Wait for `onUserLocationReceived` to center/fetch as
+        // soon as CoreLocation delivers the physical device coordinate.
+        if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
+            let fallback = LocationManager.shared.getUserRegion(
+                radiusInMeters: Constants.MapDesign.initialRadiusMeters
+            )
+            mapVM.loadForRegion(fallback)
+            cameraIntent = .region(fallback, animated: false)
+            return
+        }
+
+        SpotLogger.log(MapViewLogs.waitingForUserLocation, details: [
+            "auth": authStatusLabel(locationManager.authorizationStatus)
+        ])
+        cameraIntent = .none
+    }
+
+    /// BREAKPOINT HERE:
+    /// This method is called from `MapView.onAppear`, which is the Map
+    /// tab's effective bottom-nav tap entry point. Step into
+    /// `LocationManager.requestCurrentLocationForMapTab()` to verify the
+    /// CoreLocation one-shot request on a physical device.
+    private func mapBottomNavDidAppearAndRequestLocationBreakpoint() {
+        SpotLogger.log(MapViewLogs.mapTabLocationRequestStarted, details: [
+            "auth": authStatusLabel(locationManager.authorizationStatus),
+            "hasUserLocation": locationManager.userLocation != nil
+        ])
+        locationManager.requestCurrentLocationForMapTab()
+    }
+
+    private func onDisappear() {
+        SpotLogger.log(MapViewLogs.mapDisappeared)
+        MemoryDebugLogger.snapshot("map_disappear")
+        locationManager.stopUpdatingLocation()
+        hasCenteredOnUser = false
+        selectedSpot = nil
+        selectedSpotCoordinate = nil
+        cameraIntent = .none
+        mapVM.clearVisibleSpots()
+    }
+
+    /// Fired for the initial published value AND every subsequent fix.
+    /// `.onChange(of:)` doesn't fire for the initial value so it would
+    /// silently miss the case where `LocationManager` already had a fix
+    /// from earlier in the app session.
+    private func onUserLocationReceived(_ location: CLLocation?) {
+        guard let location else { return }
+        guard !hasCenteredOnUser else { return }
+        guard selectedSpot == nil else { return }
+        centerOnUser(coordinate: location.coordinate, animated: true, source: "received_fix")
+    }
+
+    /// Center the discovery camera on `coordinate` and trigger a viewport
+    /// fetch in the same beat. Sets `hasCenteredOnUser` so we don't keep
+    /// fighting the user once they pan around.
+    private func centerOnUser(
+        coordinate: CLLocationCoordinate2D,
+        animated: Bool,
+        source: String
+    ) {
+        hasCenteredOnUser = true
+        let region = MapCameraRegion.neighborhood(
+            center: coordinate,
+            radiusMeters: Constants.MapDesign.initialNeighborhoodRadiusMeters
+        )
+        cameraIntent = .region(region, animated: animated)
+        if FeedFlags.useSupabaseMapRPC {
+            mapVM.loadForRegion(region)
+        }
+        SpotLogger.log(MapViewLogs.initialFitApplied, details: [
+            "source": source,
+            "lat": coordinate.latitude,
+            "lon": coordinate.longitude,
+            "animated": animated
+        ])
+    }
+
+    // MARK: - Filter binding (Pro gating)
+
+    private var filterPillBinding: Binding<SpotMapFilterState>? {
+        guard MapFilterGate.isAvailable(isPro: authVM.isPro) else { return nil }
+        return Binding(
+            get: { filterState },
+            set: { newValue in
+                let opening = !filterState.isActive && newValue.isActive
+                if opening {
+                    SpotLogger.log(MapFilterLogs.filterSheetOpened)
+                }
+                filterState = newValue
+            }
+        )
+    }
+
+    // MARK: - User marker
+
+    private var userMarker: SpotUserLocationAnnotation? {
+        guard let loc = locationManager.userLocation else { return nil }
+        return SpotUserLocationAnnotation(
+            coordinate: loc.coordinate,
+            profileImageURL: authVM.currentUserProfileImageURL,
+            username: authVM.currentUserUsername,
+            kind: authVM.isPro ? .pro : .regular
+        )
     }
 
     // MARK: - Actions
-    private func select(_ spot: Spot, _ coordinate: CLLocationCoordinate2D) {
+
+    private func select(
+        _ spot: Spot,
+        _ coordinate: CLLocationCoordinate2D,
+        mapHeight: CGFloat,
+        bottomSafeArea: CGFloat
+    ) {
         selectedSpot = spot
-        // Centering handled by ClusteredSpotMap coordinator
+        selectedSpotCoordinate = coordinate
+        SpotLogger.log(MapViewLogs.homeSheetOpen, details: ["spotId": spot.id ?? "nil"])
+        FeedEventService.record(.mapPinTap, spotId: spot.id)
+        FeedEventService.record(.detailOpen, spotId: spot.id, metadata: ["surface": "map_panel"])
+        let panel = openPanelHeight(
+            in: CGSize(width: 0, height: mapHeight),
+            safe: bottomSafeArea
+        )
+        let dynamicLift = max(
+            Constants.MapDesign.selectedPinCameraLift,
+            panel.height * 0.42
+        )
+        let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        cameraIntent = .focus(
+            coordinate: coordinate,
+            span: span,
+            liftPoints: dynamicLift,
+            animated: true
+        )
     }
 
     private func closePanel() {
-        SpotLogger.log(MapViewLogs.homeSheetClose)
+        SpotLogger.log(MapViewLogs.homeSheetClose, details: ["spotId": selectedSpot?.id ?? "nil"])
         selectedSpot = nil
-        refitRequestID += 1
+        selectedSpotCoordinate = nil
+        // Don't auto-zoom-out — keep user in their current region.
+        cameraIntent = .none
     }
 
-    private func updateCameraToUser() {
-        cameraPosition = .region(locationManager.getUserRegion())
-    }
-
-    private func zoomToFitAllPins() { /* handled inside ClusteredSpotMap */ }
-
-    private var hasValidSpots: Bool {
-        return mapVM.visibleSpots.contains { $0.latitude != nil && $0.longitude != nil }
+    private func recenterOnUser() {
+        SpotLogger.log(MapViewLogs.recenterTapped)
+        guard let loc = locationManager.userLocation else {
+            SpotLogger.log(MapViewLogs.userLocationUnavailable)
+            return
+        }
+        // The recenter button is an explicit user request — re-arm the
+        // initial-center latch so any pending location publisher events
+        // can't fight the explicit gesture.
+        centerOnUser(coordinate: loc.coordinate, animated: true, source: "recenter_button")
     }
 
     private func performInitialFitIfNeeded() {
         guard !hasPerformedInitialFit else { return }
-        if hasValidSpots {
-            // Wait for first regionChanged to request viewport data
-        } else {
-            updateCameraToUser()
-        }
         hasPerformedInitialFit = true
+        SpotLogger.log(MapViewLogs.initialFitApplied, details: [
+            "hasUserLocation": locationManager.userLocation != nil,
+            "source": "appear_marker"
+        ])
     }
 
-    private func debounceLoad(for _: MKCoordinateRegion) {
-        // Keep for region changes if needed, but initial load uses loadAllSpots
-        regionLoadTask?.cancel()
-        regionLoadTask = Task {
-            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
-            if Task.isCancelled { return }
-            // Optionally reload visible region spots, but we're showing all spots now
+    /// Close the preview sheet if the active filter no longer includes the
+    /// selected spot (pins are removed from the map, not dimmed).
+    private func syncMapSelectionWithActiveFilter(_ filter: SpotMapFilterState) {
+        guard let sel = selectedSpot else { return }
+        guard filter.isActive else { return }
+        let stillMatches = SpotMarkerStyleResolver.matches(
+            sel,
+            filter: filter,
+            savedSpotIds: Set(authVM.bookmarkedSpots),
+            likedSpotIds: Set(authVM.likedSpots),
+            followedUserIds: []
+        )
+        if !stillMatches {
+            closePanel()
+        }
+    }
+
+    private func authStatusLabel(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorizedAlways: return "authorizedAlways"
+        case .authorizedWhenInUse: return "authorizedWhenInUse"
+        @unknown default: return "unknown"
         }
     }
 }
 
-#Preview {
-    let spots = [
-        Spot(id: "1", userId: "u1", username: "eddie", imageURL: "https://picsum.photos/seed/3/800/600", vibeTag: "Park", latitude: 40.7128, longitude: -74.0060, locationName: "NYC", createdAt: Date())
-    ]
+// MARK: - Preview
+
+#Preview("MapView – discovery") {
     let auth = AuthViewModel()
-    return MapView(spots: spots).environmentObject(auth)
-}
-
-// MARK: - Extracted Map (keeps body simple and compiler happy)
-private struct SpotMap: View {
-    @Binding var position: MapCameraPosition
-    let spots: [Spot]
-    let selectedSpot: Spot?
-    let onSelect: (Spot, CLLocationCoordinate2D) -> Void
-
-    var body: some View {
-        Map(position: $position, interactionModes: .all) {
-            ForEach(spots, id: \.id) { spot in
-                if let coord = coordinate(for: spot) {
-                    Annotation("", coordinate: coord) {
-                        SpotMapMarker(spot: spot)
-                            .scaleEffect(selectedSpot?.id == spot.id ? 1.3 : 1.0)
-                            .onTapGesture { onSelect(spot, coord) }
-                    }
-                }
-            }
-        }
-        // Force LIGHT map look
-        .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: false))
-        .environment(\.colorScheme, .light)
-        .preferredColorScheme(.light)
-    }
-
-    private func coordinate(for spot: Spot) -> CLLocationCoordinate2D? {
-        guard let lat = spot.latitude, let lon = spot.longitude else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-}
-
-// MARK: - UIKit-backed clustered map
-private struct ClusteredSpotMap: UIViewRepresentable {
-    let spots: [Spot]
-    let refitRequestID: Int
-    var onRegionChanged: ((MKCoordinateRegion) -> Void)?
-    let onSelect: (Spot, CLLocationCoordinate2D) -> Void
-
-    func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView(frame: .zero)
-        map.delegate = context.coordinator
-        map.pointOfInterestFilter = .excludingAll
-        map.showsTraffic = false
-        map.showsUserLocation = true
-        // Always light mode
-        if #available(iOS 13.0, *) { map.overrideUserInterfaceStyle = .light }
-        // Standard light configuration
-        if #available(iOS 13.0, *) {
-            let cfg = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            map.preferredConfiguration = cfg
-        }
-        map.register(MKAnnotationView.self, forAnnotationViewWithReuseIdentifier: "SpotImage")
-        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
-        
-        // Set initial region to user location (or default)
-        let initialRegion = LocationManager.shared.getUserRegion()
-        map.setRegion(initialRegion, animated: false)
-        context.coordinator.initialRegionSet = true
-        
-        return map
-    }
-
-    func updateUIView(_ map: MKMapView, context: Context) {
-        if context.coordinator.lastRefitRequestID != refitRequestID {
-            context.coordinator.lastRefitRequestID = refitRequestID
-            let spotAnnotations = map.annotations.compactMap { $0 as? SpotPointAnnotation }
-            if !spotAnnotations.isEmpty {
-                map.showAnnotations(spotAnnotations, animated: true)
-            }
-        }
-
-        let existing = map.annotations.compactMap { $0 as? SpotPointAnnotation }
-        let existingIds = Set(existing.map { $0.spot.id })
-        let newIds = Set(spots.map { $0.id })
-        
-        // Only update if spots actually changed
-        if existingIds != newIds {
-            map.removeAnnotations(existing)
-            let anns: [SpotPointAnnotation] = spots.compactMap { s in
-                guard let lat = s.latitude, let lon = s.longitude else { return nil }
-                let a = SpotPointAnnotation(spot: s)
-                a.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-                a.title = s.vibeTag
-                return a
-            }
-            map.addAnnotations(anns)
-            
-            // If we have spots and this is the first load, fit them to view
-            // Don't auto-fit if user has already panned/zoomed
-            if !anns.isEmpty {
-                let spotAnnotations = map.annotations.compactMap { $0 as? SpotPointAnnotation }
-                // Only auto-fit if we just added spots and map hasn't been significantly moved
-                let currentCenter = map.region.center
-                let initialRegion = LocationManager.shared.getUserRegion()
-                let distance = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
-                    .distance(from: CLLocation(latitude: initialRegion.center.latitude, longitude: initialRegion.center.longitude))
-                
-                // If still near initial location (within 10km) or no spots were shown before, fit to spots
-                if distance < 10000 || existing.isEmpty {
-                    map.showAnnotations(spotAnnotations, animated: false)
-                }
-            }
-        }
-    }
-    
-    func dismantleUIView(_ map: MKMapView, coordinator: Coordinator) {
-        // Clean up map resources before deallocation to prevent Metal crashes
-        // This ensures Metal textures are properly released before the view is deallocated
-        map.delegate = nil
-        map.removeAnnotations(map.annotations)
-        map.showsUserLocation = false
-        map.removeOverlays(map.overlays)
-        
-        // Hide the map view to stop rendering and give Metal time to finish
-        map.isHidden = true
-        map.alpha = 0
-        
-        // Give Metal time to finish current frame before deallocation
-        // This prevents the texture from being destroyed while still referenced by command buffer
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            // Additional cleanup if needed - Metal should have finished by now
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, MKMapViewDelegate {
-        let parent: ClusteredSpotMap
-        var initialRegionSet = false
-        var hasZoomedToUserLocation = false
-        var lastRefitRequestID: Int
-        init(_ parent: ClusteredSpotMap) {
-            self.parent = parent
-            self.lastRefitRequestID = parent.refitRequestID
-        }
-
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if annotation is MKUserLocation { return nil }
-            if let cluster = annotation as? MKClusterAnnotation {
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier, for: cluster) as! MKMarkerAnnotationView
-                view.markerTintColor = UIColor(Constants.Colors.primary)
-                return view
-            }
-            guard let ann = annotation as? SpotPointAnnotation else { return nil }
-            let view = mapView.dequeueReusableAnnotationView(withIdentifier: "SpotImage", for: ann)
-            view.clusteringIdentifier = "spot"
-            view.canShowCallout = false
-            // Custom image marker
-            if let img = UIImage(named: "green_marker") {
-                view.image = img
-                view.centerOffset = CGPoint(x: 0, y: -img.size.height * 0.4)
-            } else {
-                // Fallback to a tinted marker if asset missing
-                let marker = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: nil)
-                marker.clusteringIdentifier = "spot"
-                marker.markerTintColor = UIColor(Constants.Colors.primary)
-                return marker
-            }
-            return view
-        }
-
-        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-            if let cluster = view.annotation as? MKClusterAnnotation {
-                mapView.showAnnotations(cluster.memberAnnotations, animated: true)
-                return
-            }
-            guard let ann = view.annotation as? SpotPointAnnotation else { return }
-            let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            mapView.setRegion(MKCoordinateRegion(center: ann.coordinate, span: span), animated: true)
-            parent.onSelect(ann.spot, ann.coordinate)
-        }
-
-        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            parent.onRegionChanged?(mapView.region)
-        }
-        
-        func mapViewDidFinishLoadingMap(_ mapView: MKMapView) {
-            // Ensure initial region is set after map loads
-            if !initialRegionSet {
-                let userRegion = LocationManager.shared.getUserRegion()
-                mapView.setRegion(userRegion, animated: false)
-                initialRegionSet = true
-            }
-        }
-        
-        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            // Zoom to user location when it first becomes available (if we haven't already)
-            if !hasZoomedToUserLocation && userLocation.location != nil {
-                let userRegion = LocationManager.shared.getUserRegion()
-                mapView.setRegion(userRegion, animated: true)
-                hasZoomedToUserLocation = true
-            }
-        }
-    }
-}
-
-private final class SpotPointAnnotation: MKPointAnnotation {
-    let spot: Spot
-    init(spot: Spot) { self.spot = spot; super.init() }
-}
-
-// MARK: - Full-bleed bottom panel (no corners, no shadows)
-private struct FullBleedPanel: View {
-    let spot: Spot
-    var onClose: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // X at TOP-LEFT
-            HStack {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Constants.Colors.primary)
-                        .padding(8)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                Spacer()
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 16)
-
-            SpotCard(
-                spot: spot,
-                showUserInfo: true,
-                userId: nil,
-                onDelete: { },
-                source: "Map"
-            )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        // Full-bleed, no rounded corners/shadows; covers home indicator.
-        .background(Constants.Colors.background)
-        .ignoresSafeArea(edges: .bottom)
-    }
+    auth.isPro = false
+    return MapView(spots: [
+        Spot(id: "1", userId: "u1", username: "eddie",
+             imageURL: "https://picsum.photos/seed/3/800/600", vibeTag: "Park",
+             latitude: 40.7128, longitude: -74.0060,
+             locationName: "NYC", createdAt: Date())
+    ])
+    .environmentObject(auth)
 }

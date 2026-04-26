@@ -98,6 +98,14 @@ final class SpotLogger {
     // MARK: - Configuration
     static var minimumLevel: LogLevel = .info // Default to info, debug requires category enablement
     static var enableAllDebug: Bool = false   // Master switch for all debug logs
+    /// When enabled, suppresses all SpotLogger output except logs needed
+    /// for map debugging: map UI/model/marker/filter logs,
+    /// LocationManager logs, and Supabase map viewport RPC logs.
+    ///
+    /// This intentionally does not affect Apple/MapKit system console
+    /// messages such as `default.csv`, `PerfPowerTelemetry`, or
+    /// `CAMetalLayer`; those are not emitted through SpotLogger.
+    static var mapOnlyLoggingEnabled: Bool = false
     private static let defaults = UserDefaults.standard
 
     #if DEBUG
@@ -140,6 +148,7 @@ final class SpotLogger {
     /// ]
     /// ```
     static func log(_ entry: some SpotLog, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        guard shouldEmit(entry: entry, details: details, file: file) else { return }
         log(entry.level, message: body(for: entry, details: details), file: file, function: function, line: line)
     }
 
@@ -263,6 +272,7 @@ final class SpotLogger {
         guard debugLoggingEnabled else { return }
         #endif
         guard level >= minimumLevel else { return }
+        guard shouldEmitRawLog(message: message, file: file) else { return }
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let logMessage = "[SpotLogger][\(level.rawValue)] \(fileName):\(line) | \(function) | \(message)"
 
@@ -276,6 +286,57 @@ final class SpotLogger {
             logger.info("\(logMessage, privacy: .public)")
         case .error:
             logger.error("\(logMessage, privacy: .public)")
+        }
+    }
+
+    private static func shouldEmit(entry: some SpotLog, details: [String: Any], file: String) -> Bool {
+        guard mapOnlyLoggingEnabled else { return true }
+
+        if entry.tag.hasPrefix("Map") || entry.tag == "LocationManager" {
+            return true
+        }
+
+        // The map data pipeline currently reuses FeedSupabaseLogs for
+        // `get_map_spots_v1`; keep only that subset visible.
+        if entry.tag == "FeedSupabase", entry.message.contains("get_map_spots_v1") {
+            return true
+        }
+
+        return isMapRelatedFile(file)
+    }
+
+    private static func shouldEmitRawLog(message: String, file: String) -> Bool {
+        guard mapOnlyLoggingEnabled else { return true }
+
+        if isMapRelatedFile(file) {
+            return true
+        }
+
+        if message.contains("SpotLogger: Map") ||
+            message.contains("SpotLogger: LocationManager") ||
+            message.contains("get_map_spots_v1") {
+            return true
+        }
+
+        return false
+    }
+
+    private static func isMapRelatedFile(_ file: String) -> Bool {
+        let fileName = URL(fileURLWithPath: file).lastPathComponent
+        if fileName.hasPrefix("Map") || fileName.contains("Map") {
+            return true
+        }
+        switch fileName {
+        case "SharedSpotMap.swift",
+             "LocationManager.swift",
+             "MemoryDebugLogger.swift":
+            return true
+        case "FeedAPI.swift", "MapViewportLoader.swift":
+            // The raw-message path still checks `get_map_spots_v1`; allow
+            // the structured path to preserve map viewport RPC logs.
+            return false
+        default:
+            return false
         }
     }
 

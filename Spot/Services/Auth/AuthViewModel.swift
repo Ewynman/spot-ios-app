@@ -25,6 +25,13 @@ class AuthViewModel: ObservableObject {
     @Published var isPro: Bool = false
     @Published var proUntil: Date? = nil
     @Published var customVibeTags: [String] = []
+    /// Cached profile image URL for the signed-in user. Used by the map
+    /// user-location avatar marker so we don't refetch the profile row every
+    /// time the map appears.
+    @Published var currentUserProfileImageURL: String?
+    /// Cached username for the signed-in user (used as initials fallback for
+    /// the map avatar marker).
+    @Published var currentUserUsername: String?
 
     private var supabaseAuthTask: Task<Void, Never>?
 
@@ -113,6 +120,8 @@ class AuthViewModel: ObservableObject {
         isPro = false
         proUntil = nil
         customVibeTags = []
+        currentUserProfileImageURL = nil
+        currentUserUsername = nil
         previousUserId = nil
     }
 
@@ -220,10 +229,12 @@ class AuthViewModel: ObservableObject {
                 struct FlagsRow: Decodable {
                     let is_pro: Bool
                     let pro_until: String?
+                    let profile_image_url: String?
+                    let username: String?
                 }
                 let row: FlagsRow = try await supabase
                     .from("users")
-                    .select("is_pro,pro_until")
+                    .select("is_pro,pro_until,profile_image_url,username")
                     .eq("id", value: uid)
                     .single()
                     .execute()
@@ -241,6 +252,8 @@ class AuthViewModel: ObservableObject {
                     self.isPro = isProValue
                     self.proUntil = proUntilDate
                     self.customVibeTags = []
+                    self.currentUserProfileImageURL = row.profile_image_url
+                    self.currentUserUsername = row.username
                 }
             } catch {
                 SpotLogger.log(AuthViewModelLogs.refreshUserFlagsFailed, details: ["error": error.localizedDescription])

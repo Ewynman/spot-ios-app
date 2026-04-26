@@ -85,10 +85,19 @@
             value = "YES"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "SPOT_DEBUG_LOCATION"
+            value = "40.867449,-74.025070"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
       <StoreKitConfigurationFileReference
          identifier = "../../Spot/StoreKit/SpotDev.storekit">
       </StoreKitConfigurationFileReference>
+      <LocationScenarioReference
+         identifier = "../../Spot/SpotDevLocation.gpx"
+         referenceType = "0">
+      </LocationScenarioReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

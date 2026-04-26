@@ -1,0 +1,120 @@
+//
+//  MapControlsOverlay.swift
+//  Spot
+//
+//  Floating overlay controls for the discovery map: a recenter button
+//  pinned to the bottom-right that fits above the preview panel/tab bar,
+//  and (when present) the Pro filter pill row anchored to the top.
+//
+//  This view does not own state — it just renders the chrome. The map
+//  view passes in callbacks and current state.
+//
+
+import SwiftUI
+
+struct MapControlsOverlay: View {
+    /// `nil` = filter pill row hidden (non-Pro). Provide a binding to show it.
+    var filterState: Binding<SpotMapFilterState>?
+    var availableVibeTags: [String]
+    var onOpenVibePicker: () -> Void
+    /// Recenter button visibility. `nil` hides the control entirely (e.g.,
+    /// when location permission is denied and we don't want to pretend to
+    /// offer the feature).
+    var canRecenter: Bool
+    var onRecenter: () -> Void
+    /// Bottom inset reserved for the spot preview card so the recenter
+    /// button sits above it instead of behind it.
+    var bottomReservedHeight: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // Top: filter pill row (Pro only).
+            if let filterState {
+                VStack(spacing: 0) {
+                    MapFilterPillRow(
+                        state: filterState,
+                        vibeTags: availableVibeTags,
+                        onOpenVibePicker: onOpenVibePicker
+                    )
+                    Spacer(minLength: 0)
+                }
+            }
+
+            // Bottom-right: recenter button.
+            if canRecenter {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    HStack {
+                        Spacer()
+                        recenterButton
+                            .padding(.trailing, Constants.Layout.Spacing.large)
+                            .padding(.bottom, max(Constants.Layout.Spacing.large,
+                                                  bottomReservedHeight + 12))
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(true)
+    }
+
+    private var recenterButton: some View {
+        Button(action: onRecenter) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Constants.Colors.buttonText)
+                .frame(width: 44, height: 44)
+                .background(
+                    Circle().fill(Constants.Colors.primary)
+                )
+                .overlay(
+                    Circle().stroke(Constants.Colors.background, lineWidth: 2)
+                )
+                .shadow(color: .black.opacity(0.20), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recenter map on my location")
+    }
+}
+
+// MARK: - Preview
+
+#Preview("Map controls – Pro w/ recenter") {
+    let vibeTags = Constants.VibeTags.defaultTags
+    return StatefulFilterState(initial: SpotMapFilterState(dimensions: [.following], vibeTags: [])) { binding in
+        ZStack {
+            Constants.Colors.accent.ignoresSafeArea()
+            MapControlsOverlay(
+                filterState: binding,
+                availableVibeTags: vibeTags,
+                onOpenVibePicker: {},
+                canRecenter: true,
+                onRecenter: {},
+                bottomReservedHeight: 0
+            )
+        }
+    }
+}
+
+#Preview("Map controls – non-Pro") {
+    ZStack {
+        Constants.Colors.accent.ignoresSafeArea()
+        MapControlsOverlay(
+            filterState: nil,
+            availableVibeTags: [],
+            onOpenVibePicker: {},
+            canRecenter: true,
+            onRecenter: {},
+            bottomReservedHeight: 0
+        )
+    }
+}
+
+private struct StatefulFilterState<Content: View>: View {
+    @State var value: SpotMapFilterState
+    let content: (Binding<SpotMapFilterState>) -> Content
+    init(initial: SpotMapFilterState, @ViewBuilder content: @escaping (Binding<SpotMapFilterState>) -> Content) {
+        self._value = State(initialValue: initial)
+        self.content = content
+    }
+    var body: some View { content($value) }
+}
