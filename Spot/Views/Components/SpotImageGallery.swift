@@ -11,7 +11,7 @@ struct SpotImageGallery: View {
         TabView(selection: $selection) {
             ForEach(Array(all.enumerated()), id: \.offset) { idx, urlString in
                 if let url = URL(string: urlString) {
-                    RemoteImage(url: url, transaction: Transaction(animation: .default)) { phase in
+                    RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
                         switch phase {
                         case .empty:
                             RoundedRectangle(cornerRadius: 12)

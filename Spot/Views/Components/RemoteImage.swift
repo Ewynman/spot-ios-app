@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct RemoteImageFailure: Error {
     let url: URL
@@ -23,6 +24,7 @@ struct RemoteImage<Content: View>: View {
     private let url: URL
     private let scale: CGFloat
     private let transaction: Transaction
+    private let maxPixelSize: CGFloat
     private let content: (RemoteImagePhase) -> Content
 
     @State private var phase: RemoteImagePhase = .empty
@@ -30,11 +32,13 @@ struct RemoteImage<Content: View>: View {
     init(
         url: URL,
         scale: CGFloat = 1.0,
+        maxPixelSize: CGFloat = 1024,
         transaction: Transaction = Transaction(animation: .default),
         @ViewBuilder content: @escaping (RemoteImagePhase) -> Content
     ) {
         self.url = url
         self.scale = scale
+        self.maxPixelSize = maxPixelSize
         self.transaction = transaction
         self.content = content
     }
@@ -54,12 +58,18 @@ struct RemoteImage<Content: View>: View {
 
     private func load() async {
         await MainActor.run { setPhase(.empty) }
+        if let cached = RemoteImagePipeline.shared.cachedImage(for: url) {
+            await MainActor.run { setPhase(.success(Image(uiImage: cached))) }
+            return
+        }
+
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
             request.timeoutInterval = 30
 
             let (data, response) = try await URLSession.shared.data(for: request)
+            if Task.isCancelled { return }
             let http = response as? HTTPURLResponse
             let status = http?.statusCode
 
@@ -72,7 +82,7 @@ struct RemoteImage<Content: View>: View {
                 )
             }
 
-            guard let ui = UIImage(data: data, scale: scale) else {
+            guard let ui = downsampledImage(from: data, maxPixelSize: maxPixelSize, scale: scale) else {
                 throw makeFailure(
                     statusCode: status,
                     underlying: NSError(domain: "RemoteImage", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid image data"]),
@@ -81,8 +91,11 @@ struct RemoteImage<Content: View>: View {
                 )
             }
 
+            if Task.isCancelled { return }
+            RemoteImagePipeline.shared.cache(image: ui, for: url)
             await MainActor.run { setPhase(.success(Image(uiImage: ui))) }
         } catch {
+            if Task.isCancelled { return }
             // Best-effort to recover status code if error is our typed failure
             if let typed = error as? RemoteImageFailure {
                 await MainActor.run { setPhase(.failure(typed)) }
@@ -113,6 +126,55 @@ struct RemoteImage<Content: View>: View {
             mimeType: mimeType,
             bodyPreview: preview
         )
+    }
+
+    private func downsampledImage(from data: Data, maxPixelSize: CGFloat, scale: CGFloat) -> UIImage? {
+        let sourceOptions: CFDictionary = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
+            return nil
+        }
+
+        let pixelSize = max(maxPixelSize * scale, 1)
+        let options: CFDictionary = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: pixelSize
+        ] as CFDictionary
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
+    }
+}
+
+enum RemoteImageMemory {
+    static func clearCache() {
+        RemoteImagePipeline.shared.clearMemoryCache()
+    }
+}
+
+private final class RemoteImagePipeline {
+    static let shared = RemoteImagePipeline()
+    private let cache = NSCache<NSURL, UIImage>()
+
+    private init() {
+        cache.countLimit = 180
+        cache.totalCostLimit = 50 * 1024 * 1024
+    }
+
+    func cachedImage(for url: URL) -> UIImage? {
+        cache.object(forKey: url as NSURL)
+    }
+
+    func cache(image: UIImage, for url: URL) {
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        cache.setObject(image, forKey: url as NSURL, cost: max(cost, 1))
+    }
+
+    func clearMemoryCache() {
+        cache.removeAllObjects()
     }
 }
 

@@ -15,6 +15,7 @@ class FeedViewModel: ObservableObject {
     @Published var hasMore = true
     @Published var deletingSpotIds: Set<String> = []
     private var loadTask: Task<Void, Never>?
+    private var isLoadingPage = false
     private let repo = FeedRepository.shared
     private var hasRecordedFirstItem = false
 
@@ -39,8 +40,11 @@ class FeedViewModel: ObservableObject {
     }
 
     func loadInitialSpots() async {
-        loadTask?.cancel()
+        if !spots.isEmpty { return }
+        guard !isLoadingPage else { return }
         loadTask = Task {
+            defer { Task { @MainActor in self.isLoadingPage = false } }
+            await MainActor.run { self.isLoadingPage = true }
             await MainActor.run { self.isLoading = true }
             await repo.loadInitial()
             await MainActor.run {
@@ -50,30 +54,35 @@ class FeedViewModel: ObservableObject {
                 recordFirstItemIfNeeded()
             }
         }
+        await loadTask?.value
     }
 
     func loadMoreSpots() {
-        guard !isLoading, hasMore else { return }
+        guard hasMore else { return }
+        guard !isLoadingPage else { return }
 
-        loadTask?.cancel()
-
-        loadTask = Task {
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            defer { Task { @MainActor in self.isLoadingPage = false } }
+            await MainActor.run { self.isLoadingPage = true }
             await MainActor.run { self.isLoading = true }
-            await repo.loadMore()
+            await self.repo.loadMore()
             await MainActor.run {
-                let new = repo.spots
+                let new = self.repo.spots
                 self.spots = new
-                self.hasMore = repo.moreAvailable
+                self.hasMore = self.repo.moreAvailable
                 self.isLoading = false
-                recordFirstItemIfNeeded()
+                self.recordFirstItemIfNeeded()
             }
         }
     }
 
     func refreshFeed() async {
-        loadTask?.cancel()
+        guard !isLoadingPage else { return }
+        await MainActor.run { self.isLoadingPage = true }
 
         loadTask = Task {
+            defer { Task { @MainActor in self.isLoadingPage = false } }
             await MainActor.run { self.isLoading = true }
             await repo.loadInitial()
             await MainActor.run {

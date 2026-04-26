@@ -42,6 +42,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             queue: .main
         ) { _ in
             ImageService.shared.clearCache()
+            RemoteImageMemory.clearCache()
             URLCache.shared.removeAllCachedResponses()
             Task { await MapViewportLoader.shared.clearCache() }
             SpotLogger.log(AppDelegateLogs.memoryWarning)

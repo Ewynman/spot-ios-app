@@ -79,6 +79,13 @@
             ReferencedContainer = "container:Spot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "IDEPreferLogStreaming"
+            value = "YES"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
       <StoreKitConfigurationFileReference
          identifier = "../../Spot/StoreKit/SpotDev.storekit">
       </StoreKitConfigurationFileReference>

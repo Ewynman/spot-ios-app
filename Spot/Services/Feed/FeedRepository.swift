@@ -85,15 +85,34 @@ final class FeedRepository: ObservableObject {
             let rankedFollowees = unseenFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
             let rankedGlobal = unseenGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
 
-            let blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
+            var blended = ranker.blend(followees: rankedFollowees, global: rankedGlobal, pageSize: pageSize, creatorCap: 2)
+            if blended.isEmpty {
+                // Fallback: if persistent seen-filtering exhausts candidates, show seen content
+                // (still privacy-gated) instead of returning an empty homepage.
+                var fallbackGlobal = gatedGlobal
+                if fallbackGlobal.count < pageSize && !globalExhausted {
+                    let topUp = await fetchAdditionalGlobal(targetCount: pageSize - fallbackGlobal.count)
+                    fallbackGlobal.append(contentsOf: topUp)
+                }
+                let fallbackFollowees = gatedFollowees.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+                let fallbackGlobalRanked = fallbackGlobal.sorted { ranker.score($0, ctx: ctx) > ranker.score($1, ctx: ctx) }
+                blended = ranker.blend(followees: fallbackFollowees, global: fallbackGlobalRanked, pageSize: pageSize, creatorCap: 2)
+                SpotLogger.log(FeedRepositoryLogs.loadInitial, details: [
+                    "fallbackToSeen": true,
+                    "fallbackFollowees": fallbackFollowees.count,
+                    "fallbackGlobal": fallbackGlobalRanked.count,
+                    "blended": blended.count
+                ])
+            }
             markSeen(blended)
 
+            let finalBlended = blended
             SpotLogger.log(FeedRepositoryLogs.loadInitial, details: [
                 "followees": rankedFollowees.count,
                 "global": rankedGlobal.count,
-                "blended": blended.count
+                "blended": finalBlended.count
             ])
-            await MainActor.run { self.spots = blended }
+            await MainActor.run { self.spots = finalBlended }
         } catch is CancellationError {
             SpotLogger.log(FeedRepositoryLogs.loadInitialFailed, details: ["error": "cancelled"])
         } catch {
@@ -222,6 +241,38 @@ final class FeedRepository: ObservableObject {
                 SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: [
                     "error": error.localizedDescription,
                     "phase": "global_top_up"
+                ])
+                break
+            }
+        }
+
+        if collected.count > targetCount {
+            return Array(collected.prefix(targetCount))
+        }
+        return collected
+    }
+
+    private func fetchAdditionalGlobal(targetCount: Int) async -> [Spot] {
+        guard targetCount > 0 else { return [] }
+        var collected: [Spot] = []
+        var attempts = 0
+        let maxAttempts = 8
+
+        while collected.count < targetCount && !globalExhausted && attempts < maxAttempts {
+            attempts += 1
+            do {
+                let next = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: pageSize, offset: globalNextOffset)
+                advanceGlobalState(fetched: next)
+                if next.isEmpty { break }
+                await privacy.warm(authorIds: Set(next.compactMap { $0.userId }))
+                let gated = await privacy.filter(spots: next)
+                if !gated.isEmpty {
+                    collected.append(contentsOf: gated)
+                }
+            } catch {
+                SpotLogger.log(FeedRepositoryLogs.loadMoreFailed, details: [
+                    "error": error.localizedDescription,
+                    "phase": "global_top_up_any"
                 ])
                 break
             }

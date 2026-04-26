@@ -20,6 +20,7 @@ struct FeedContentView: View {
     var onFirstItemAppeared: (() -> Void)? = nil
     @State private var firstItemRecorded = false
     @State private var failedImageSpotIds: Set<String> = []
+    @State private var lastLoadTriggerSpotId: String?
 
     var body: some View {
         Group {
@@ -37,11 +38,6 @@ struct FeedContentView: View {
                 }
             } else if !spots.isEmpty {
                 ScrollView {
-                    RefreshControl(coordinateSpace: .named("RefreshControl")) {
-                        failedImageSpotIds.removeAll()
-                        Task { await onRefresh() }
-                    }
-
                     LazyVStack(spacing: 0) {
                         ForEach(spots.indices, id: \.self) { idx in
                             let spot = spots[idx]
@@ -72,31 +68,33 @@ struct FeedContentView: View {
                                     onFirstItemAppeared?()
                                     firstItemRecorded = true
                                 }
-                                let progress = Double(idx + 1) / Double(max(spots.count, 1))
-                                if progress >= 0.7 { onScrolledToBottom() }
+                                let thresholdIndex = max(spots.count - 5, 0)
+                                if idx >= thresholdIndex {
+                                    let triggerId = spot.safeId
+                                    if lastLoadTriggerSpotId != triggerId {
+                                        lastLoadTriggerSpotId = triggerId
+                                        onScrolledToBottom()
+                                    }
+                                }
                             }
                         }
                         if isLoading {
                             ProgressView().padding()
-                        } else {
-                            GeometryReader { geo in
-                                Color.clear
-                                    .onAppear {
-                                        if geo.frame(in: .global).maxY < UIScreen.main.bounds.height + 100 {
-                                            onScrolledToBottom()
-                                        }
-                                    }
-                            }
-                            .frame(height: 1)
                         }
                     }
                 }
                 .refreshable {
                     failedImageSpotIds.removeAll()
+                    lastLoadTriggerSpotId = nil
                     await onRefresh()
                 }
                 .coordinateSpace(name: "RefreshControl")
                 .background(Color(hex: "F5F3EF"))
+                .onChange(of: spots.count) { _, _ in
+                    if spots.isEmpty {
+                        lastLoadTriggerSpotId = nil
+                    }
+                }
             } else {
                 EmptyFeedView()
             }

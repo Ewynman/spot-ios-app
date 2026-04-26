@@ -282,7 +282,7 @@ struct SpotCard: View {
         if let urls = currentSpot.imageURLs, !urls.isEmpty {
             SpotImageGallery(urls: urls, fallback: currentSpot.imageURL)
         } else if let thumb = currentSpot.thumbnailURL, let turl = URL(string: thumb) {
-            RemoteImage(url: turl, transaction: Transaction(animation: .default)) { phase in
+            RemoteImage(url: turl, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
@@ -348,9 +348,8 @@ struct SpotCard: View {
                 }
             }
             .id(retryToken)
-            .overlay(fullImageOverlay)
         } else if let urlString = currentSpot.imageURL, let url = URL(string: urlString) {
-            RemoteImage(url: url, transaction: Transaction(animation: .default)) { phase in
+            RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
@@ -434,60 +433,6 @@ struct SpotCard: View {
                         "url": currentSpot.imageURL ?? "nil"
                     ])
                 }
-        }
-    }
-
-    private var fullImageOverlay: some View {
-        Group {
-            if let full = currentSpot.imageURL, let furl = URL(string: full), currentSpot.imageURLs?.isEmpty ?? true {
-                RemoteImage(url: furl, transaction: Transaction(animation: .default)) { phase in
-                    switch phase {
-                    case .empty:
-                        Color.clear
-                    case .success(let image):
-                        image.resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 320)
-                            .clipped()
-                            .cornerRadius(12)
-                            .onAppear {
-                                if let tFirst = PerfMetrics.shared.measure("t_first_item") {
-                                    PerfMetrics.shared.recordOnce("img_first_paint", value: tFirst)
-                                }
-                                SpotLogger.log(SpotCardLogs.spotImageLoaded, details: [
-                                    "spotId": currentSpot.safeId,
-                                    "source": source,
-                                    "hasThumb": true,
-                                    "url": full
-                                ])
-                            }
-                    case .failure(let failure):
-                        Color.clear.onAppear {
-                            let host = URL(string: full)?.host ?? "unknown"
-                            SpotLogger.log(SpotCardLogs.imageFullSizeLoadFailed, details: [
-                                "spotId": currentSpot.safeId,
-                                "source": source,
-                                "fullHost": host,
-                                "fullUrl": full,
-                                "statusCode": failure.statusCode as Any,
-                                "errorDomain": failure.nsError.domain,
-                                "errorCode": failure.nsError.code,
-                                "error": failure.underlying.localizedDescription,
-                                "mimeType": failure.mimeType as Any,
-                                "bodyPreview": failure.bodyPreview as Any
-                            ])
-                            if !reportedImageFailure {
-                                reportedImageFailure = true
-                                onImageFailure?(currentSpot)
-                            }
-                        }
-                    @unknown default:
-                        Color.clear
-                    }
-                }
-                .id(retryToken)
-            }
         }
     }
 
