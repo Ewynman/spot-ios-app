@@ -6,6 +6,15 @@ enum CoachTarget: Hashable {
     case vibeTag
     case likeSave
     case plusButton
+    case spotCard
+    case spotDetails
+    case likeButton
+    case bookmarkButton
+    case creator
+    case mapTab
+    case mapUserLocation
+    case mapMarkers
+    case mapMarkerPreview
 }
 
 struct CoachFramesPrefKey: PreferenceKey {

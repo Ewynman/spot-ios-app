@@ -14,7 +14,7 @@ struct LoggingConfig {
     /// Call this in AppDelegate or App init to control what debug logs are enabled
     static func configure() {
         let defaults: [String: Any] = [
-            Constants.UserDefaultsKeys.debugLoggingEnabled: true,
+            Constants.UserDefaultsKeys.debugLoggingEnabled: false,
             Constants.UserDefaultsKeys.logSpotCard: false,
             Constants.UserDefaultsKeys.logPrivacy: false,
             Constants.UserDefaultsKeys.logFeedComponent: false,
@@ -28,7 +28,7 @@ struct LoggingConfig {
         // Reset all dynamic logging flags before applying selected presets.
         DebugCategory.disableAll()
         SpotLogger.enableAllDebug = false
-        SpotLogger.mapOnlyLoggingEnabled = true
+        SpotLogger.mapOnlyLoggingEnabled = false
         ComponentLogging.spotCard = false
         ComponentLogging.profileView = false
         ComponentLogging.searchView = false

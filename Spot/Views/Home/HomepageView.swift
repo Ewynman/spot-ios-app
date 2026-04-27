@@ -7,48 +7,39 @@ struct HomepageView: View {
     @State private var showPostSuccessToast = false
     @State private var postSuccessToastTask: Task<Void, Never>?
     @State private var postSuccessRefreshTask: Task<Void, Never>?
-    // Tour
-    @StateObject private var tourManager = HomeTourManager()
-    @State private var coachFrames: [CoachTarget: CGRect] = [:]
-
-    private var isFirstSessionAfterSignup: Bool {
-        authVM.isAuthenticated && (authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty) && !tourManager.hasSeenHomeTour
-    }
 
     var body: some View {
         NavigationStack {
-            HomeTourHost(manager: tourManager, coachFrames: $coachFrames, isFirstSessionAfterSignup: isFirstSessionAfterSignup) {
-                VStack(spacing: 0) {
-                    // Top bar: SPOT branding only (no plus; Post is its own tab)
-                    TopNavigationView(
-                        title: "SPOT",
-                        rightButton: .none,
-                        showUploadView: .constant(false)
-                    )
+            VStack(spacing: 0) {
+                // Top bar: SPOT branding only (no plus; Post is its own tab)
+                TopNavigationView(
+                    title: "SPOT",
+                    rightButton: .none,
+                    showUploadView: .constant(false)
+                )
 
-                    // Feed content only
-                    FeedContentView(
-                        isLoading: $feedVM.isLoading,
-                        spots: feedVM.spots,
-                        mapSpots: feedVM.mapSpots,
-                        selectedTab: "Feed",
-                        onScrolledToBottom: { feedVM.loadMoreSpots() },
-                        onRefresh: { await feedVM.refreshFeed() },
-                        userId: authVM.userId,
-                        onDeleteSpot: { spot in
-                            Task { await feedVM.delete(spot: spot) }
-                        },
-                        onFirstItemAppeared: { feedVM.recordFirstItemIfNeeded() },
-                        refreshErrorMessage: feedVM.refreshErrorMessage,
-                        emptyStatus: feedVM.emptyStatus?.status,
-                        onCellAppear: { spot in
-                            FeedEventService.recordImpression(spot: spot)
-                        },
-                        onCellDisappear: { spot in
-                            FeedEventService.recordCellLeftViewport(spot: spot)
-                        }
-                    )
-                }
+                // Feed content only
+                FeedContentView(
+                    isLoading: $feedVM.isLoading,
+                    spots: feedVM.spots,
+                    mapSpots: feedVM.mapSpots,
+                    selectedTab: "Feed",
+                    onScrolledToBottom: { feedVM.loadMoreSpots() },
+                    onRefresh: { await feedVM.refreshFeed() },
+                    userId: authVM.userId,
+                    onDeleteSpot: { spot in
+                        Task { await feedVM.delete(spot: spot) }
+                    },
+                    onFirstItemAppeared: { feedVM.recordFirstItemIfNeeded() },
+                    refreshErrorMessage: feedVM.refreshErrorMessage,
+                    emptyStatus: feedVM.emptyStatus?.status,
+                    onCellAppear: { spot in
+                        FeedEventService.recordImpression(spot: spot)
+                    },
+                    onCellDisappear: { spot in
+                        FeedEventService.recordCellLeftViewport(spot: spot)
+                    }
+                )
             }
             .overlay(alignment: .top) {
                 VStack(spacing: 8) {
@@ -77,7 +68,6 @@ struct HomepageView: View {
             Task {
                 await feedVM.loadInitialSpots()
             }
-            tourManager.configure(userId: authVM.userId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { notification in
             postSuccessToastTask?.cancel()

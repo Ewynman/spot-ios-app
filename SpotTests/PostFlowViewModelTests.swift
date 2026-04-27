@@ -62,9 +62,9 @@ struct PostFlowViewModelTests {
     @Test func canProceedToNextStepStep3RequiresVibe() {
         let vm = PostFlowViewModel()
         vm.currentStep = 3
-        vm.selectedVibe = ""
+        vm.selectedVibes = []
         #expect(vm.canProceedToNextStep == false)
-        vm.selectedVibe = "Chill"
+        vm.selectedVibes = ["Chill"]
         #expect(vm.canProceedToNextStep == true)
     }
 

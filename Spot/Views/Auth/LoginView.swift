@@ -9,7 +9,7 @@ import SwiftUI
 import Supabase
 
 struct LoginView: View {
-    @State private var email = ""
+    @State private var loginIdentifier = ""
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -21,7 +21,10 @@ struct LoginView: View {
         if text.contains("network") || text.contains("internet") {
             return "Network error. Please check your connection."
         }
-        return "Incorrect email or password."
+        if text.contains("username") || text.contains("no account found") {
+            return "No account found for that username."
+        }
+        return "Incorrect email/username or password."
     }
 
     var body: some View {
@@ -48,13 +51,12 @@ struct LoginView: View {
                     // Fields with labels (match Settings style)
                     VStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Email")
+                            Text("Email or Username")
                                 .font(FontManager.primaryText())
                                 .foregroundColor(Constants.Colors.primary)
-                            CustomTextField(placeholder: "Email", text: $email)
+                            CustomTextField(placeholder: "Email or Username", text: $loginIdentifier)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                                .keyboardType(.emailAddress)
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Password")
@@ -69,8 +71,8 @@ struct LoginView: View {
                     HStack {
                         Spacer()
                         Button(action: {
-                            let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else {
+                            let trimmed = loginIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty, trimmed.contains("@") else {
                                 errorMessage = "Enter your email to reset your password"
                                 return
                             }
@@ -97,7 +99,7 @@ struct LoginView: View {
 
                     // Login Button
                     Button(action: {
-                        guard !email.isEmpty, !password.isEmpty else {
+                        guard !loginIdentifier.isEmpty, !password.isEmpty else {
                             errorMessage = "Please fill in all fields"
                             return
                         }
@@ -107,10 +109,19 @@ struct LoginView: View {
 
                         Task {
                             do {
-                                _ = try await supabase.auth.signIn(
-                                    email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-                                    password: password
-                                )
+                                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                                    AuthService.shared.signIn(
+                                        identifier: loginIdentifier,
+                                        password: password
+                                    ) { result in
+                                        switch result {
+                                        case .success:
+                                            continuation.resume(returning: ())
+                                        case .failure(let error):
+                                            continuation.resume(throwing: error)
+                                        }
+                                    }
+                                }
                                 await MainActor.run {
                                     isLoading = false
                                     SpotLogger.log(LoginViewLogs.loginSuccess)

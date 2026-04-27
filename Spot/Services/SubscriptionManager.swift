@@ -22,6 +22,7 @@ final class SubscriptionManager: ObservableObject {
     @Published var isPurchasing: Bool = false
     @Published var isRestoring: Bool = false
     @Published var hasProduct: Bool = false
+    @Published var productLoadError: String?
 
     // Try current and legacy IDs to avoid config mismatches during setup
     let productIds: [String] = ["spotPro", "spot.pro.yearly"]
@@ -34,10 +35,13 @@ final class SubscriptionManager: ObservableObject {
         let products = try await Product.products(for: productIds)
         guard let product = products.first else {
             SpotLogger.log(SubscriptionManagerLogs.noMatchingProduct, details: ["ids": productIds])
-            throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "No products found. Select a .storekit file in Scheme > Run > Options or finish subscription setup in App Store Connect."])
+            let message = "No products found. Firebase or debug builds need a StoreKit config, and production builds need a configured App Store Connect subscription."
+            productLoadError = message
+            throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: message])
         }
         cachedProduct = product
         hasProduct = true
+        productLoadError = nil
         return product
     }
 
@@ -47,6 +51,9 @@ final class SubscriptionManager: ObservableObject {
             _ = try await loadProduct()
         } catch {
             hasProduct = false
+            if productLoadError == nil {
+                productLoadError = error.localizedDescription
+            }
             SpotLogger.log(SubscriptionManagerLogs.ensureProductLoadedFailed, details: ["error": error.localizedDescription])
         }
     }

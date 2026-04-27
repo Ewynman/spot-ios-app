@@ -53,7 +53,17 @@ final class SearchViewModel: ObservableObject {
     private let service = SearchService.shared
 
     func clear() {
-        users = []; locations = []; vibes = []
+        users = []
+        locations = []
+        vibes = []
+        gridTitle = nil
+        gridIsVibe = false
+        gridSpots = []
+        lastGridDoc = nil
+        hasMoreGrid = true
+        gridVibeFilters = nil
+        gridLocationFilter = nil
+        selectedVibeFilters.removeAll()
     }
 
     func performSearch(force: Bool = false) async {

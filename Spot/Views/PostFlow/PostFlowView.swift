@@ -59,27 +59,30 @@ struct PostFlowView: View {
                     } else {
                         ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
-                        Group {
-                            switch viewModel.currentStep {
-                            case 1:
-                                PhotoSelectionView(
-                                    selectedImages: $viewModel.selectedImages,
-                                    draftCount: viewModel.availableDrafts.count,
-                                    onOpenDrafts: {
-                                        showDraftsSheet = true
-                                        viewModel.refreshDrafts()
-                                    }
-                                )
-                            case 2:
-                                LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
-                            case 3:
-                                VibeSelectionView(
-                                    selectedVibes: $viewModel.selectedVibes,
-                                    maxVibes: viewModel.selectedImages.count > 1 ? 5 : 3
-                                )
-                            default:
-                                EmptyView()
+                        ScrollView(showsIndicators: false) {
+                            Group {
+                                switch viewModel.currentStep {
+                                case 1:
+                                    PhotoSelectionView(
+                                        selectedImages: $viewModel.selectedImages,
+                                        draftCount: viewModel.availableDrafts.count,
+                                        onOpenDrafts: {
+                                            showDraftsSheet = true
+                                            viewModel.refreshDrafts()
+                                        }
+                                    )
+                                case 2:
+                                    LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
+                                case 3:
+                                    VibeSelectionView(
+                                        selectedVibes: $viewModel.selectedVibes,
+                                        maxVibes: viewModel.selectedImages.count > 1 ? 5 : 3
+                                    )
+                                default:
+                                    EmptyView()
+                                }
                             }
+                            .padding(.bottom, 12)
                         }
                         .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
@@ -320,6 +323,9 @@ struct DraftsSheetView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .background(Constants.Colors.background)
                 } else {
                     List {
                         ForEach(drafts) { draft in
@@ -384,6 +390,8 @@ struct DraftsSheetView: View {
             }
             .navigationTitle("Drafts")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Constants.Colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     CustomBackButton {

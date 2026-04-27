@@ -15,6 +15,10 @@ struct PaywallView: View {
         subscriptionManager.isPurchasing || subscriptionManager.isRestoring
     }
 
+    private var isPurchaseDisabled: Bool {
+        isStoreBusy || !subscriptionManager.hasProduct
+    }
+
     private var primaryButtonTitle: String {
         if subscriptionManager.isPurchasing {
             return "Processing…"
@@ -36,6 +40,11 @@ struct PaywallView: View {
                     Text(priceLine.isEmpty ? "…" : priceLine)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
+                    if let productLoadError = subscriptionManager.productLoadError, !subscriptionManager.hasProduct {
+                        Text(productLoadError)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
                     Divider()
                     Group {
                         FeatureRow(title: "Custom vibe tags")
@@ -66,7 +75,7 @@ struct PaywallView: View {
                         .cornerRadius(20)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(isStoreBusy)
+                .disabled(isPurchaseDisabled)
                 .padding(.bottom, 4)
 
                 Button(action: restorePurchases) {
@@ -76,6 +85,35 @@ struct PaywallView: View {
                 .foregroundColor(Constants.Colors.primary)
                 .disabled(isStoreBusy)
                 .padding(.bottom, 8)
+
+                VStack(spacing: 6) {
+                    Text("Subscription automatically renews unless canceled at least 24 hours before the end of the current period.")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+
+                    HStack(spacing: 10) {
+                        Button("Terms") {
+                            openURL("https://spotapp.online/terms")
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.primary)
+
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+
+                        Button("Privacy") {
+                            openURL("https://spotapp.online/privacy")
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .font(.caption)
+                        .foregroundColor(Constants.Colors.primary)
+                    }
+                    .padding(.bottom, 12)
+                }
             }
             .padding(.top, 16)
             .background(Constants.Colors.background.ignoresSafeArea())
@@ -111,6 +149,10 @@ struct PaywallView: View {
 
     private func subscribe() {
         purchaseError = nil
+        guard subscriptionManager.hasProduct else {
+            purchaseError = subscriptionManager.productLoadError ?? "Purchases aren't available in this build yet."
+            return
+        }
         SpotLogger.log(PaywallViewLogs.purchaseStarted)
         Task {
             do {
@@ -157,6 +199,11 @@ struct PaywallView: View {
                 await MainActor.run { purchaseError = error.localizedDescription }
             }
         }
+    }
+
+    private func openURL(_ string: String) {
+        guard let url = URL(string: string) else { return }
+        UIApplication.shared.open(url)
     }
 }
 

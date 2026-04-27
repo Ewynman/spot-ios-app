@@ -250,7 +250,7 @@ struct RootView: View {
         let cameraGranted = permissionManager.cameraStatus == .authorized
 
         struct Row: Decodable {
-            let username: String
+            let username: String?
             let profile_image_url: String?
         }
 
@@ -263,7 +263,9 @@ struct RootView: View {
                 .single()
                 .execute()
                 .value
-            let usernameOk = !row.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let persistedUsername = row.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let metadataUsername = await bestEffortAuthMetadataUsername()
+            let usernameOk = !((persistedUsername?.isEmpty ?? true) && (metadataUsername?.isEmpty ?? true))
             let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
             let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
             let photoOk = !((persistedPhotoURL?.isEmpty ?? true) && (metadataPhotoURL?.isEmpty ?? true))
@@ -278,10 +280,38 @@ struct RootView: View {
             }
             needsProfileSetup = !(usernameOk && photoOk)
         } catch {
-            needsProfileSetup = true
+            // Avoid blocking existing users in setup if profile check temporarily fails.
+            needsProfileSetup = false
         }
 
-        showPostAuthSetup = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || needsProfileSetup)
+        var shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || needsProfileSetup)
+
+        // Guard against transient auth/user-row sync delays right after signup/login:
+        // re-check once before presenting profile setup so users with completed profiles
+        // never see a brief setup flash.
+        if shouldShow && needsProfileSetup {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            do {
+                let row: Row = try await supabase
+                    .from("users")
+                    .select("username,profile_image_url")
+                    .eq("id", value: uid)
+                    .single()
+                    .execute()
+                    .value
+                let persistedUsername = row.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let metadataUsername = await bestEffortAuthMetadataUsername()
+                let usernameOk = !((persistedUsername?.isEmpty ?? true) && (metadataUsername?.isEmpty ?? true))
+                let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
+                let photoOk = !((persistedPhotoURL?.isEmpty ?? true) && (metadataPhotoURL?.isEmpty ?? true))
+                shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || !(usernameOk && photoOk))
+            } catch {
+                // Keep the earlier decision on retry errors.
+            }
+        }
+
+        showPostAuthSetup = shouldShow
         hasResolvedPostAuthSetup = true
     }
 
@@ -292,6 +322,19 @@ struct RootView: View {
             metadata["profile_image_url"]?.stringValue,
             metadata["avatar_url"]?.stringValue,
             metadata["picture"]?.stringValue
+        ]
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+    }
+
+    private func bestEffortAuthMetadataUsername() async -> String? {
+        guard let session = try? await supabase.auth.session else { return nil }
+        let metadata = session.user.userMetadata
+        let candidates: [String?] = [
+            metadata["username"]?.stringValue,
+            metadata["user_name"]?.stringValue,
+            metadata["preferred_username"]?.stringValue
         ]
         return candidates
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }

@@ -82,6 +82,9 @@ struct MapView: View {
                         }
                     )
                     .ignoresSafeArea(edges: .bottom)
+                    .overlay {
+                        mapOnboardingTargets
+                    }
 
                     MapControlsOverlay(
                         filterState: filterPillBinding,
@@ -140,6 +143,7 @@ struct MapView: View {
                 source: "Map",
                 onClose: { closePanel() }
             )
+            .measure(target: .mapMarkerPreview)
             .frame(height: height.height)
             .transition(.move(edge: .bottom))
             .animation(.spring(response: Constants.MapDesign.selectSpringResponse,
@@ -148,6 +152,28 @@ struct MapView: View {
         } else {
             Color.clear.frame(height: 0)
         }
+    }
+
+    private var mapOnboardingTargets: some View {
+        GeometryReader { geo in
+            ZStack {
+                if locationManager.userLocation != nil {
+                    Color.clear
+                        .frame(width: 74, height: 74)
+                        .clipShape(Circle())
+                        .measure(target: .mapUserLocation)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+
+                Color.clear
+                    .frame(width: min(190, geo.size.width * 0.56), height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .measure(target: .mapMarkers)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.42)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// Computes the safe panel height + emits a `panelHeightClamped` log if

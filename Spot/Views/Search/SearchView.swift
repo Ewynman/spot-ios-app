@@ -19,7 +19,12 @@ struct SearchView: View {
                         .focused($focused)
                         .foregroundColor(Constants.Colors.textPrimary)
                     if !vm.query.isEmpty {
-                        Button(action: { vm.query = ""; vm.clear(); focused = false }) {
+                        Button(action: {
+                            vm.query = ""
+                            vm.clear()
+                            selectedGridSpot = nil
+                            focused = false
+                        }) {
                             Image(systemName: "xmark.circle.fill").foregroundColor(Constants.Colors.textPrimary)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -72,14 +77,28 @@ struct SearchView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(vm.users.indices, id: \.self) { i in
                                     let u = vm.users[i]
-                                    HStack(spacing: 12) {
-                                        UserAvatar(urlString: u["profileImageURL"] as? String)
-                                        Text((u["username"] as? String) ?? "")
-                                            .font(FontManager.primaryText())
-                                            .foregroundColor(Constants.Colors.primary)
+                                    if let uid = u["uid"] as? String, !uid.isEmpty {
+                                        NavigationLink(value: uid) {
+                                            HStack(spacing: 12) {
+                                                UserAvatar(urlString: u["profileImageURL"] as? String)
+                                                Text((u["username"] as? String) ?? "")
+                                                    .font(FontManager.primaryText())
+                                                    .foregroundColor(Constants.Colors.primary)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 16)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    } else {
+                                        HStack(spacing: 12) {
+                                            UserAvatar(urlString: u["profileImageURL"] as? String)
+                                            Text((u["username"] as? String) ?? "")
+                                                .font(FontManager.primaryText())
+                                                .foregroundColor(Constants.Colors.primary)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 16)
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 16)
                                 }
                                 if vm.users.isEmpty && !vm.query.isEmpty {
                                     Text("No users found")
@@ -171,8 +190,8 @@ struct SearchView: View {
                                 .simultaneousGesture(
                                     DragGesture(minimumDistance: 24)
                                         .onEnded { value in
-                                            let didSwipeLeft = value.translation.width < -70 || value.predictedEndTranslation.width < -120
-                                            if didSwipeLeft {
+                                            let didSwipeRight = value.translation.width > 70 || value.predictedEndTranslation.width > 120
+                                            if didSwipeRight {
                                                 withAnimation { self.selectedGridSpot = nil }
                                             }
                                         }
@@ -198,6 +217,9 @@ struct SearchView: View {
                 }
             }
             .navigationBarBackButtonHidden(true)
+            .navigationDestination(for: String.self) { userId in
+                ProfileView(userId: userId, fromNavigationPush: true)
+            }
             .background(Color(hex: "F5F3EF"))
         }
         .sheet(isPresented: $showFilters) {

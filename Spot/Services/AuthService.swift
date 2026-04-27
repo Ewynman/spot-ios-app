@@ -15,15 +15,14 @@ class AuthService {
     // MARK: - Sign Up with Email-in-Use Handling
 
     func signUp(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
         Task {
             do {
                 _ = try await supabase.auth.signUp(email: cleanEmail, password: password)
                 await SupabaseUserService.shared.syncCurrentUser()
                 completion(.success(.success))
             } catch {
-                let message = error.localizedDescription.lowercased()
-                if message.contains("already") || message.contains("exists") || message.contains("registered") {
+                if AuthErrorClassifier.isEmailInUse(error: error) {
                     SpotLogger.log(AuthServiceLogs.emailInUseDetected)
                     await MainActor.run {
                         AnalyticsService.shared.trackAuthEvent(Constants.Analytics.authEmailInUse, parameters: ["action": "detected"])
@@ -39,7 +38,7 @@ class AuthService {
     // MARK: - Sign In
 
     func signIn(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
         Task {
             do {
                 _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
@@ -53,7 +52,7 @@ class AuthService {
     // MARK: - Password Reset
 
     func resetPassword(email: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
         Task {
             do {
                 try await supabase.auth.resetPasswordForEmail(cleanEmail)
@@ -127,8 +126,8 @@ class AuthService {
 
     /// Completion-style sign up used by existing UI
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
+        let cleanUsername = AuthInputNormalizer.normalizeUsername(username)
         Task {
             do {
                 _ = try await supabase.auth.signUp(
@@ -155,7 +154,7 @@ class AuthService {
 
     /// Completion-style sign in used by existing UI
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
         Task {
             do {
                 _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
@@ -164,6 +163,47 @@ class AuthService {
                 await MainActor.run { completion(.failure(error)) }
             }
         }
+    }
+
+    /// Completion-style sign in that accepts either an email or username.
+    /// If the identifier is not an email, this resolves the account email by username.
+    func signIn(identifier: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let cleanIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                let emailToUse: String
+                if cleanIdentifier.contains("@") {
+                    emailToUse = AuthInputNormalizer.normalizeEmail(cleanIdentifier)
+                } else {
+                    guard let resolved = try await resolveEmail(forUsername: cleanIdentifier) else {
+                        throw NSError(
+                            domain: "AuthService",
+                            code: 404,
+                            userInfo: [NSLocalizedDescriptionKey: "No account found for that username."]
+                        )
+                    }
+                    emailToUse = resolved
+                }
+                _ = try await supabase.auth.signIn(email: emailToUse, password: password)
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
+        }
+    }
+
+    private func resolveEmail(forUsername username: String) async throws -> String? {
+        let normalized = AuthInputNormalizer.normalizeUsernameLower(username)
+        guard !normalized.isEmpty else { return nil }
+        struct Params: Encodable { let p_username: String }
+        let email: String? = try await supabase
+            .rpc("resolve_login_email", params: Params(p_username: normalized))
+            .execute()
+            .value
+        if let email, !email.isEmpty {
+            return AuthInputNormalizer.normalizeEmail(email)
+        }
+        return nil
     }
 
     // MARK: - Reauthentication / Account management (callback style for existing VM)

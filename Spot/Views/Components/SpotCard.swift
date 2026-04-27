@@ -91,8 +91,11 @@ struct SpotCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
-            spotImage
+            VStack(alignment: .leading, spacing: 12) {
+                header
+                spotImage
+            }
+            .measure(target: .spotDetails)
             interactionBar
             if showError {
                 Text(errorMessage)
@@ -105,6 +108,7 @@ struct SpotCard: View {
         .padding(.horizontal, 12)
         .background(Constants.Colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .measure(target: .spotCard)
         .onAppear {
             isLiked = authVM.likedSpots.contains(currentSpot.safeId)
             isSaved = authVM.bookmarkedSpots.contains(currentSpot.safeId)
@@ -240,6 +244,7 @@ struct SpotCard: View {
                             .foregroundColor(Constants.Colors.primary)
                             .measure(target: .username)
                     }
+                    .measure(target: .creator)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
@@ -461,6 +466,7 @@ struct SpotCard: View {
                     Image(systemName: isLiked ? "heart.fill" : "heart")
                         .font(.system(size: 22))
                         .foregroundColor(isLiked ? .red : .gray)
+                        .measure(target: .likeButton)
                 }
                 .buttonStyle(PlainButtonStyle())
 
@@ -490,6 +496,7 @@ struct SpotCard: View {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 22))
                         .foregroundColor(isSaved ? Constants.Colors.primary : .gray)
+                        .measure(target: .bookmarkButton)
                 }
                 .buttonStyle(PlainButtonStyle())
 

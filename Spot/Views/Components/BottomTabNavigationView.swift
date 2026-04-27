@@ -61,7 +61,9 @@ private struct PublishBannerView: View {
 struct BottomTabNavigationView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @ObservedObject private var spotPublishCoordinator = SpotPublishCoordinator.shared
+    @StateObject private var firstRunOnboarding = SpotFirstRunOnboardingManager()
     @State private var selectedTab: Int = 0
+    @State private var coachFrames: [CoachTarget: CGRect] = [:]
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -90,27 +92,28 @@ struct BottomTabNavigationView: View {
 
                 // Custom bottom bar (same design as before: built into page, not system tab bar)
                 HStack(spacing: 0) {
-                    Button(action: { selectedTab = 0 }) {
+                    Button(action: { selectTab(0) }) {
                         BottomNavItem(icon: "house.fill", title: "Home", isSelected: selectedTab == 0)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button(action: { selectedTab = 1 }) {
+                    Button(action: { selectTab(1) }) {
                         BottomNavItem(icon: "map.fill", title: "Map", isSelected: selectedTab == 1)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .measure(target: .mapTab)
 
-                    Button(action: { selectedTab = 2 }) {
+                    Button(action: { selectTab(2) }) {
                         BottomNavItem(icon: "plus.square.fill", title: "Post", isSelected: selectedTab == 2)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button(action: { selectedTab = 3 }) {
+                    Button(action: { selectTab(3) }) {
                         BottomNavItem(icon: "magnifyingglass", title: "Search", isSelected: selectedTab == 3)
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    Button(action: { selectedTab = 4 }) {
+                    Button(action: { selectTab(4) }) {
                         BottomNavItem(icon: "person.fill", title: "Profile", isSelected: selectedTab == 4)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -140,7 +143,68 @@ struct BottomTabNavigationView: View {
             .padding(.top, 8)
             .animation(.easeInOut(duration: 0.2), value: spotPublishCoordinator.bannerPhase)
             .animation(.easeInOut(duration: 0.2), value: spotPublishCoordinator.showToast)
+
+            SpotFirstRunOnboardingOverlay(
+                manager: firstRunOnboarding,
+                targetRect: currentTourTargetRect,
+                onPrimary: handleOnboardingPrimaryAction,
+                onBack: handleOnboardingBack,
+                onSkip: firstRunOnboarding.skip
+            )
         }
+        .onPreferenceChange(CoachFramesPrefKey.self) { coachFrames = $0 }
+        .onAppear(perform: evaluateFirstRunOnboarding)
+        .onChange(of: authVM.isAuthenticated) { _, _ in evaluateFirstRunOnboarding() }
+        .onChange(of: authVM.userId) { _, _ in evaluateFirstRunOnboarding() }
+        .onChange(of: authVM.likedSpots) { _, _ in evaluateFirstRunOnboarding() }
+        .onChange(of: authVM.bookmarkedSpots) { _, _ in evaluateFirstRunOnboarding() }
+    }
+
+    private var currentTourTargetRect: CGRect? {
+        guard let target = firstRunOnboarding.currentStep.target else { return nil }
+        return coachFrames[target]
+    }
+
+    private func selectTab(_ tab: Int) {
+        selectedTab = tab
+        if tab == 1 {
+            firstRunOnboarding.mapTabSelected()
+        }
+    }
+
+    private func evaluateFirstRunOnboarding() {
+        let firstSessionCandidate = authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty
+        if selectedTab != 0, firstRunOnboarding.currentStep == .welcome {
+            selectedTab = 0
+        }
+        firstRunOnboarding.startIfNeeded(
+            isAuthenticated: authVM.isAuthenticated,
+            isFirstSessionCandidate: firstSessionCandidate,
+            userId: authVM.userId
+        )
+    }
+
+    private func handleOnboardingPrimaryAction() {
+        switch firstRunOnboarding.currentStep {
+        case .welcome:
+            selectedTab = 0
+            firstRunOnboarding.startTour()
+        case .mapTab:
+            selectedTab = 1
+            firstRunOnboarding.mapTabSelected()
+        case .finale:
+            selectedTab = 0
+            firstRunOnboarding.finish()
+        default:
+            firstRunOnboarding.next()
+        }
+    }
+
+    private func handleOnboardingBack() {
+        if firstRunOnboarding.currentStep == .mapTab {
+            selectedTab = 0
+        }
+        firstRunOnboarding.back()
     }
 }
 

@@ -4,6 +4,10 @@
 //
 //  Created by Edward Wynman on 7/10/25.
 //
+//  Launch-only smoke tests. These guard the bare minimum: the app boots,
+//  doesn't crash on cold start, and renders some interactive surface. They
+//  also capture a launch screenshot useful for visual regression review.
+//
 
 import XCTest
 
@@ -18,12 +22,19 @@ final class SpotUITestsLaunchTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunch() throws {
+    func testLaunchCompletesAndRendersInteractiveSurface() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        // Cold launch should produce *some* tappable element within a
+        // generous window, regardless of which gate the user lands on
+        // (welcome, confirm-email, tab bar). If nothing is hittable, the
+        // launch hung or crashed.
+        let firstButton = app.buttons.firstMatch
+        XCTAssertTrue(
+            firstButton.waitForExistence(timeout: 20),
+            "App launch should produce at least one interactive button within 20s"
+        )
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Launch Screen"
