@@ -36,6 +36,15 @@ enum Constants {
         static let mapAvatarRing = Color(hex: "#1D2C24")
         /// Halo shown when location is updating.
         static let mapAvatarHalo = Color(hex: "#1D2C24").opacity(0.18)
+
+        // MARK: - Welcome screen
+
+        static let welcomeGlow = Color(hex: "#7AA382")
+        static let welcomeSurface = Color(hex: "#F9F7F1")
+        static let welcomeMutedText = Color(hex: "#607064")
+        static let welcomeLine = Color(hex: "#AEB9AD")
+        static let welcomeChipFill = Color(hex: "#EEF3EA")
+        static let welcomeCardShadow = Color(hex: "#1D2C24").opacity(0.12)
     }
 
     enum UserDefaultsKeys {
