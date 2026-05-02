@@ -277,6 +277,7 @@ struct WelcomeView: View {
                 LoginView()
             }
             .navigationBarBackButtonHidden(true)
+            .accessibilityIdentifier("welcome.screen")
             .onAppear {
                 SpotLogger.log(WelcomeViewLogs.screenViewed)
                 if reduceMotion {
@@ -421,6 +422,7 @@ private struct WelcomeAuthActionsView: View {
             )
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Sign in with Apple")
+            .accessibilityIdentifier("auth.signInWithAppleButton")
 
             AuthDividerView()
 
@@ -435,6 +437,7 @@ private struct WelcomeAuthActionsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Get Started")
+            .accessibilityIdentifier("onboarding.getStartedButton")
 
             HStack(spacing: 8) {
                 Text("Already have an account?")
@@ -456,6 +459,7 @@ private struct WelcomeAuthActionsView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Log in")
+                .accessibilityIdentifier("auth.loginButton")
             }
             .padding(.top, 2)
 

@@ -96,27 +96,32 @@ struct BottomTabNavigationView: View {
                         BottomNavItem(icon: "house.fill", title: "Home", isSelected: selectedTab == 0)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("navigation.homeTab")
 
                     Button(action: { selectTab(1) }) {
                         BottomNavItem(icon: "map.fill", title: "Map", isSelected: selectedTab == 1)
                     }
                     .buttonStyle(PlainButtonStyle())
                     .measure(target: .mapTab)
+                    .accessibilityIdentifier("navigation.mapTab")
 
                     Button(action: { selectTab(2) }) {
                         BottomNavItem(icon: "plus.square.fill", title: "Post", isSelected: selectedTab == 2)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("navigation.postTab")
 
                     Button(action: { selectTab(3) }) {
                         BottomNavItem(icon: "magnifyingglass", title: "Search", isSelected: selectedTab == 3)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("navigation.searchTab")
 
                     Button(action: { selectTab(4) }) {
                         BottomNavItem(icon: "person.fill", title: "Profile", isSelected: selectedTab == 4)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("navigation.profileTab")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -158,6 +163,7 @@ struct BottomTabNavigationView: View {
         .onChange(of: authVM.userId) { _, _ in evaluateFirstRunOnboarding() }
         .onChange(of: authVM.likedSpots) { _, _ in evaluateFirstRunOnboarding() }
         .onChange(of: authVM.bookmarkedSpots) { _, _ in evaluateFirstRunOnboarding() }
+        .accessibilityIdentifier("main.tabShell")
     }
 
     private var currentTourTargetRect: CGRect? {

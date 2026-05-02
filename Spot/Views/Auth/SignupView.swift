@@ -280,6 +280,7 @@ struct SignupView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .accessibilityIdentifier("onboarding.signupScreen")
     }
 
     private func validateAndSignUp() {

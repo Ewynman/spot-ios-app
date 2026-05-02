@@ -227,6 +227,9 @@ final class SpotFirstRunOnboardingManager: ObservableObject {
     }
 
     func startIfNeeded(isAuthenticated: Bool, isFirstSessionCandidate: Bool, userId: String?) {
+        #if DEBUG
+        if SpotLaunchConfiguration.isUITestMode { return }
+        #endif
         configure(userId: userId)
         guard isAuthenticated, isFirstSessionCandidate, !hasCompletedOrSkipped, !isPresented else { return }
         currentStep = .welcome

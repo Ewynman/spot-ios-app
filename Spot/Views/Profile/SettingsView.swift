@@ -162,6 +162,7 @@ struct SettingsView: View {
             }
         }
         .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .accessibilityIdentifier("settings.screenRoot")
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showCollectionsNav) {
             CollectionsView()

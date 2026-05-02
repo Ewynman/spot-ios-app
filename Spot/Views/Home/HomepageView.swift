@@ -63,6 +63,7 @@ struct HomepageView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .accessibilityIdentifier("home.feedRoot")
         }
         .onAppear {
             Task {

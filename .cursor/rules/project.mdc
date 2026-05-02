@@ -74,21 +74,63 @@ State is intentionally mixed between global environment state and local screen s
 
 ## Testing Strategy
 
-Test coverage is primarily in `SpotTests` using Swift Testing (`@Test`) for deterministic business logic and utility correctness. `SpotUITests` provides launch/smoke-level UI checks. The project test plan is `Spot.xctestplan`.
+### Targets and schemes
 
-Priority tested areas include feed ranking behavior, deep-link parsing, post-flow state transitions, validators, normalization, moderation policy, and geohash logic.
+| Scheme | Purpose |
+|--------|---------|
+| **Spot** | Main app: run, debug, archive. Test action runs **both** bundles via `Spot.xctestplan` (unit + UI). |
+| **SpotTests** | Fast **unit tests only** (`SpotTests` target). Use for pre-commit and CI default jobs. |
+| **SpotUITests** | **UI tests only** (`SpotUITests` target). Slower; runs on simulator with launch args (`SpotUITestAppConfiguration`). |
+
+Test plans:
+
+- **`Spot.xctestplan`** — Used by the **Spot** scheme: `SpotTests` + `SpotUITests`.
+- **`SpotUITests.xctestplan`** — Used by the **SpotUITests** scheme: UI bundle only.
+
+Unit tests live under `SpotTests/` (Swift Testing `@Test` and `@testable import Spot`). UI tests live under `SpotUITests/` (XCTest + `XCUIApplication`). Do not put UI tests in `SpotTests` or unit tests in `SpotUITests`.
+
+Priority areas for automated coverage include feed ranking, deep-link parsing, post-flow state, validators, normalization, moderation policy, geohash logic, auth/session behavior (unit), and smoke flows for launch, auth gate, navigation, posting, map, and profile (UI).
+
+### Code coverage expectations for new code
+
+When adding or changing production code, aim for **high meaningful coverage**, not box-checking:
+
+- **Non-UI logic** (view models, services, validators, models, utilities): add or extend **unit tests** in `SpotTests`, using mocks/fakes — no live network, Supabase, Sign in with Apple, StoreKit, or device-only prompts.
+- **UI flows**: add **UI smoke tests** in `SpotUITests` where stable `accessibilityIdentifier`s exist; prefer identifiers over localized text.
+- Cover **happy path, empty/error edge cases, and guard branches** that encode product rules.
+- If production changes exist only to enable testing (e.g. internal access, DI, accessibility IDs), keep them **minimal** and **DEBUG- or test-gated** where appropriate so release behavior is unchanged.
+
+Agents should run the relevant scheme(s) after substantive changes (see commands below).
 
 ## Build and Test Commands
 
-Use an available iPhone simulator UDID and format output with `xcbeautify` when present.
+Use an **available iPhone Simulator** UDID (or a concrete `platform=iOS Simulator,name=…` destination). Prefer piping through `xcbeautify` when installed.
 
 ```sh
 SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
 BEAUTIFY=$(command -v xcbeautify >/dev/null && echo "xcbeautify" || echo "cat")
 
-# Build
+# --- Main app (production scheme): build only ---
 xcodebuild -scheme Spot -destination "id=$SIM_ID" build | $BEAUTIFY
 
-# Test
+# --- Spot scheme: all tests (Spot.xctestplan → SpotTests + SpotUITests) ---
 xcodebuild -scheme Spot -destination "id=$SIM_ID" test | $BEAUTIFY
+
+# --- Unit tests only (fast / CI default) ---
+xcodebuild -scheme SpotTests -destination "id=$SIM_ID" test | $BEAUTIFY
+
+# --- UI tests only ---
+xcodebuild -scheme SpotUITests -destination "id=$SIM_ID" test | $BEAUTIFY
 ```
+
+Alternative destination (when a named simulator is installed), matching common CI docs:
+
+```sh
+xcodebuild test -scheme SpotTests \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
+
+xcodebuild test -scheme SpotUITests \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
+```
+
+Optional: enable **code coverage** in the scheme’s Test action (Xcode) or pass `-enableCodeCoverage YES` to `xcodebuild test` when gathering coverage reports for CI.

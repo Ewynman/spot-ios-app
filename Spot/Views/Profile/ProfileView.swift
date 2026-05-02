@@ -118,6 +118,7 @@ struct ProfileView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .accessibilityIdentifier("profile.menuButton")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -484,6 +485,7 @@ struct ProfileView: View {
                         .padding(12)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("profile.settingsEntry")
                 }
                 .background(Color.white)
                 .cornerRadius(12)
@@ -497,6 +499,7 @@ struct ProfileView: View {
             }
         }
         .background(Constants.Colors.background.ignoresSafeArea())
+        .accessibilityIdentifier("profile.screenRoot")
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {

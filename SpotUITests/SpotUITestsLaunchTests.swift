@@ -24,6 +24,7 @@ final class SpotUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunchCompletesAndRendersInteractiveSurface() throws {
         let app = XCUIApplication()
+        SpotUITestAppConfiguration.applyDefaultLaunchConfiguration(to: app)
         app.launch()
 
         // Cold launch should produce *some* tappable element within a

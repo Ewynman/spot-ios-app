@@ -46,13 +46,33 @@ class AuthViewModel: ObservableObject {
     private var previousUserId: String?
     /// True while `delete_my_account` is in flight (password re-auth triggers `.signedIn`; skip profile sync / feed refreshes).
     private var accountDeletionInProgress = false
+    /// When true, UI tests use a synthetic session; ignore Supabase auth stream updates (DEBUG bootstrap only).
+    private var uiTestSyntheticSessionActive = false
 
     private func listenToSupabaseAuthState() {
         supabaseAuthTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.configureUITestSyntheticAuthIfNeeded()
             for await (event, session) in supabase.auth.authStateChanges {
-                self?.applySupabaseAuthChange(event: event, session: session)
+                if self.uiTestSyntheticSessionActive { continue }
+                self.applySupabaseAuthChange(event: event, session: session)
             }
         }
+    }
+
+    @MainActor
+    private func configureUITestSyntheticAuthIfNeeded() {
+        #if DEBUG
+        guard SpotLaunchConfiguration.uiTestAuthBootstrap == .loggedIn else { return }
+        uiTestSyntheticSessionActive = true
+        userId = SpotLaunchConfiguration.uiTestSyntheticUserId
+        isAuthenticated = true
+        isEmailVerified = true
+        isLoading = false
+        awaitingEmailVerification = false
+        isPro = SpotLaunchConfiguration.uiTestUserIsPro
+        proUntil = nil
+        #endif
     }
 
     @MainActor

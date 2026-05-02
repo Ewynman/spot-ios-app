@@ -27,8 +27,15 @@ struct SpotApp: App {
                 if showLaunchScreen {
                     LaunchView()
                         .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                withAnimation(.easeInOut(duration: 0.5)) {
+                            #if DEBUG
+                            let delay: TimeInterval = SpotLaunchConfiguration.isUITestMode ? 0.05 : 1.5
+                            let animationDuration: TimeInterval = SpotLaunchConfiguration.isUITestMode ? 0.01 : 0.5
+                            #else
+                            let delay: TimeInterval = 1.5
+                            let animationDuration: TimeInterval = 0.5
+                            #endif
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                withAnimation(.easeInOut(duration: animationDuration)) {
                                     showLaunchScreen = false
                                 }
                             }

@@ -80,6 +80,7 @@ struct MapView: View {
                         }
                     )
                     .ignoresSafeArea(edges: .bottom)
+                    .accessibilityIdentifier("map.mapView")
                     .overlay {
                         mapOnboardingTargets
                     }
@@ -128,6 +129,7 @@ struct MapView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+        .accessibilityIdentifier("map.screen")
     }
 
     // MARK: - Bottom inset (preview card)

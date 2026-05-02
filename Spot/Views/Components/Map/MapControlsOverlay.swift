@@ -38,6 +38,7 @@ struct MapControlsOverlay: View {
                     )
                     Spacer(minLength: 0)
                 }
+                .accessibilityIdentifier("map.filterButton")
             }
 
             // Bottom-right: recenter button.

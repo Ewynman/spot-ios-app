@@ -46,6 +46,7 @@ struct PhotoSelectionView: View {
                     .cornerRadius(10)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("posting.draftsButton")
             }
             .padding(.horizontal, 24)
 
@@ -221,6 +222,7 @@ struct PhotoSelectionView: View {
 
             Spacer()
         }
+        .accessibilityIdentifier("posting.photoStepRoot")
         .onAppear {
             permissionManager.updatePermissionStatuses()
         }

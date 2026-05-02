@@ -10,8 +10,8 @@
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
@@ -30,22 +30,11 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:Spot.xctestplan"
+            reference = "container:SpotUITests.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>
       <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "642844192E20429E00DC9E8A"
-               BuildableName = "SpotTests.xctest"
-               BlueprintName = "SpotTests"
-               ReferencedContainer = "container:Spot.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
          <TestableReference
             skipped = "NO"
             parallelizable = "NO">
@@ -69,35 +58,6 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6428440C2E20429B00DC9E8A"
-            BuildableName = "Spot.app"
-            BlueprintName = "Spot"
-            ReferencedContainer = "container:Spot.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "IDEPreferLogStreaming"
-            value = "YES"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "SPOT_DEBUG_LOCATION"
-            value = "40.867449,-74.025070"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
-      <StoreKitConfigurationFileReference
-         identifier = "../../Spot/StoreKit/SpotDev.storekit">
-      </StoreKitConfigurationFileReference>
-      <LocationScenarioReference
-         identifier = "../../Spot/SpotDevLocation.gpx"
-         referenceType = "0">
-      </LocationScenarioReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -105,16 +65,6 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6428440C2E20429B00DC9E8A"
-            BuildableName = "Spot.app"
-            BlueprintName = "Spot"
-            ReferencedContainer = "container:Spot.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
