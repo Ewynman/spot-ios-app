@@ -48,8 +48,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             SpotLogger.log(AppDelegateLogs.memoryWarning)
         }
 
-        SubscriptionManager.shared.startListeningForTransactionUpdates()
-
         return true
     }
 

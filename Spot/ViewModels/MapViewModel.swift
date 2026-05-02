@@ -22,33 +22,8 @@ final class MapViewModel: ObservableObject {
     /// prioritise spots near the viewport center after a merge.
     private var lastFetchRegion: MKCoordinateRegion?
 
-    /// Legacy entry point: loads all map spots once via the Supabase v1 path
-    /// (no viewport awareness). Preserved for callers that haven't yet
-    /// migrated to viewport-driven loads.
-    func loadAllSpots() {
-        if FeedFlags.useSupabaseMapRPC {
-            // V2: a default viewport-less load is meaningless — the map view
-            // calls `loadForRegion` once it knows the region. Skip the legacy
-            // global fetch.
-            return
-        }
-        guard !isLoadingAllSpots else { return }
-        isLoadingAllSpots = true
-
-        SpotService.shared.fetchSpotsForMap(forceRefresh: false) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isLoadingAllSpots = false
-                switch result {
-                case .success(let spots):
-                    self.visibleSpots = spots
-                    SpotLogger.log(MapViewModelLogs.mapLoadedAllSpots, details: ["count": spots.count])
-                case .failure(let error):
-                    SpotLogger.log(MapViewModelLogs.loadAllSpotsFailed, details: ["error": error.localizedDescription])
-                }
-            }
-        }
-    }
+    /// No-op: map spots load per viewport via `loadForRegion` + `get_map_spots_v1`.
+    func loadAllSpots() {}
 
     /// Load spots for the visible viewport. Debounced — rapid pan/zoom emits
     /// many region-change callbacks but we only refetch once the region has

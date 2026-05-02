@@ -1,7 +1,6 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-import FirebaseFirestore
 import UIKit
 
 struct LocationSelectionView: View {
@@ -270,29 +269,6 @@ struct LocationSelectionView: View {
 
         SpotLogger.log(LocationSelectionViewLogs.searchingPlaces, details: ["query": query])
 
-        // User-created canonical places stored in Firestore 'places'
-        Task {
-            do {
-                let lower = query.lowercased()
-                let snap = try await Firestore.firestore().collection("places")
-                    .order(by: "name_lower")
-                    .start(at: [lower])
-                    .end(at: [lower + "\u{f8ff}"])
-                    .limit(to: 1)
-                    .getDocuments()
-                if let doc = snap.documents.first, let p = try? doc.data(as: Place.self) {
-                    let coord = CLLocationCoordinate2D(latitude: p.latitude, longitude: p.longitude)
-                    await MainActor.run {
-                        self.selectedLocation = LocationData(coordinate: coord, placeName: p.name, address: p.address, isCustomName: true)
-                        self.showingMap = true
-                    }
-                    SpotLogger.log(LocationSelectionViewLogs.anchoredPlaceMatched, details: ["name": p.name])
-                    return
-                }
-            } catch {
-                SpotLogger.log(LocationSelectionViewLogs.placesQueryFailed, details: ["error": error.localizedDescription])
-            }
-        }
         func runSearch(with span: MKCoordinateSpan, completion: @escaping ([MKMapItem]) -> Void) {
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query
@@ -662,39 +638,8 @@ struct LocationMapView: View {
         if selected.isCustomName {
             let validator = PlaceNameValidator()
             switch validator.validate(selected.placeName) {
-            case .ok(let norm):
-                do {
-                    let db = Firestore.firestore()
-                    // Check if a place with the same normalized name exists
-                    let snap = try await db.collection("places")
-                        .whereField("name_lower", isEqualTo: norm)
-                        .limit(to: 1)
-                        .getDocuments()
-                    if let doc = snap.documents.first {
-                        try await doc.reference.setData([
-                            "latitude": selected.coordinate.latitude,
-                            "longitude": selected.coordinate.longitude,
-                            "address": selected.address ?? FieldValue.delete(),
-                            "updatedAt": FieldValue.serverTimestamp()
-                        ], merge: true)
-                    } else {
-                        var data: [String: Any] = [
-                            "name": selected.placeName,
-                            "name_lower": norm,
-                            "latitude": selected.coordinate.latitude,
-                            "longitude": selected.coordinate.longitude,
-                            "address": selected.address ?? "",
-                            "createdAt": FieldValue.serverTimestamp(),
-                            "postsCount": 0
-                        ]
-                        if let uid = SpotAuthBridge.currentUserId {
-                            data["createdBy"] = uid
-                        }
-                        _ = try await db.collection("places").addDocument(data: data)
-                    }
-                } catch {
-                    SpotLogger.log(LocationSelectionViewLogs.upsertPlaceFailed, details: ["error": error.localizedDescription])
-                }
+            case .ok:
+                break
             case .tooShort, .tooLong, .blocked:
                 SpotLogger.log(LocationSelectionViewLogs.blockedCustomPlaceSkipUpsert)
             }

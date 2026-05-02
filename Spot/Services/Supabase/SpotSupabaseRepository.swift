@@ -520,6 +520,31 @@ enum SpotSupabaseRepository {
         }
     }
 
+    private struct VibeTagPickerRow: Decodable {
+        let id: UUID
+        let name: String
+        let name_lower: String?
+    }
+
+    /// Canonical rows from `vibe_tags` for search and post composer (ordered by `name_lower`).
+    static func fetchVibeTagsForPicker(limit: Int = 1000) async throws -> [VibeTag] {
+        let rows: [VibeTagPickerRow] = try await supabase
+            .from("vibe_tags")
+            .select("id,name,name_lower")
+            .order("name_lower", ascending: true)
+            .limit(limit)
+            .execute()
+            .value
+        return rows.map { r in
+            VibeTag(
+                id: r.id.uuidString,
+                name: r.name,
+                name_lower: r.name_lower ?? r.name.lowercased(),
+                createdAt: nil
+            )
+        }
+    }
+
     /// Uploads JPEGs to the `spots` storage bucket, inserts `spots` + `spot_images`. Returns new spot id.
     static func publishSpotFromDraft(
         userId: UUID,

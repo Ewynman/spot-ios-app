@@ -2,7 +2,7 @@
 //  SocialGraphSupabase.swift
 //  Spot
 //
-//  Follow graph + outgoing follow requests for feed / privacy (replaces Firestore user doc arrays).
+//  Follow graph + outgoing follow requests for feed / privacy.
 //
 
 import Foundation

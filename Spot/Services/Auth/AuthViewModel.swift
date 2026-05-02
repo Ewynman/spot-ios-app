@@ -44,6 +44,8 @@ class AuthViewModel: ObservableObject {
     }
 
     private var previousUserId: String?
+    /// True while `delete_my_account` is in flight (password re-auth triggers `.signedIn`; skip profile sync / feed refreshes).
+    private var accountDeletionInProgress = false
 
     private func listenToSupabaseAuthState() {
         supabaseAuthTask = Task { @MainActor [weak self] in
@@ -78,28 +80,33 @@ class AuthViewModel: ObservableObject {
 
             AnalyticsService.shared.setUserId(user.id.uuidString)
 
-            if isNewLogin {
-                AnalyticsService.shared.logEvent("user_login", parameters: [
-                    "email_verified": user.emailConfirmedAt != nil
-                ])
-            }
-
-            refreshUserSpotLists()
-            refreshBlockedUsers()
-            refreshUserFlags()
-            Task {
-                await SupabaseUserService.shared.syncCurrentUser()
+            let suppressSideEffects = accountDeletionInProgress
+            if !suppressSideEffects {
+                if isNewLogin {
+                    AnalyticsService.shared.logEvent("user_login", parameters: [
+                        "email_verified": user.emailConfirmedAt != nil
+                    ])
+                }
+                refreshUserSpotLists()
+                refreshBlockedUsers()
+                refreshUserFlags()
+                Task {
+                    await SupabaseUserService.shared.syncCurrentUser()
+                }
             }
             previousUserId = user.id.uuidString
-
-            refreshUserFlags()
-            refreshBlockedUsers()
 
         case .signedOut:
             SpotLogger.log(AuthViewModelLogs.authStateSignedOut)
             clearSignedOutState()
+            Task { await teardownSessionCaches() }
 
-        case .passwordRecovery, .userDeleted, .mfaChallengeVerified:
+        case .userDeleted:
+            SpotLogger.log(AuthViewModelLogs.authUserDeletedRemotely)
+            clearSignedOutState()
+            Task { await teardownSessionCaches() }
+
+        case .passwordRecovery, .mfaChallengeVerified:
             break
         }
     }
@@ -113,6 +120,7 @@ class AuthViewModel: ObservableObject {
         isLoading = false
         isEmailVerified = false
         awaitingEmailVerification = false
+        emailResendAvailableAt = nil
         verificationEmailMaskSource = ""
         likedSpots = []
         bookmarkedSpots = []
@@ -123,6 +131,15 @@ class AuthViewModel: ObservableObject {
         currentUserProfileImageURL = nil
         currentUserUsername = nil
         previousUserId = nil
+    }
+
+    /// Feed, deep links, and privacy cache — call after sign-out or account deletion.
+    private func teardownSessionCaches() async {
+        await MainActor.run {
+            FeedRepository.shared.reset()
+            DeepLinkState.shared.clearUserSession()
+        }
+        await AuthorPrivacyCache.shared.clear()
     }
 
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -180,11 +197,10 @@ class AuthViewModel: ObservableObject {
             } catch {
                 SpotLogger.log(AuthViewModelLogs.signOutFailed, details: ["error": error.localizedDescription])
             }
+            await teardownSessionCaches()
             await MainActor.run {
-                self.isAuthenticated = false
-                DeepLinkState.shared.clearUserSession()
+                self.clearSignedOutState()
             }
-            await AuthorPrivacyCache.shared.clear()
         }
     }
 
@@ -478,12 +494,14 @@ class AuthViewModel: ObservableObject {
         pendingVerificationEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         verificationEmailMaskSource = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         pendingAvatarAfterVerification = avatar
+        emailResendAvailableAt = nil
     }
 
     func clearEmailVerificationPending() {
         awaitingEmailVerification = false
         pendingVerificationEmail = nil
         pendingAvatarAfterVerification = nil
+        emailResendAvailableAt = nil
     }
 
     /// Verifies the 6-digit code from the signup email, establishes the session, uploads pending avatar, syncs profile.
@@ -522,20 +540,27 @@ class AuthViewModel: ObservableObject {
     private var pendingVerificationEmail: String?
     private var pendingAvatarAfterVerification: UIImage?
 
-    func sendVerificationEmail() async {
+    func sendVerificationEmail() async throws {
         let email: String?
         if let pending = pendingVerificationEmail {
             email = pending
         } else {
             email = (try? await supabase.auth.session)?.user.email
         }
-        guard let email, !email.isEmpty else { return }
+        guard let email, !email.isEmpty else {
+            throw NSError(
+                domain: "AuthVM",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "No email available to resend a verification code."]
+            )
+        }
         do {
             try await supabase.auth.resend(email: email, type: .signup)
             SpotLogger.log(AuthViewModelLogs.verificationEmailSent)
             await MainActor.run { self.emailResendAvailableAt = Date().addingTimeInterval(30) }
         } catch {
             SpotLogger.log(AuthViewModelLogs.sendVerificationEmailFailed, details: ["error": error.localizedDescription])
+            throw error
         }
     }
 
@@ -628,7 +653,22 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - Account Deletion
     func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        AuthService.shared.deleteAccount(password: password, completion: completion)
+        Task { @MainActor in
+            self.accountDeletionInProgress = true
+            AuthService.shared.deleteAccount(password: password) { result in
+                Task { @MainActor in
+                    defer { self.accountDeletionInProgress = false }
+                    switch result {
+                    case .success:
+                        self.clearSignedOutState()
+                        await self.teardownSessionCaches()
+                        completion(.success(()))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Blocking

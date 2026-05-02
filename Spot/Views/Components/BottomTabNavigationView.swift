@@ -188,7 +188,12 @@ struct BottomTabNavigationView: View {
         switch firstRunOnboarding.currentStep {
         case .welcome:
             selectedTab = 0
-            firstRunOnboarding.startTour()
+            // Let the home feed begin loading so the first `SpotCard` can publish
+            // coach geometry before the tour highlights the card step.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                firstRunOnboarding.startTour()
+            }
         case .mapTab:
             selectedTab = 1
             firstRunOnboarding.mapTabSelected()

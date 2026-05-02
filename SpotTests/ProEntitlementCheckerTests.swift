@@ -13,9 +13,13 @@ import Testing
 struct ProEntitlementCheckerTests {
 
     @Test func grantsProWhenProductIDMatches() {
-        let checker = ProEntitlementChecker(proProductIDs: ["spotPro", "spot.pro.yearly"])
+        let checker = ProEntitlementChecker(proProductIDs: SpotProProducts.all)
         #expect(checker.grantsPro(forProductID: "spotPro"))
-        #expect(checker.grantsPro(forProductID: "spot.pro.yearly"))
+    }
+
+    @Test func deniesLegacyProductID() {
+        let checker = ProEntitlementChecker(proProductIDs: SpotProProducts.all)
+        #expect(!checker.grantsPro(forProductID: "spot.pro.yearly"))
     }
 
     @Test func deniesProForUnknownProductID() {

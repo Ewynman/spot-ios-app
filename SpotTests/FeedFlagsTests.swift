@@ -13,14 +13,6 @@ import Testing
 
 struct FeedFlagsTests {
 
-    @Test func useSupabaseHomeFeedRPCDefaultIsOn() {
-        #expect(FeedFlags.useSupabaseHomeFeedRPC == true)
-    }
-
-    @Test func useSupabaseMapRPCDefaultIsOn() {
-        #expect(FeedFlags.useSupabaseMapRPC == true)
-    }
-
     @Test func hydrateOnlyPrimaryFeedImageDefaultIsOn() {
         #expect(FeedFlags.hydrateOnlyPrimaryFeedImage == true)
     }

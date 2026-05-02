@@ -18,10 +18,14 @@ import Testing
 @MainActor
 struct SubscriptionManagerStaticTests {
 
-    @Test func sharedInstanceExposesProductIds() {
+    @Test func spotProProductsUsesAppStoreConnectProductID() {
+        #expect(SpotProProducts.yearly == "spotPro")
+        #expect(SpotProProducts.all == ["spotPro"])
+    }
+
+    @Test func sharedInstanceRequestsExactlySpotProProductId() {
         let mgr = SubscriptionManager.shared
-        #expect(mgr.productIds.contains("spotPro"))
-        #expect(mgr.productIds.contains("spot.pro.yearly"))
+        #expect(mgr.productIds == ["spotPro"])
     }
 
     @Test func sharedInstanceHasInitialFlags() {
@@ -67,9 +71,25 @@ struct SubscriptionManagerStaticTests {
         }
     }
 
+    @Test func entitlementRefreshResultSeparatesOtherAccountFromInactive() {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(SubscriptionManager.EntitlementRefreshResult.active(expirationDate: date).isActive)
+        #expect(!SubscriptionManager.EntitlementRefreshResult.linkedToDifferentAccount.isActive)
+        #expect(!SubscriptionManager.EntitlementRefreshResult.inactive.isActive)
+        #expect(SubscriptionManager.EntitlementRefreshResult.linkedToDifferentAccount != .inactive)
+    }
+
     @Test func purchaseErrorDescriptionIsHelpful() {
         let err: Error = SubscriptionPurchaseError.unknownPurchaseOutcome
         let description = (err as? LocalizedError)?.errorDescription ?? ""
         #expect(!description.isEmpty)
+    }
+
+    @Test func productLoadFallbackDoesNotExposeSetupInternals() {
+        let message = SubscriptionManager.userFacingProductLoadError
+        #expect(message == "Unable to load plan. Please try again.")
+        #expect(!message.localizedCaseInsensitiveContains("Firebase"))
+        #expect(!message.localizedCaseInsensitiveContains("StoreKit config"))
+        #expect(!message.localizedCaseInsensitiveContains("No products found"))
     }
 }

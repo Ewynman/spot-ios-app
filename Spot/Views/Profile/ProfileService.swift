@@ -52,7 +52,7 @@ private enum ProfileSupabaseSchema {
         return nil
     }
 
-    /// Matches prior Firestore semantics: explicit `pro_until` wins; otherwise use `is_pro` flag.
+    /// Explicit `pro_until` wins; otherwise use `is_pro` flag.
     static func effectiveIsPro(proUntilRaw: String?, isPro: Bool) -> Bool {
         if let until = parseProUntil(proUntilRaw) {
             return until > Date()

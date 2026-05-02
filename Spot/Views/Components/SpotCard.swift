@@ -5,7 +5,6 @@
 //
 
 import SwiftUI
-import FirebaseFirestore
 
 // MARK: - Preference Keys
 
@@ -834,30 +833,10 @@ struct SpotCard: View {
         }
 
         private func fetchSpotPreviewURLs(spotIds: [String], limit: Int = 4) async -> [String] {
-            guard !spotIds.isEmpty else { return [] }
-            let spotsRef = Firestore.firestore().collection("spots")
-            var urls: [String] = []
-            await withTaskGroup(of: String?.self) { group in
-                for id in spotIds.prefix(limit) {
-                    group.addTask {
-                        do {
-                            let doc = try await spotsRef.document(id).getDocument()
-                            guard doc.exists else { return nil }
-                            let data = doc.data() ?? [:]
-                            if let thumb = data["thumbnailURL"] as? String, !thumb.isEmpty { return thumb }
-                            if let arr = data["imageURLs"] as? [String], let first = arr.first { return first }
-                            if let single = data["imageURL"] as? String { return single }
-                            return nil
-                        } catch {
-                            return nil
-                        }
-                    }
-                }
-                for await maybe in group {
-                    if let u = maybe { urls.append(u) }
-                }
-            }
-            return Array(urls.prefix(limit))
+            let ids = Array(spotIds.prefix(limit))
+            guard !ids.isEmpty else { return [] }
+            let urls = await SpotSupabaseRepository.fetchPreviewImageURLs(spotIds: ids)
+            return urls.filter { !$0.isEmpty }
         }
 
         private func create() async {

@@ -5,11 +5,17 @@ import UIKit
 /// Thrown when StoreKit returns a `Product.PurchaseResult` case this app was not built to handle (e.g. new API in a future OS).
 enum SubscriptionPurchaseError: LocalizedError {
     case unknownPurchaseOutcome
+    case nonProTransaction
+    case subscriptionLinkedToDifferentAccount
 
     var errorDescription: String? {
         switch self {
         case .unknownPurchaseOutcome:
             return "Unexpected purchase result from the App Store. Update Spot or try again, and contact support if it continues."
+        case .nonProTransaction:
+            return "Unable to confirm Spot Pro. Please try again."
+        case .subscriptionLinkedToDifferentAccount:
+            return "This subscription is linked to another Spot account."
         }
     }
 }
@@ -24,24 +30,35 @@ final class SubscriptionManager: ObservableObject {
     @Published var hasProduct: Bool = false
     @Published var productLoadError: String?
 
-    // Try current and legacy IDs to avoid config mismatches during setup
-    let productIds: [String] = ["spotPro", "spot.pro.yearly"]
+    static let userFacingProductLoadError = "Unable to load plan. Please try again."
+
+    let productIds = SpotProProducts.all
 
     private var cachedProduct: Product?
     private var transactionUpdatesTask: Task<Void, Never>?
 
     func loadProduct() async throws -> Product {
         if let p = cachedProduct { return p }
+        SpotLogger.log(SubscriptionManagerLogs.productLoadStarted, details: ["ids": Array(productIds).sorted()])
         let products = try await Product.products(for: productIds)
-        guard let product = products.first else {
-            SpotLogger.log(SubscriptionManagerLogs.noMatchingProduct, details: ["ids": productIds])
-            let message = "No products found. Firebase or debug builds need a StoreKit config, and production builds need a configured App Store Connect subscription."
+        guard let product = products.first(where: { $0.id == SpotProProducts.yearly }) else {
+            SpotLogger.log(
+                SubscriptionManagerLogs.noMatchingProduct,
+                details: [
+                    "requestedIDs": Array(productIds).sorted(),
+                    "returnedIDs": products.map(\.id).sorted()
+                ]
+            )
+            let message = Self.userFacingProductLoadError
+            hasProduct = false
+            cachedProduct = nil
             productLoadError = message
             throw NSError(domain: "StoreKit", code: -1, userInfo: [NSLocalizedDescriptionKey: message])
         }
         cachedProduct = product
         hasProduct = true
         productLoadError = nil
+        SpotLogger.log(SubscriptionManagerLogs.productLoadSucceeded, details: ["productID": product.id])
         return product
     }
 
@@ -58,65 +75,44 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
-    /// Starts a long-lived task that consumes `Transaction.updates` so successful purchases are not missed if `purchase()` is not awaiting (process kill, UI flow gaps, pending approval, etc.). Safe to call once at app launch.
-    func startListeningForTransactionUpdates() {
-        guard transactionUpdatesTask == nil else { return }
-        transactionUpdatesTask = Task { @MainActor in
-            for await update in Transaction.updates {
-                await self.processTransactionUpdate(update)
-            }
-        }
-    }
-
-    private func processTransactionUpdate(_ result: VerificationResult<Transaction>) async {
-        let transaction: Transaction
-        switch result {
-        case .unverified(_, let error):
-            SpotLogger.log(
-                SubscriptionManagerLogs.transactionUpdateUnverified,
-                details: ["error": "\(error)"]
-            )
-            return
-        case .verified(let safe):
-            transaction = safe
-        }
-
-        let checker = ProEntitlementChecker(proProductIDs: productIds)
-        let isPro = checker.grantsPro(forProductID: transaction.productID)
-        if isPro {
-            SpotLogger.log(
-                SubscriptionManagerLogs.transactionUpdateVerifiedProFinishing,
-                details: ["productID": transaction.productID]
-            )
-        } else {
-            SpotLogger.log(
-                SubscriptionManagerLogs.transactionUpdateFinishingNonPro,
-                details: ["productID": transaction.productID]
-            )
-        }
-
-        await transaction.finish()
-
-        if isPro {
-            NotificationCenter.default.post(name: .spotStoreKitProEntitlementReady, object: nil)
-        }
-    }
-
     enum PurchaseProResult: Sendable {
         case purchased(expirationDate: Date?)
         case pending
         case userCancelled
     }
 
+    enum EntitlementRefreshResult: Sendable, Equatable {
+        case active(expirationDate: Date?)
+        case linkedToDifferentAccount
+        case inactive
+
+        var isActive: Bool {
+            if case .active = self { return true }
+            return false
+        }
+    }
+
     /// Starts the App Store purchase flow. Returns whether a verified purchase completed on-device.
-    func purchasePro() async throws -> PurchaseProResult {
+    func purchasePro(appAccountToken: UUID) async throws -> PurchaseProResult {
         isPurchasing = true
         defer { isPurchasing = false }
         let product = try await loadProduct()
-        let result = try await product.purchase()
+        let result = try await product.purchase(options: [.appAccountToken(appAccountToken)])
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
+            guard isActiveProTransaction(transaction) else {
+                await transaction.finish()
+                throw SubscriptionPurchaseError.nonProTransaction
+            }
+            guard transaction.appAccountToken == appAccountToken else {
+                await transaction.finish()
+                SpotLogger.log(
+                    SubscriptionManagerLogs.entitlementLinkedToDifferentAccount,
+                    details: ["productID": transaction.productID]
+                )
+                throw SubscriptionPurchaseError.subscriptionLinkedToDifferentAccount
+            }
             let expirationDate = transaction.expirationDate
             await transaction.finish()
             return .purchased(expirationDate: expirationDate)
@@ -134,6 +130,7 @@ final class SubscriptionManager: ObservableObject {
         isRestoring = true
         defer { isRestoring = false }
         try await AppStore.sync()
+        SpotLogger.log(SubscriptionManagerLogs.restoreSyncCompleted)
     }
 
     /// Start listening for StoreKit transaction updates for the app lifetime.
@@ -142,18 +139,17 @@ final class SubscriptionManager: ObservableObject {
     /// Uses a `Task` (not `detached`) so the handler inherits `@MainActor` and may safely capture
     /// `AuthViewModel` or other UI-bound state without `@Sendable` restrictions.
     func startTransactionUpdatesListener(
-        onEntitlementChanged: ((Bool, Date?) async -> Void)? = nil
+        onEntitlementChanged: ((UUID?, Date?) async -> Void)? = nil
     ) {
         guard transactionUpdatesTask == nil else { return }
-        transactionUpdatesTask = Task(priority: .background) { [productIds] in
-            let checker = ProEntitlementChecker(proProductIDs: productIds)
+        transactionUpdatesTask = Task(priority: .background) {
             for await update in Transaction.updates {
                 do {
                     let transaction = try Self.checkVerifiedStatic(update)
                     defer { Task { await transaction.finish() } }
 
-                    guard checker.grantsPro(forProductID: transaction.productID) else { continue }
-                    await onEntitlementChanged?(true, transaction.expirationDate)
+                    guard Self.isActiveProTransactionStatic(transaction) else { continue }
+                    await onEntitlementChanged?(transaction.appAccountToken, transaction.expirationDate)
                 } catch {
                     continue
                 }
@@ -161,27 +157,26 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
-    func refreshEntitlement() async -> Bool {
-        let checker = ProEntitlementChecker(proProductIDs: productIds)
+    func refreshEntitlement(for appAccountToken: UUID) async -> EntitlementRefreshResult {
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
-               checker.grantsPro(forProductID: transaction.productID) {
-                return true
+               isActiveProTransaction(transaction) {
+                if transaction.appAccountToken != appAccountToken {
+                    SpotLogger.log(
+                        SubscriptionManagerLogs.entitlementLinkedToDifferentAccount,
+                        details: ["productID": transaction.productID]
+                    )
+                    return .linkedToDifferentAccount
+                }
+                SpotLogger.log(
+                    SubscriptionManagerLogs.entitlementRefreshFoundPro,
+                    details: ["productID": transaction.productID]
+                )
+                return .active(expirationDate: transaction.expirationDate)
             }
         }
-        return false
-    }
-
-    /// Returns the expiration date of the active Pro entitlement, or nil if not subscribed.
-    func refreshEntitlementExpiry() async -> Date? {
-        let checker = ProEntitlementChecker(proProductIDs: productIds)
-        for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result,
-               checker.grantsPro(forProductID: transaction.productID) {
-                return transaction.expirationDate
-            }
-        }
-        return nil
+        SpotLogger.log(SubscriptionManagerLogs.entitlementRefreshNoPro)
+        return .inactive
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
@@ -200,6 +195,23 @@ final class SubscriptionManager: ObservableObject {
         case .verified(let safe):
             return safe
         }
+    }
+
+    private func isActiveProTransaction(_ transaction: Transaction) -> Bool {
+        Self.isActiveProTransactionStatic(transaction)
+    }
+
+    private static func isActiveProTransactionStatic(_ transaction: Transaction) -> Bool {
+        guard ProEntitlementChecker(proProductIDs: SpotProProducts.all).grantsPro(forProductID: transaction.productID) else {
+            return false
+        }
+        if transaction.revocationDate != nil || transaction.isUpgraded {
+            return false
+        }
+        if let expirationDate = transaction.expirationDate, expirationDate <= Date() {
+            return false
+        }
+        return true
     }
 
     func manageSubscriptions() async throws {

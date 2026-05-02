@@ -27,7 +27,7 @@ struct SpotApp: App {
                 if showLaunchScreen {
                     LaunchView()
                         .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                 withAnimation(.easeInOut(duration: 0.5)) {
                                     showLaunchScreen = false
                                 }
@@ -39,8 +39,12 @@ struct SpotApp: App {
                         .environmentObject(deepLinkState)
                         .environmentObject(PermissionManager.shared)
                         .task {
-                            SubscriptionManager.shared.startTransactionUpdatesListener { [weak authViewModel] hasPro, expirationDate in
-                                guard hasPro, let authViewModel else { return }
+                            SubscriptionManager.shared.startTransactionUpdatesListener { [weak authViewModel] appAccountToken, expirationDate in
+                                guard let authViewModel,
+                                      let userId = authViewModel.userId,
+                                      let currentToken = UUID(uuidString: userId),
+                                      appAccountToken == currentToken
+                                else { return }
                                 await authViewModel.setProActive(true, proUntil: expirationDate)
                             }
                             _ = await FreshInstallDetector.shared.handleFreshInstall()

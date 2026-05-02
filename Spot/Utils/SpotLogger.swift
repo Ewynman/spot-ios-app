@@ -31,7 +31,7 @@ enum DebugCategory: String, CaseIterable {
     case ui = "UI"                    // UI interactions (taps, appears, etc.)
     case navigation = "Navigation"   // Navigation events
     case feed = "Feed"               // Feed loading, ranking, blending
-    case network = "Network"         // API calls, Firestore operations
+    case network = "Network"         // API calls, remote data operations
     case auth = "Auth"               // Authentication events
     case image = "Image"             // Image loading, caching
     case location = "Location"       // Location services

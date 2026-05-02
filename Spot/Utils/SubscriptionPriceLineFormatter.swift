@@ -43,6 +43,20 @@ enum SubscriptionPriceLineFormatter {
         locale: Locale = .current
     ) -> String {
         guard value > 0 else { return "" }
+        if value == 1 {
+            switch unit {
+            case .day:
+                return "day"
+            case .week:
+                return "week"
+            case .month:
+                return "month"
+            case .year:
+                return "year"
+            @unknown default:
+                return ""
+            }
+        }
 
         switch unit {
         case .day:

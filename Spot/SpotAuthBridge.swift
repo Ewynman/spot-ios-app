@@ -1,6 +1,6 @@
 import Foundation
 
-/// Holds the active Supabase user id for call sites that are not yet async/session-aware (Firestore paths, etc.).
+/// Holds the active Supabase user id for call sites that are not yet async/session-aware.
 enum SpotAuthBridge {
     nonisolated(unsafe) static var currentUserId: String?
     nonisolated(unsafe) static var currentUserEmail: String?

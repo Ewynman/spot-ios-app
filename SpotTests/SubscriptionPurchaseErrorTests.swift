@@ -18,4 +18,18 @@ struct SubscriptionPurchaseErrorTests {
         #expect(!text.isEmpty)
         #expect(text.localizedCaseInsensitiveContains("Unexpected"))
     }
+
+    @Test func nonProTransactionHasGenericDescription() {
+        let err = SubscriptionPurchaseError.nonProTransaction
+        let text = err.errorDescription ?? ""
+        #expect(!text.isEmpty)
+        #expect(!text.localizedCaseInsensitiveContains("StoreKit config"))
+        #expect(!text.localizedCaseInsensitiveContains("No products found"))
+    }
+
+    @Test func linkedDifferentAccountExplainsOwnershipMismatch() {
+        let err = SubscriptionPurchaseError.subscriptionLinkedToDifferentAccount
+        let text = err.errorDescription ?? ""
+        #expect(text.localizedCaseInsensitiveContains("another Spot account"))
+    }
 }

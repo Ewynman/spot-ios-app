@@ -11,15 +11,13 @@ enum AuthViewModelLogs: SpotLog {
     case authStateSignedIn
     case autoPromptPermissions
     case authStateSignedOut
+    case authUserDeletedRemotely
     case signOutFailed
     case refreshBlockedUsersFailed
     case refreshUserFlagsFailed
     case proStatusUpdated
     case proStatusUpdateFailed
     case bookmarkCapReached
-    case emailUpdateFallingBackToFirestore
-    case emailUpdateFirestoreFallbackFailed
-    case firebaseAuthUpdatedFirestoreSyncFailed
     case verificationEmailSent
     case sendVerificationEmailFailed
     case emailVerified
@@ -36,15 +34,13 @@ enum AuthViewModelLogs: SpotLog {
         case .authStateSignedIn: return .debug
         case .autoPromptPermissions: return .info
         case .authStateSignedOut: return .debug
+        case .authUserDeletedRemotely: return .info
         case .signOutFailed: return .error
         case .refreshBlockedUsersFailed: return .error
         case .refreshUserFlagsFailed: return .error
         case .proStatusUpdated: return .info
         case .proStatusUpdateFailed: return .error
         case .bookmarkCapReached: return .info
-        case .emailUpdateFallingBackToFirestore: return .debug
-        case .emailUpdateFirestoreFallbackFailed: return .error
-        case .firebaseAuthUpdatedFirestoreSyncFailed: return .debug
         case .verificationEmailSent: return .info
         case .sendVerificationEmailFailed: return .error
         case .emailVerified: return .info
@@ -61,15 +57,13 @@ enum AuthViewModelLogs: SpotLog {
         case .authStateSignedIn: return "Auth state changed: user signed in"
         case .autoPromptPermissions: return "Auto-prompting permissions after fresh install login"
         case .authStateSignedOut: return "Auth state changed: no user"
+        case .authUserDeletedRemotely: return "Auth user deleted remotely; clearing local session"
         case .signOutFailed: return "Failed to sign out"
         case .refreshBlockedUsersFailed: return "Failed to refresh blocked users"
         case .refreshUserFlagsFailed: return "Failed to refresh user flags"
         case .proStatusUpdated: return "Pro status updated"
         case .proStatusUpdateFailed: return "Failed to set pro status"
         case .bookmarkCapReached: return "Bookmark cap reached"
-        case .emailUpdateFallingBackToFirestore: return "Email update failed, falling back to Firestore-only sync"
-        case .emailUpdateFirestoreFallbackFailed: return "AuthViewModel updateEmail Firestore fallback failed"
-        case .firebaseAuthUpdatedFirestoreSyncFailed: return "FirebaseAuth updated but Firestore email sync failed"
         case .verificationEmailSent: return "Verification email sent"
         case .sendVerificationEmailFailed: return "Failed to send verification email"
         case .emailVerified: return "Email verified"

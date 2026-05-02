@@ -49,17 +49,17 @@ State is intentionally mixed between global environment state and local screen s
 - `Spot/Views/Home/MapView.swift`, `Spot/ViewModels/MapViewModel.swift`, `Spot/Services/Map/*`: map viewport-driven discovery
 
 ### Data/Service Highlights
-- `Spot/Services/AuthService.swift`: Firebase Auth + user document lifecycle
-- `Spot/Services/Feed/FeedRepository.swift`: fetch/rank/dedupe/paginate feed pipeline
-- `Spot/Services/Feed/FeedCandidateService.swift`: candidate generation from Firestore
-- `Spot/Services/Feed/FeedRanker.swift`: on-device scoring and blend logic
+- `Spot/Services/AuthService.swift`: Supabase Auth + `public.users` lifecycle
+- `Spot/Services/Feed/FeedRepository.swift`: home feed via `get_home_feed_v1` RPC + image signing
+- `Spot/Services/Feed/FeedRanker.swift`: on-device scoring (used in tests / non-RPC experiments)
 - `Spot/Services/Spots/SpotUploader.swift`: media upload + spot write + metadata fan-out
 - `Spot/Services/AuthorPrivacyCache.swift`: actor-based privacy/follow cache and filtering
 - `Spot/Services/DeepLinkRouter.swift` + `Spot/ViewModels/DeepLinkState.swift`: parse and execute deep-link routes
 
 ## External Integrations
 
-- Firebase Auth, Firestore, Storage, Crashlytics, Analytics, App Check
+- Supabase (Auth, Postgres, Storage client for spots/avatars)
+- Firebase: Analytics, Crashlytics, App Check, and other non-data SDKs linked for ops/monitoring
 - Apple frameworks: SwiftUI, MapKit, CoreLocation, UserNotifications, StoreKit, Security, PhotosUI
 - Subscription web flow integrated through hosted checkout endpoints and deep-link return
 
@@ -67,7 +67,7 @@ State is intentionally mixed between global environment state and local screen s
 
 1. App launch -> launch view -> root auth gate (`WelcomeView`, `ConfirmEmailView`, or tab shell)
 2. Authenticated users enter tab navigation with feature-specific view models
-3. Feed path: candidate fetch -> privacy filter -> ranking -> blended output
+3. Feed path: `get_home_feed_v1` RPC -> primary image signing -> UI
 4. Post path: media + metadata capture -> upload -> moderation polling -> publish complete
 5. Search path: debounced query + typed filters + paginated result grids
 6. Deep links: parsed centrally and routed with auth-aware gating

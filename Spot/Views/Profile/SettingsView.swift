@@ -515,8 +515,14 @@ struct SettingsView: View {
     }
 
     private func deleteAccount() {
+        guard !isSaving else { return }
+        SpotLogger.log(SettingsViewLogs.deleteAccountTapped, details: [
+            "confirmDelete": confirmDelete,
+            "hasPassword": !deletePassword.isEmpty
+        ])
         guard confirmDelete, !deletePassword.isEmpty else {
-            showToast(message: "Please confirm and enter your password", isError: true)
+            SpotLogger.log(SettingsViewLogs.deleteAccountBlockedMissingConfirmation)
+            showToast(message: "Turn on the confirmation switch and enter your password to delete your account.", isError: true)
             return
         }
         isSaving = true
@@ -526,6 +532,7 @@ struct SettingsView: View {
                 switch result {
                 case .success:
                     showToast(message: "Account deleted", isError: false)
+                    dismiss()
                 case .failure(let error):
                     showToast(message: error.localizedDescription, isError: true)
                 }
@@ -546,12 +553,24 @@ struct SettingsView: View {
     private func restorePurchases() {
         Task {
             do {
+                guard let userId = authVM.userId, let appAccountToken = UUID(uuidString: userId) else {
+                    await MainActor.run { showToast(message: "Please sign in again before restoring Pro.", isError: true) }
+                    return
+                }
                 try await SubscriptionManager.shared.restorePurchases()
-                if await SubscriptionManager.shared.refreshEntitlement() {
-                    let expirationDate = await SubscriptionManager.shared.refreshEntitlementExpiry()
+                switch await SubscriptionManager.shared.refreshEntitlement(for: appAccountToken) {
+                case .active(let expirationDate):
                     await authVM.setProActive(true, proUntil: expirationDate)
                     await MainActor.run { showToast(message: "Subscription restored", isError: false) }
-                } else {
+                case .linkedToDifferentAccount:
+                    await authVM.setProActive(false)
+                    await MainActor.run {
+                        showToast(
+                            message: SubscriptionPurchaseError.subscriptionLinkedToDifferentAccount.localizedDescription,
+                            isError: true
+                        )
+                    }
+                case .inactive:
                     await MainActor.run { showToast(message: "No active subscription found", isError: true) }
                 }
             } catch {
@@ -720,11 +739,15 @@ private struct AccountSettingsDetailView: View {
                             .tint(Constants.Colors.primary)
 
                             SettingsSecureField(title: "Password to confirm", text: $deletePassword)
+                            Text("Uses your account password (same as sign-in). Apple-only accounts need a password set under Security before delete.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             Button(action: onDelete) {
-                                settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true)
+                                settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true, showsTrailingChevron: false)
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .disabled(!confirmDelete || deletePassword.isEmpty || isSaving)
+                            .disabled(isSaving)
                         }
                     }
                 }
@@ -999,7 +1022,13 @@ private func settingsSection<Content: View>(@ViewBuilder content: () -> Content)
     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
 }
 
-private func settingsRow(title: String, icon: String, subtitle: String? = nil, isDestructive: Bool = false) -> some View {
+private func settingsRow(
+    title: String,
+    icon: String,
+    subtitle: String? = nil,
+    isDestructive: Bool = false,
+    showsTrailingChevron: Bool = true
+) -> some View {
     HStack(spacing: 12) {
         Image(systemName: icon)
             .font(.system(size: 18))
@@ -1019,9 +1048,11 @@ private func settingsRow(title: String, icon: String, subtitle: String? = nil, i
 
         Spacer()
 
-        Image(systemName: "chevron.right")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.gray)
+        if showsTrailingChevron {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.gray)
+        }
     }
     .padding(.vertical, 12)
     .padding(.horizontal, 16)

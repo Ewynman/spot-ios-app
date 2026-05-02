@@ -113,7 +113,7 @@ class AuthService {
                     .value
                 let exists = !rows.isEmpty
                 if !exists {
-                    SpotLogger.log(AuthServiceLogs.missingFirestoreUserDoc, details: ["userId": uid])
+                    SpotLogger.log(AuthServiceLogs.missingUserProfileRow, details: ["userId": uid])
                     try? await supabase.auth.signOut()
                 }
                 completion(exists)
@@ -257,12 +257,75 @@ class AuthService {
                         }
                     }
                 }
+                SpotLogger.log(AuthServiceLogs.deleteAccountReauthenticated)
+
+                let session = try await supabase.auth.session
+                let userId = session.user.id
+                await purgeStorageForAccountDeletion(userId: userId)
+
                 struct EmptyParams: Encodable {}
-                _ = try? await supabase.rpc("delete_my_account", params: EmptyParams()).execute()
-                try await supabase.auth.signOut()
-                completion(.success(()))
+                SpotLogger.log(AuthServiceLogs.deleteAccountCallingRPC)
+                try await runWithTimeout(seconds: 20) {
+                    _ = try await supabase.rpc("delete_my_account", params: EmptyParams()).execute()
+                }
+                SpotLogger.log(AuthServiceLogs.deleteAccountRPCFinished)
+
+                do {
+                    try await supabase.auth.signOut()
+                } catch {
+                    SpotLogger.log(AuthServiceLogs.deleteAccountSignOutAfterRPCFailed, details: [
+                        "error": error.localizedDescription
+                    ])
+                }
+                await MainActor.run { completion(.success(())) }
             } catch {
-                completion(.failure(error))
+                await MainActor.run { completion(.failure(error)) }
+            }
+        }
+    }
+
+    private func runWithTimeout(seconds: UInt64, operation: @escaping @Sendable () async throws -> Void) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                throw NSError(
+                    domain: "AuthService",
+                    code: -1001,
+                    userInfo: [NSLocalizedDescriptionKey: "Account deletion timed out. Please try again."]
+                )
+            }
+
+            try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// Removes objects under `{userId}/` in `avatars` and `spots` buckets (Postgres rows are wiped by RPC).
+    private func purgeStorageForAccountDeletion(userId: UUID) async {
+        let prefix = userId.uuidString.lowercased()
+        for bucketId in ["avatars", "spots"] {
+            do {
+                let entries = try await supabase.storage
+                    .from(bucketId)
+                    .list(path: prefix)
+                guard !entries.isEmpty else { continue }
+                let paths = entries.map { "\(prefix)/\($0.name)" }
+                let batchSize = 50
+                var offset = 0
+                while offset < paths.count {
+                    let end = min(offset + batchSize, paths.count)
+                    let batch = Array(paths[offset..<end])
+                    _ = try await supabase.storage.from(bucketId).remove(paths: batch)
+                    offset = end
+                }
+            } catch {
+                SpotLogger.log(AuthServiceLogs.deleteAccountStoragePurgeFailed, details: [
+                    "bucket": bucketId,
+                    "error": error.localizedDescription
+                ])
             }
         }
     }

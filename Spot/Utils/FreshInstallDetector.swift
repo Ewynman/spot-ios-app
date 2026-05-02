@@ -57,7 +57,7 @@ class FreshInstallDetector {
     }
 
     @MainActor private func clearAllCaches() {
-        FeedCache.shared.clearCache()
+        FeedRepository.shared.reset()
         DeepLinkState.shared.clearUserSession()
         UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.notificationsRequested)
         UserDefaults.standard.removeObject(forKey: Constants.UserDefaultsKeys.locationPermissionRequested)

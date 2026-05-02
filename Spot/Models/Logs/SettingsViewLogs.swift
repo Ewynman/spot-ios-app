@@ -18,6 +18,8 @@ enum SettingsViewLogs: SpotLog {
     case profilePhotoUpdateSupabaseFailed
     case profilePhotoUpdated
     case profilePhotoUploadFailed
+    case deleteAccountTapped
+    case deleteAccountBlockedMissingConfirmation
 
     var tag: String { "SettingsView" }
     var level: LogLevel {
@@ -32,6 +34,8 @@ enum SettingsViewLogs: SpotLog {
         case .profilePhotoUpdateSupabaseFailed: return .error
         case .profilePhotoUpdated: return .info
         case .profilePhotoUploadFailed: return .error
+        case .deleteAccountTapped: return .info
+        case .deleteAccountBlockedMissingConfirmation: return .info
         }
     }
     var message: String {
@@ -46,6 +50,8 @@ enum SettingsViewLogs: SpotLog {
         case .profilePhotoUpdateSupabaseFailed: return "Profile photo Supabase update failed"
         case .profilePhotoUpdated: return "Profile photo updated"
         case .profilePhotoUploadFailed: return "Profile photo upload failed"
+        case .deleteAccountTapped: return "Delete account tapped"
+        case .deleteAccountBlockedMissingConfirmation: return "Delete account blocked: need confirmation and password"
         }
     }
 }

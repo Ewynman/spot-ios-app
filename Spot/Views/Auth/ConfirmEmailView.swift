@@ -93,21 +93,23 @@ struct ConfirmEmailView: View {
             .padding(.horizontal, 32)
             .padding(.top, 8)
 
-            Button {
-                Task { await resend() }
-            } label: {
-                if authVM.canResendVerification() {
-                    Text(isResending ? "Sending..." : "Resend code")
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                } else {
-                    Text("Resend in \(authVM.secondsUntilResend())s")
-                        .font(FontManager.primaryText())
-                        .foregroundColor(.gray)
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Button {
+                    Task { await resend() }
+                } label: {
+                    if authVM.canResendVerification() {
+                        Text(isResending ? "Sending..." : "Resend code")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                    } else {
+                        Text("Resend in \(authVM.secondsUntilResend())s")
+                            .font(FontManager.primaryText())
+                            .foregroundColor(.gray)
+                    }
                 }
+                .disabled(!authVM.canResendVerification() || isResending)
+                .buttonStyle(PlainButtonStyle())
             }
-            .disabled(!authVM.canResendVerification() || isResending)
-            .buttonStyle(PlainButtonStyle())
 
             Spacer()
         }
@@ -143,9 +145,14 @@ struct ConfirmEmailView: View {
         guard authVM.canResendVerification() else { return }
         isResending = true
         defer { isResending = false }
-        await authVM.sendVerificationEmail()
-        showToast = "Code sent"
-        SpotLogger.log(ConfirmEmailViewLogs.verificationEmailResent)
+        errorMessage = nil
+        do {
+            try await authVM.sendVerificationEmail()
+            showToast = "Code sent"
+            SpotLogger.log(ConfirmEmailViewLogs.verificationEmailResent)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

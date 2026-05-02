@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct RootView: View {
-    @StateObject private var authViewModel = AuthViewModel()
+    @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var deepLinkState: DeepLinkState
     @EnvironmentObject var permissionManager: PermissionManager
     @State private var showPaywall: Bool = false
@@ -211,10 +211,14 @@ struct RootView: View {
         .task(id: "\(authViewModel.userId ?? "nil")-\(authViewModel.isAuthenticated)-\(authViewModel.isEmailVerified)") {
             hasResolvedPostAuthSetup = false
             await refreshPostAuthSetupRequirement()
+            await refreshStoreKitEntitlementIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
-            Task { await refreshPostAuthSetupRequirement() }
+            Task {
+                await refreshPostAuthSetupRequirement()
+                await refreshStoreKitEntitlementIfNeeded()
+            }
         }
         .onChange(of: permissionManager.lifecycleRefreshTick) { _, _ in
             Task { await refreshPostAuthSetupRequirement() }
@@ -225,6 +229,22 @@ struct RootView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             guard PostPurchaseProOnboardingManager.shouldShow(userId: authViewModel.userId) else { return }
             showPostPurchaseProOnboarding = true
+        }
+    }
+
+    @MainActor
+    private func refreshStoreKitEntitlementIfNeeded() async {
+        guard authViewModel.isAuthenticated,
+              authViewModel.isEmailVerified,
+              let userId = authViewModel.userId,
+              let appAccountToken = UUID(uuidString: userId)
+        else { return }
+
+        switch await SubscriptionManager.shared.refreshEntitlement(for: appAccountToken) {
+        case .active(let expirationDate):
+            await authViewModel.setProActive(true, proUntil: expirationDate)
+        case .linkedToDifferentAccount, .inactive:
+            await authViewModel.setProActive(false)
         }
     }
 
@@ -248,6 +268,9 @@ struct RootView: View {
         let notificationsGranted = permissionManager.notificationStatus == .authorized
         let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
         let cameraGranted = permissionManager.cameraStatus == .authorized
+
+        let session = try? await supabase.auth.session
+        let allowProfileCompletionGate = session.map { AuthProfileSetupGate.shouldShowUsernamePhotoPostAuthSetup(session: $0) } ?? false
 
         struct Row: Decodable {
             let username: String?
@@ -278,7 +301,8 @@ struct RootView: View {
                     .eq("id", value: uid)
                     .execute()
             }
-            needsProfileSetup = !(usernameOk && photoOk)
+            let profileIncomplete = !(usernameOk && photoOk)
+            needsProfileSetup = allowProfileCompletionGate && profileIncomplete
         } catch {
             // Avoid blocking existing users in setup if profile check temporarily fails.
             needsProfileSetup = false
@@ -289,7 +313,7 @@ struct RootView: View {
         // Guard against transient auth/user-row sync delays right after signup/login:
         // re-check once before presenting profile setup so users with completed profiles
         // never see a brief setup flash.
-        if shouldShow && needsProfileSetup {
+        if shouldShow && needsProfileSetup && allowProfileCompletionGate {
             try? await Task.sleep(nanoseconds: 350_000_000)
             do {
                 let row: Row = try await supabase
@@ -305,7 +329,9 @@ struct RootView: View {
                 let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
                 let photoOk = !((persistedPhotoURL?.isEmpty ?? true) && (metadataPhotoURL?.isEmpty ?? true))
-                shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || !(usernameOk && photoOk))
+                let profileIncomplete = !(usernameOk && photoOk)
+                let needsProfileAfterRetry = allowProfileCompletionGate && profileIncomplete
+                shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || needsProfileAfterRetry)
             } catch {
                 // Keep the earlier decision on retry errors.
             }
@@ -344,4 +370,7 @@ struct RootView: View {
 
 #Preview {
     RootView()
+        .environmentObject(AuthViewModel())
+        .environmentObject(DeepLinkState.shared)
+        .environmentObject(PermissionManager.shared)
 }

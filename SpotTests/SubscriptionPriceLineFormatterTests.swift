@@ -14,14 +14,12 @@ struct SubscriptionPriceLineFormatterTests {
 
     @Test func localizedPeriodSuffixYear() {
         let s = SubscriptionPriceLineFormatter.localizedPeriodSuffix(value: 1, unit: .year, locale: fixedLocale)
-        #expect(s.contains("1"))
-        #expect(s.lowercased().contains("year"))
+        #expect(s == "year")
     }
 
     @Test func localizedPeriodSuffixMonth() {
         let s = SubscriptionPriceLineFormatter.localizedPeriodSuffix(value: 1, unit: .month, locale: fixedLocale)
-        #expect(s.contains("1"))
-        #expect(s.lowercased().contains("month"))
+        #expect(s == "month")
     }
 
     @Test func localizedPeriodSuffixWeek() {
@@ -57,8 +55,17 @@ struct SubscriptionPriceLineFormatterTests {
             subscriptionUnit: .year,
             locale: fixedLocale
         )
-        #expect(line.hasPrefix("$9.99 / "))
-        #expect(line.lowercased().contains("year"))
+        #expect(line == "$9.99 / year")
+    }
+
+    @Test func mockedUSYearlyProductRendersTargetPrice() {
+        let line = SubscriptionPriceLineFormatter.priceLine(
+            displayPrice: "$19.99",
+            subscriptionValue: 1,
+            subscriptionUnit: .year,
+            locale: fixedLocale
+        )
+        #expect(line == "$19.99 / year")
     }
 
     @Test func priceLineFallsBackToDisplayPriceWhenSuffixEmpty() {

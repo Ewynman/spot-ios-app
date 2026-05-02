@@ -268,6 +268,10 @@ struct SpotFirstRunOnboardingOverlay: View {
 
     private var guidedStep: some View {
         ZStack {
+            if blocksUnderlyingFeedWhileAwaitingSpotTarget {
+                Constants.Colors.background
+                    .ignoresSafeArea()
+            }
             spotlightScrim
                 .allowsHitTesting(manager.currentStep != .mapTab)
             if shouldShowFallbackSpot {
@@ -506,6 +510,11 @@ struct SpotFirstRunOnboardingOverlay: View {
         default:
             return false
         }
+    }
+
+    /// Hides the home feed skeleton/loading UI until a real `SpotCard` reports a coach frame.
+    private var blocksUnderlyingFeedWhileAwaitingSpotTarget: Bool {
+        manager.currentStep == .spotCard && targetRect == nil
     }
 
     private var instructionBottomPadding: CGFloat {

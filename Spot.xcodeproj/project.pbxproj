@@ -13,13 +13,9 @@
 		644D8BAF2E29A5450098D191 /* FirebaseAnalyticsIdentitySupport in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BAE2E29A5450098D191 /* FirebaseAnalyticsIdentitySupport */; };
 		644D8BB12E29A5450098D191 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BB02E29A5450098D191 /* FirebaseAppCheck */; };
 		644D8BB32E29A5450098D191 /* FirebaseAppDistribution-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BB22E29A5450098D191 /* FirebaseAppDistribution-Beta */; };
-		644D8BB52E29A5450098D191 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BB42E29A5450098D191 /* FirebaseAuth */; };
-		644D8BB72E29A5450098D191 /* FirebaseAuthCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BB62E29A5450098D191 /* FirebaseAuthCombine-Community */; };
 		644D8BB92E29A5450098D191 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BB82E29A5450098D191 /* FirebaseCore */; };
 		644D8BBB2E29A5450098D191 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BBA2E29A5450098D191 /* FirebaseCrashlytics */; };
 		644D8BBD2E29A5450098D191 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BBC2E29A5450098D191 /* FirebaseDatabase */; };
-		644D8BBF2E29A5450098D191 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BBE2E29A5450098D191 /* FirebaseFirestore */; };
-		644D8BC12E29A5450098D191 /* FirebaseFirestoreCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BC02E29A5450098D191 /* FirebaseFirestoreCombine-Community */; };
 		644D8BC32E29A5450098D191 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BC22E29A5450098D191 /* FirebaseFunctions */; };
 		644D8BC52E29A5450098D191 /* FirebaseFunctionsCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BC42E29A5450098D191 /* FirebaseFunctionsCombine-Community */; };
 		644D8BC72E29A5450098D191 /* FirebaseInAppMessaging-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = 644D8BC62E29A5450098D191 /* FirebaseInAppMessaging-Beta */; };
@@ -94,7 +90,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				644D8BC12E29A5450098D191 /* FirebaseFirestoreCombine-Community in Frameworks */,
 				644D8BC32E29A5450098D191 /* FirebaseFunctions in Frameworks */,
 				644D8BCF2E29A5450098D191 /* FirebasePerformance in Frameworks */,
 				644D8BD52E29A5450098D191 /* FirebaseStorageCombine-Community in Frameworks */,
@@ -104,11 +99,9 @@
 				644D8BAD2E29A5450098D191 /* FirebaseAnalyticsCore in Frameworks */,
 				644D8BB12E29A5450098D191 /* FirebaseAppCheck in Frameworks */,
 				644D8BA92E29A5450098D191 /* FirebaseAI in Frameworks */,
-				644D8BBF2E29A5450098D191 /* FirebaseFirestore in Frameworks */,
 				644D8BCD2E29A5450098D191 /* FirebaseMessaging in Frameworks */,
 				644D8BC92E29A5450098D191 /* FirebaseInstallations in Frameworks */,
 				644D8BC52E29A5450098D191 /* FirebaseFunctionsCombine-Community in Frameworks */,
-				644D8BB52E29A5450098D191 /* FirebaseAuth in Frameworks */,
 				644D8BB32E29A5450098D191 /* FirebaseAppDistribution-Beta in Frameworks */,
 				644D8BC72E29A5450098D191 /* FirebaseInAppMessaging-Beta in Frameworks */,
 				644D8BBB2E29A5450098D191 /* FirebaseCrashlytics in Frameworks */,
@@ -116,7 +109,6 @@
 				644D8BCB2E29A5450098D191 /* FirebaseMLModelDownloader in Frameworks */,
 				644D8BD32E29A5450098D191 /* FirebaseStorage in Frameworks */,
 				644D8BB92E29A5450098D191 /* FirebaseCore in Frameworks */,
-				644D8BB72E29A5450098D191 /* FirebaseAuthCombine-Community in Frameworks */,
 				649E00012E20429E00DC9E90 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -186,13 +178,9 @@
 				644D8BAE2E29A5450098D191 /* FirebaseAnalyticsIdentitySupport */,
 				644D8BB02E29A5450098D191 /* FirebaseAppCheck */,
 				644D8BB22E29A5450098D191 /* FirebaseAppDistribution-Beta */,
-				644D8BB42E29A5450098D191 /* FirebaseAuth */,
-				644D8BB62E29A5450098D191 /* FirebaseAuthCombine-Community */,
 				644D8BB82E29A5450098D191 /* FirebaseCore */,
 				644D8BBA2E29A5450098D191 /* FirebaseCrashlytics */,
 				644D8BBC2E29A5450098D191 /* FirebaseDatabase */,
-				644D8BBE2E29A5450098D191 /* FirebaseFirestore */,
-				644D8BC02E29A5450098D191 /* FirebaseFirestoreCombine-Community */,
 				644D8BC22E29A5450098D191 /* FirebaseFunctions */,
 				644D8BC42E29A5450098D191 /* FirebaseFunctionsCombine-Community */,
 				644D8BC62E29A5450098D191 /* FirebaseInAppMessaging-Beta */,
@@ -502,14 +490,14 @@
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses your camera to take photos of your spots";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spot needs camera access so you can capture new spot photos.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and add your spot to the map";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot uses your photo library to select photos for your spots";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot needs access to your photos so you can post spots from your gallery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -547,14 +535,14 @@
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses your camera to take photos of your spots";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spot needs camera access so you can capture new spot photos.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and add your spot to the map";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot uses your photo library to select photos for your spots";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot needs access to your photos so you can post spots from your gallery.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -742,16 +730,6 @@
 			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = "FirebaseAppDistribution-Beta";
 		};
-		644D8BB42E29A5450098D191 /* FirebaseAuth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAuth;
-		};
-		644D8BB62E29A5450098D191 /* FirebaseAuthCombine-Community */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = "FirebaseAuthCombine-Community";
-		};
 		644D8BB82E29A5450098D191 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
@@ -766,16 +744,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseDatabase;
-		};
-		644D8BBE2E29A5450098D191 /* FirebaseFirestore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFirestore;
-		};
-		644D8BC02E29A5450098D191 /* FirebaseFirestoreCombine-Community */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 644D8BA72E29A5450098D191 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = "FirebaseFirestoreCombine-Community";
 		};
 		644D8BC22E29A5450098D191 /* FirebaseFunctions */ = {
 			isa = XCSwiftPackageProductDependency;

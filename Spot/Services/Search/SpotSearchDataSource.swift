@@ -106,8 +106,3 @@ final class SpotSearchDataSource {
         return SearchPage(items: Array(filtered.prefix(pageSize)), lastDocument: nil)
     }
 }
-
-// Firestore composite indexes required:
-// 1) spots: locationName_lower ASC, createdAt DESC
-// 2) spots: vibeTag_lower ASC, createdAt DESC
-// Single-field index: users.username_lower ASC

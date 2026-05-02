@@ -76,9 +76,7 @@ struct MapView: View {
                         onRegionChanged: { region in
                             lastRegionFromMap = region
                             cameraIntent = .none
-                            if FeedFlags.useSupabaseMapRPC {
-                                mapVM.loadForRegion(region)
-                            }
+                            mapVM.loadForRegion(region)
                         }
                     )
                     .ignoresSafeArea(edges: .bottom)
@@ -211,11 +209,6 @@ struct MapView: View {
         }
         performInitialFitIfNeeded()
 
-        guard FeedFlags.useSupabaseMapRPC else {
-            mapVM.loadAllSpots()
-            return
-        }
-
         // Best path: we already have a real or cached location fix →
         // jump straight to it. `userLocation` may have been seeded from
         // the persisted last-known-good fix at LocationManager init,
@@ -294,9 +287,7 @@ struct MapView: View {
             radiusMeters: Constants.MapDesign.initialNeighborhoodRadiusMeters
         )
         cameraIntent = .region(region, animated: animated)
-        if FeedFlags.useSupabaseMapRPC {
-            mapVM.loadForRegion(region)
-        }
+        mapVM.loadForRegion(region)
         SpotLogger.log(MapViewLogs.initialFitApplied, details: [
             "source": source,
             "lat": coordinate.latitude,

@@ -1,47 +1,26 @@
 import Foundation
-import FirebaseFirestore
 
 final class VibeTagService {
     static let shared = VibeTagService()
     private init() {}
 
-    private let db = Firestore.firestore()
-
-    // Ensures a global vibe tag exists in the `vibeTags` collection.
-    // Returns the document ID of the existing or newly created tag.
-    @discardableResult
-    func ensureTagExists(name rawName: String) async throws -> String {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = name.lowercased()
-
-        // Check for existing tag by lowercase name to avoid duplicates
-        let existing = try await db.collection("vibeTags")
-            .whereField("name_lower", isEqualTo: lower)
-            .limit(to: 1)
-            .getDocuments()
-        if let doc = existing.documents.first {
-            return doc.documentID
-        }
-
-        // Create new tag
-        let data: [String: Any] = [
-            "name": name,
-            "name_lower": lower,
-            "createdAt": FieldValue.serverTimestamp()
-        ]
-
-        let ref = try await db.collection("vibeTags").addDocument(data: data)
-        return ref.documentID
+    private static func customTagsKey(userId: String) -> String {
+        "spot.userCustomVibeTagNames.\(userId)"
     }
 
-    // Convenience: ensure tag exists globally and attach to user's customVibeTags array
+    /// Ensures a global vibe tag exists in `vibe_tags` and returns its id string.
+    @discardableResult
+    func ensureTagExists(name rawName: String) async throws -> String {
+        let id = try await SpotSupabaseRepository.resolveOrCreateVibeTagId(displayName: rawName)
+        return id.uuidString
+    }
+
+    /// Ensures the tag exists in Postgres and records it locally for this user (picker / search).
     func ensureExistsAndAttachToUser(name: String, userId: String?) async {
-        guard let userId = userId else { return }
+        guard let userId else { return }
         do {
             _ = try await ensureTagExists(name: name)
-            try await db.collection("users").document(userId).setData([
-                "customVibeTags": FieldValue.arrayUnion([name])
-            ], merge: true)
+            appendCustomTagName(name, userId: userId)
             SpotLogger.log(VibeTagServiceLogs.vibeTagSaved, details: ["name": name])
         } catch {
             SpotLogger.log(VibeTagServiceLogs.savingVibeTagFailed, details: ["error": error.localizedDescription])
@@ -50,14 +29,32 @@ final class VibeTagService {
 
     func fetchAll(limit: Int = 1000) async -> [VibeTag] {
         do {
-            let snap = try await db.collection("vibeTags")
-                .order(by: "name_lower")
-                .limit(to: limit)
-                .getDocuments()
-            return snap.documents.compactMap { try? $0.data(as: VibeTag.self) }
+            var tags = try await SpotSupabaseRepository.fetchVibeTagsForPicker(limit: limit)
+            if let uid = SpotAuthBridge.currentUserId {
+                let custom = UserDefaults.standard.stringArray(forKey: Self.customTagsKey(userId: uid)) ?? []
+                let existingLower = Set(tags.map { ($0.name_lower ?? $0.name.lowercased()) })
+                for name in custom {
+                    let lower = name.lowercased()
+                    guard !existingLower.contains(lower) else { continue }
+                    tags.append(VibeTag(id: nil, name: name, name_lower: lower, createdAt: nil))
+                }
+            }
+            tags.sort { ($0.name_lower ?? $0.name.lowercased()) < ($1.name_lower ?? $1.name.lowercased()) }
+            return tags
         } catch {
             SpotLogger.log(VibeTagServiceLogs.fetchVibeTagsFailed, details: ["error": error.localizedDescription])
             return []
+        }
+    }
+
+    private func appendCustomTagName(_ rawName: String, userId: String) {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let key = Self.customTagsKey(userId: userId)
+        var arr = UserDefaults.standard.stringArray(forKey: key) ?? []
+        if !arr.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            arr.append(trimmed)
+            UserDefaults.standard.set(arr, forKey: key)
         }
     }
 }
