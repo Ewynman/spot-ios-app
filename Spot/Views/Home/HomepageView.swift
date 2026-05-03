@@ -3,13 +3,14 @@ import SwiftUI
 struct HomepageView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var feedVM = FeedViewModel()
+    @State private var homeNavigationPath = NavigationPath()
     @State private var showVerifyToast = false
     @State private var showPostSuccessToast = false
     @State private var postSuccessToastTask: Task<Void, Never>?
     @State private var postSuccessRefreshTask: Task<Void, Never>?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $homeNavigationPath) {
             VStack(spacing: 0) {
                 // Top bar: SPOT branding only (no plus; Post is its own tab)
                 TopNavigationView(
@@ -64,6 +65,10 @@ struct HomepageView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .accessibilityIdentifier("home.feedRoot")
+            .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+                guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 0 else { return }
+                homeNavigationPath = NavigationPath()
+            }
         }
         .onAppear {
             Task {

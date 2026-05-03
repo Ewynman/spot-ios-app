@@ -27,6 +27,10 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var createdAt: Date?
     // Optional denormalized snapshot to enable quick pre-filtering.
     var authorIsPrivate: Bool?
+    /// Server-persisted width/height display ratio for the Spot media shell (cover photo). Optional for legacy rows.
+    var mediaDisplayAspectRatio: Double?
+    /// Optional media row count from `spots.media_count` when selected with the spot row.
+    var mediaCount: Int?
 
     // Explicit initializer to preserve source compatibility for existing call sites
     init(
@@ -46,7 +50,9 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         isSaved: Bool? = nil,
         createdAt: Date? = nil,
         authorIsPrivate: Bool? = nil,
-        imageURLs: [String]? = nil
+        imageURLs: [String]? = nil,
+        mediaDisplayAspectRatio: Double? = nil,
+        mediaCount: Int? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -65,6 +71,8 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         self.isSaved = isSaved
         self.createdAt = createdAt
         self.authorIsPrivate = authorIsPrivate
+        self.mediaDisplayAspectRatio = mediaDisplayAspectRatio
+        self.mediaCount = mediaCount
     }
 
     static func withResolvedLocation(_ spot: Spot) async -> Spot {

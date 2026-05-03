@@ -59,35 +59,45 @@ struct PostFlowView: View {
                     } else {
                         ProgressIndicatorView(currentStep: viewModel.currentStep, totalSteps: viewModel.totalSteps)
 
-                        ScrollView(showsIndicators: false) {
-                            Group {
-                                switch viewModel.currentStep {
-                                case 1:
-                                    PhotoSelectionView(
-                                        selectedPhotos: $viewModel.selectedPhotos,
-                                        draftCount: viewModel.availableDrafts.count,
-                                        onOpenDrafts: {
-                                            showDraftsSheet = true
-                                            viewModel.refreshDrafts()
-                                        }
-                                    )
-                                case 2:
-                                    LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
-                                case 3:
-                                    VibeSelectionView(
-                                        selectedVibes: $viewModel.selectedVibes,
-                                        maxVibes: viewModel.selectedPhotos.count > 1 ? 5 : 3
-                                    )
-                                default:
-                                    EmptyView()
+                        ScrollViewReader { proxy in
+                            ScrollView(showsIndicators: false) {
+                                Color.clear.frame(height: 0).id("postFlowScrollTop")
+                                Group {
+                                    switch viewModel.currentStep {
+                                    case 1:
+                                        PhotoSelectionView(
+                                            selectedPhotos: $viewModel.selectedPhotos,
+                                            draftCount: viewModel.availableDrafts.count,
+                                            onOpenDrafts: {
+                                                showDraftsSheet = true
+                                                viewModel.refreshDrafts()
+                                            }
+                                        )
+                                    case 2:
+                                        LocationSelectionView(selectedLocation: $viewModel.selectedLocation)
+                                    case 3:
+                                        VibeSelectionView(
+                                            selectedVibes: $viewModel.selectedVibes,
+                                            maxVibes: viewModel.selectedPhotos.count > 1 ? 5 : 3
+                                        )
+                                    default:
+                                        EmptyView()
+                                    }
+                                }
+                                .padding(.bottom, 12)
+                            }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing),
+                                removal: .move(edge: .leading)
+                            ))
+                            .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+                                guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 2 else { return }
+                                guard !isVerifyingEmail, authVM.isEmailVerified else { return }
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    proxy.scrollTo("postFlowScrollTop", anchor: .top)
                                 }
                             }
-                            .padding(.bottom, 12)
                         }
-                        .transition(.asymmetric(
-                        insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
-                    ))
 
                         NavigationButtonsView(
                             currentStep: $viewModel.currentStep,

@@ -39,6 +39,8 @@ struct HomeFeedRow: Decodable, Identifiable, Hashable {
     let rankingScore: Double
     let seenBefore: Bool
     let lastSeenAt: Date?
+    /// When present (requires RPC update server-side), drives feed card media height before image load.
+    let mediaDisplayAspectRatio: Double?
 
     var id: UUID { spotId }
 
@@ -65,6 +67,7 @@ struct HomeFeedRow: Decodable, Identifiable, Hashable {
         case rankingScore = "ranking_score"
         case seenBefore = "seen_before"
         case lastSeenAt = "last_seen_at"
+        case mediaDisplayAspectRatio = "media_display_aspect_ratio"
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +94,7 @@ struct HomeFeedRow: Decodable, Identifiable, Hashable {
         rankingScore = try c.decodeIfPresent(Double.self, forKey: .rankingScore) ?? 0
         seenBefore = try c.decodeIfPresent(Bool.self, forKey: .seenBefore) ?? false
         lastSeenAt = SpotSupabaseRepository.parseTimestamptz(try c.decodeIfPresent(String.self, forKey: .lastSeenAt))
+        mediaDisplayAspectRatio = try c.decodeIfPresent(Double.self, forKey: .mediaDisplayAspectRatio)
     }
 }
 
@@ -450,6 +454,7 @@ struct MapSpotRow: Decodable, Identifiable, Hashable {
     let primaryStoragePath: String?
     let primaryPublicUrl: String?
     let distanceMeters: Double?
+    let mediaDisplayAspectRatio: Double?
 
     var id: UUID { spotId }
 
@@ -468,6 +473,7 @@ struct MapSpotRow: Decodable, Identifiable, Hashable {
         case primaryStoragePath = "primary_storage_path"
         case primaryPublicUrl = "primary_public_url"
         case distanceMeters = "distance_meters"
+        case mediaDisplayAspectRatio = "media_display_aspect_ratio"
     }
 
     init(from decoder: Decoder) throws {
@@ -486,6 +492,7 @@ struct MapSpotRow: Decodable, Identifiable, Hashable {
         primaryStoragePath = try c.decodeIfPresent(String.self, forKey: .primaryStoragePath)
         primaryPublicUrl = try c.decodeIfPresent(String.self, forKey: .primaryPublicUrl)
         distanceMeters = try c.decodeIfPresent(Double.self, forKey: .distanceMeters)
+        mediaDisplayAspectRatio = try c.decodeIfPresent(Double.self, forKey: .mediaDisplayAspectRatio)
     }
 }
 
@@ -935,7 +942,9 @@ extension HomeFeedRow {
             isSaved: nil,
             createdAt: createdAt,
             authorIsPrivate: authorIsPrivate,
-            imageURLs: primaryURL.map { [$0] }
+            imageURLs: primaryURL.map { [$0] },
+            mediaDisplayAspectRatio: mediaDisplayAspectRatio,
+            mediaCount: nil
         )
     }
 }
@@ -960,7 +969,9 @@ extension MapSpotRow {
             isSaved: nil,
             createdAt: createdAt,
             authorIsPrivate: nil,
-            imageURLs: nil
+            imageURLs: nil,
+            mediaDisplayAspectRatio: mediaDisplayAspectRatio,
+            mediaCount: nil
         )
     }
 }

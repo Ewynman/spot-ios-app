@@ -172,6 +172,14 @@ struct BottomTabNavigationView: View {
     }
 
     private func selectTab(_ tab: Int) {
+        if tab == selectedTab {
+            NotificationCenter.default.post(
+                name: .mainTabReselectSame,
+                object: nil,
+                userInfo: [SpotMainTabNotification.userInfoTabIndexKey: tab]
+            )
+            return
+        }
         selectedTab = tab
         if tab == 1 {
             firstRunOnboarding.mapTabSelected()

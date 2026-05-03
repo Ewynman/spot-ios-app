@@ -39,7 +39,7 @@ flowchart TD
 **TODO: verify** — generate from live schema or maintain a curated list. Starting references from migrations:
 
 - `media_assets`, `media_moderation_events`
-- `users`, `spots`, follow-related tables (see dated migrations)
+- `users`, `spots` (including `media_display_aspect_ratio`, `media_count`, `media_layout_version` for feed layout), `spot_images` (per-image width/height and clamped display ratio), follow-related tables (see dated migrations)
 
 ### Privacy classification (high level)
 

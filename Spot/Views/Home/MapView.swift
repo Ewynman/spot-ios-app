@@ -155,6 +155,13 @@ struct MapView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .accessibilityIdentifier("map.screen")
+        .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+            guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 1 else { return }
+            showVibePicker = false
+            if selectedSpot != nil {
+                dismissSelectedSpot(reason: .tabReselected, animated: true)
+            }
+        }
     }
 
     // MARK: - Bottom drawer (root-level overlay, full width)

@@ -1,5 +1,10 @@
 import Foundation
 
+/// UserInfo key for `Notification.Name.mainTabReselectSame` — `Int` tab index (matches `BottomTabNavigationView` cases: 0 Home … 4 Profile).
+enum SpotMainTabNotification {
+    static let userInfoTabIndexKey = "tabIndex"
+}
+
 extension Notification.Name {
     static let showPaywall = Notification.Name("SpotShowPaywall")
     /// Posted when a spot is successfully posted (e.g. from Post tab) so Feed can refresh and show toast.
@@ -9,6 +14,8 @@ extension Notification.Name {
     static let showPostPurchaseProOnboarding = Notification.Name("SpotShowPostPurchaseProOnboarding")
     /// Posted when `Transaction.updates` delivers a verified Spot Pro transaction that was finished on-device (e.g. purchase completed while UI was not awaiting `Product.purchase()`).
     static let spotStoreKitProEntitlementReady = Notification.Name("SpotStoreKitProEntitlementReady")
+    /// Posted when the user taps the already-selected main tab so that tab can scroll to top / pop to root / reset local chrome.
+    static let mainTabReselectSame = Notification.Name("SpotMainTabReselectSame")
 }
 
 enum PaywallRouter {

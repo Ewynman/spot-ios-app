@@ -90,6 +90,23 @@ struct HomeFeedRowDecodingTests {
         #expect(row.sourceBucket == "following_new")
     }
 
+    @Test func decodesRowWithMediaDisplayAspectRatio() throws {
+        let json = #"""
+        {
+          "spot_id": "11111111-1111-1111-1111-111111111111",
+          "user_id": "22222222-2222-2222-2222-222222222222",
+          "source_bucket": "personalized_unseen",
+          "rank_position": 0,
+          "ranking_score": 1.0,
+          "seen_before": false,
+          "media_display_aspect_ratio": 1.7777
+        }
+        """#
+        let row = try decode(json, as: HomeFeedRow.self)
+        #expect(row.mediaDisplayAspectRatio != nil)
+        #expect(abs((row.mediaDisplayAspectRatio ?? 0) - 1.7777) < 0.0001)
+    }
+
     @Test func decodesRowWithSeenFallbackBucket() throws {
         let json = #"""
         {

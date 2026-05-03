@@ -2,6 +2,17 @@ import SwiftUI
 
 struct SkeletonSpotCard: View {
     @State private var phase: CGFloat = 0
+
+    private var skeletonMediaHeight: CGFloat {
+        let w = SpotMediaAspectRatio.estimatedFeedContentWidth()
+        return SpotMediaAspectRatio.mediaHeight(
+            containerWidth: w,
+            displayRatio: SpotMediaAspectRatio.fallbackRatio,
+            minHeight: SpotMediaPresentationContext.feed.minMediaHeight,
+            maxHeight: SpotMediaPresentationContext.feed.maxMediaHeight
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -15,7 +26,7 @@ struct SkeletonSpotCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(shimmer)
                 .frame(maxWidth: .infinity)
-                .frame(height: 220)
+                .frame(height: skeletonMediaHeight)
 
             HStack {
                 RoundedRectangle(cornerRadius: 6).fill(shimmer).frame(width: 24, height: 24)

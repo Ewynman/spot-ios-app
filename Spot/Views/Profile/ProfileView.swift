@@ -565,6 +565,26 @@ struct ProfileView: View {
                 viewModel.isProProfile = newValue
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+            guard !fromNavigationPush else { return }
+            guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 4 else { return }
+            resetProfileTabToRoot()
+        }
+    }
+
+    /// Root Profile tab re-tap: return to the main profile surface (not used when embedded from Home/Map/Search).
+    private func resetProfileTabToRoot() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedSpot = nil
+            selectedTab = "Spots"
+            showMenu = false
+            showSettingsNav = false
+            showLikesNav = false
+            showBookmarksNav = false
+            showFollowRequestsNav = false
+            showAlgorithmNav = false
+            isMapExpanded = false
+        }
     }
 }
 

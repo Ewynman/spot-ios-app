@@ -49,4 +49,35 @@ final class MainNavigationUITests: XCTestCase {
         profileTab.tap()
         XCTAssertTrue(app.descendants(matching: .any)["profile.screenRoot"].waitForExistence(timeout: 20))
     }
+
+    @MainActor
+    func testRetappingProfileTabDismissesPushedSettings() throws {
+        let app = XCUIApplication()
+        SpotUITestAppConfiguration.applyLoggedInSyntheticSession(to: app)
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["main.tabShell"].waitForExistence(timeout: 25))
+
+        let profileTab = app.buttons["navigation.profileTab"]
+        XCTAssertTrue(profileTab.waitForExistence(timeout: 5))
+        profileTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["profile.screenRoot"].waitForExistence(timeout: 20))
+
+        let menu = app.buttons["profile.menuButton"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+
+        let settingsEntry = app.buttons["profile.settingsEntry"]
+        XCTAssertTrue(settingsEntry.waitForExistence(timeout: 5))
+        settingsEntry.tap()
+
+        let settingsRoot = app.descendants(matching: .any)["settings.screenRoot"]
+        XCTAssertTrue(settingsRoot.waitForExistence(timeout: 10))
+
+        profileTab.tap()
+
+        let settingsGone = NSPredicate(format: "exists == false")
+        expectation(for: settingsGone, evaluatedWith: settingsRoot, handler: nil)
+        waitForExpectations(timeout: 8)
+    }
 }

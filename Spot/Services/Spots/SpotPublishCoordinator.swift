@@ -12,6 +12,8 @@ import UIKit
 /// Serializable draft so the publish pipeline does not retain `UIImage` after the composer resets.
 struct SpotPublishDraft: Equatable {
     let imageJPEGs: [Data]
+    /// Display aspect ratio (width/height) from the cover JPEG, clamped for feed stability.
+    let coverMediaDisplayAspectRatio: CGFloat
     let vibeTags: [String]
     let latitude: Double
     let longitude: Double
@@ -96,7 +98,9 @@ final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
                 isSaved: false,
                 createdAt: postedAt,
                 authorIsPrivate: nil,
-                imageURLs: signedFirstImage.map { [$0] } ?? nil
+                imageURLs: signedFirstImage.map { [$0] } ?? nil,
+                mediaDisplayAspectRatio: Double(draft.coverMediaDisplayAspectRatio),
+                mediaCount: draft.imageJPEGs.count
             )
 
             SpotLogger.log(SpotPublishCoordinatorLogs.spotPublished, details: ["spotId": spotId.uuidString])

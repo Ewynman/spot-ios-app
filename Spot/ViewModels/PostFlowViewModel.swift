@@ -124,8 +124,17 @@ class PostFlowViewModel: ObservableObject {
                 return
             }
 
+            let coverRatio: CGFloat = {
+                guard let firstData = jpegs.first,
+                      let px = SpotJPEGImageDimensions.pixelSize(jpeg: firstData) else {
+                    return SpotMediaAspectRatio.fallbackRatio
+                }
+                return SpotMediaAspectRatio.display(width: px.width, height: px.height)
+            }()
+
             let draft = SpotPublishDraft(
                 imageJPEGs: jpegs,
+                coverMediaDisplayAspectRatio: coverRatio,
                 vibeTags: vibes,
                 latitude: lat,
                 longitude: lon,

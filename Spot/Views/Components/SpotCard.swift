@@ -8,6 +8,14 @@ import SwiftUI
 
 // MARK: - Preference Keys
 
+private struct SpotCardContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
 struct MenuButtonFrameKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
@@ -35,7 +43,9 @@ struct MenuButtonFrameKey: PreferenceKey {
         imageURLs: [
             "https://picsum.photos/seed/spot1a/800/600",
             "https://picsum.photos/seed/spot1b/800/600"
-        ]
+        ],
+        mediaDisplayAspectRatio: 800.0 / 600.0,
+        mediaCount: 2
     )
     let auth = AuthViewModel()
     auth.isPro = true
@@ -55,6 +65,9 @@ struct SpotCard: View {
     var backButtonText: String = "Back to profile"
     var onImageFailure: ((Spot) -> Void)?
     var onImageRetry: ((Spot) -> Void)?
+    /// Controls min/max media height clamps for this host (feed vs detail vs map drawer).
+    var mediaPresentation: SpotMediaPresentationContext = .feed
+    @State private var measuredContentWidth: CGFloat = SpotMediaAspectRatio.estimatedFeedContentWidth()
     @State private var showDeleteConfirm: Bool = false
     @State private var showShareSheet: Bool = false
     @State private var showReportSheet: Bool = false
@@ -75,7 +88,18 @@ struct SpotCard: View {
     @State private var currentSpot: Spot
     @State private var showVibeTagsSheet = false
 
-    init(spot: Spot, showUserInfo: Bool = true, userId: String? = nil, onDelete: (() -> Void)? = nil, source: String = "Unknown", backAction: (() -> Void)? = nil, backButtonText: String = "Back to profile", onImageFailure: ((Spot) -> Void)? = nil, onImageRetry: ((Spot) -> Void)? = nil) {
+    init(
+        spot: Spot,
+        showUserInfo: Bool = true,
+        userId: String? = nil,
+        onDelete: (() -> Void)? = nil,
+        source: String = "Unknown",
+        backAction: (() -> Void)? = nil,
+        backButtonText: String = "Back to profile",
+        onImageFailure: ((Spot) -> Void)? = nil,
+        onImageRetry: ((Spot) -> Void)? = nil,
+        mediaPresentation: SpotMediaPresentationContext = .feed
+    ) {
         self.spot = spot
         self.showUserInfo = showUserInfo
         self.userId = userId
@@ -85,6 +109,7 @@ struct SpotCard: View {
         self.backButtonText = backButtonText
         self.onImageFailure = onImageFailure
         self.onImageRetry = onImageRetry
+        self.mediaPresentation = mediaPresentation
         _currentSpot = State(initialValue: spot)
     }
 
@@ -95,6 +120,14 @@ struct SpotCard: View {
                 spotImage
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: SpotCardContentWidthKey.self, value: geo.size.width)
+                }
+            )
+            .onPreferenceChange(SpotCardContentWidthKey.self) { w in
+                if w > 1 { measuredContentWidth = w }
+            }
             .measure(target: .spotDetails)
             interactionBar
             if showError {
@@ -109,6 +142,19 @@ struct SpotCard: View {
         .background(Constants.Colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .measure(target: .spotCard)
+        .onChange(of: currentSpot.id) { _, _ in
+            thumbnailFailed = false
+            reportedImageFailure = false
+            retryToken = UUID()
+        }
+        .onChange(of: spot.feedRowSyncToken) { _, _ in
+            currentSpot = spot
+            thumbnailFailed = false
+            reportedImageFailure = false
+            retryToken = UUID()
+            isLiked = authVM.likedSpots.contains(spot.safeId)
+            isSaved = authVM.bookmarkedSpots.contains(spot.safeId)
+        }
         .onAppear {
             isLiked = authVM.likedSpots.contains(currentSpot.safeId)
             isSaved = authVM.bookmarkedSpots.contains(currentSpot.safeId)
@@ -293,39 +339,57 @@ struct SpotCard: View {
         }
     }
 
+    private var resolvedMediaWidth: CGFloat {
+        max(measuredContentWidth, 1)
+    }
+
+    private var resolvedMediaHeight: CGFloat {
+        let ratio = SpotMediaAspectRatio.effectiveDisplayRatio(for: currentSpot)
+        return SpotMediaAspectRatio.mediaHeight(
+            containerWidth: resolvedMediaWidth,
+            displayRatio: ratio,
+            minHeight: mediaPresentation.minMediaHeight,
+            maxHeight: mediaPresentation.maxMediaHeight
+        )
+    }
+
     @ViewBuilder private var spotImage: some View {
-        GeometryReader { geo in
-            let w = max(geo.size.width, 1)
-            spotImageSlot(measuredWidth: w)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 320)
+        spotImageSlot(measuredWidth: resolvedMediaWidth, mediaHeight: resolvedMediaHeight)
+            .frame(width: resolvedMediaWidth, height: resolvedMediaHeight)
+            .frame(maxWidth: .infinity)
+            .clipped()
     }
 
     /// Measured width keeps loaded `Image` views from inflating `ScrollView` / `TabView` content
     /// with wide intrinsic sizes (e.g. map preview drawer shifting right when the image appears).
     @ViewBuilder
-    private func spotImageSlot(measuredWidth: CGFloat) -> some View {
+    private func spotImageSlot(measuredWidth: CGFloat, mediaHeight: CGFloat) -> some View {
         if let urls = currentSpot.imageURLs, !urls.isEmpty {
-            SpotImageGallery(urls: urls, fallback: currentSpot.imageURL, spotId: currentSpot.id)
+            SpotImageGallery(
+                urls: urls,
+                fallback: currentSpot.imageURL,
+                spotId: currentSpot.id,
+                mediaHeight: mediaHeight,
+                galleryIdentity: currentSpot.safeId
+            )
         } else if let thumb = currentSpot.thumbnailURL, let turl = URL(string: thumb) {
             RemoteImage(url: turl, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
                 switch phase {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                 case .success(let image):
                     image.resizable()
                         .scaledToFill()
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                         .clipped()
                         .cornerRadius(12)
                 case .failure(let failure):
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                         .clipped()
                         .cornerRadius(12)
                         .onAppear {
@@ -368,7 +432,7 @@ struct SpotCard: View {
                 @unknown default:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                 }
             }
             .id(retryToken)
@@ -378,11 +442,11 @@ struct SpotCard: View {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                 case .success(let image):
                     image.resizable()
                        .scaledToFill()
-                       .frame(width: measuredWidth, height: 320)
+                       .frame(width: measuredWidth, height: mediaHeight)
                        .clipped()
                        .cornerRadius(12)
                         .onAppear {
@@ -397,7 +461,7 @@ struct SpotCard: View {
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                         .clipped()
                         .cornerRadius(12)
                         .onAppear {
@@ -434,7 +498,7 @@ struct SpotCard: View {
                 @unknown default:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(width: measuredWidth, height: 320)
+                        .frame(width: measuredWidth, height: mediaHeight)
                 }
             }
             .id(retryToken)
@@ -442,7 +506,7 @@ struct SpotCard: View {
             Image("image_placeholder")
                 .resizable()
                 .scaledToFill()
-                .frame(width: measuredWidth, height: 320)
+                .frame(width: measuredWidth, height: mediaHeight)
                 .clipped()
                 .cornerRadius(12)
                 .onAppear {

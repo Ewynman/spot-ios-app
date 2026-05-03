@@ -34,7 +34,8 @@ struct MapSpotPreviewCard: View {
                     showUserInfo: true,
                     userId: nil,
                     onDelete: { onDelete?() },
-                    source: source
+                    source: source,
+                    mediaPresentation: .mapDrawer
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Constants.Layout.Spacing.large)

@@ -225,6 +225,13 @@ struct SearchView: View {
         .sheet(isPresented: $showFilters) {
             filtersSheet
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+            guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 3 else { return }
+            path.removeAll()
+            selectedGridSpot = nil
+            showFilters = false
+            focused = false
+        }
     }
 }
 

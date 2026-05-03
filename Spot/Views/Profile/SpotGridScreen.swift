@@ -194,7 +194,8 @@ struct SpotGridScreen: View {
                             userId: userId,
                             onDelete: nil,
                             source: "\(context)",
-                            backAction: nil // Don't show back button, header handles it
+                            backAction: nil, // Don't show back button, header handles it
+                            mediaPresentation: .detail
                         )
                         .padding(.top, 8)
                     }

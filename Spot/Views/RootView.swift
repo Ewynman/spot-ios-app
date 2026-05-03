@@ -111,7 +111,8 @@ struct RootView: View {
                                     spot: spot,
                                     showUserInfo: true,
                                     userId: spot.userId,
-                                    source: "deep_link"
+                                    source: "deep_link",
+                                    mediaPresentation: .detail
                                 )
                                 .padding(.horizontal, 16)
                                 .padding(.bottom, 32)

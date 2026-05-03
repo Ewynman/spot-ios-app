@@ -67,6 +67,9 @@ struct PhotoSelectionView: View {
                     .padding(.horizontal, 24)
             } else {
                 VStack(spacing: 12) {
+                    let previewWidth = max(SpotMediaLayoutMetrics.screenWidth - 48, 1)
+                    let previewHeight = postingPreviewCarouselHeight(width: previewWidth)
+
                     TabView(selection: $selectedPhotoIndex) {
                         ForEach(Array(selectedPhotos.enumerated()), id: \.element.id) { idx, photo in
                             Image(uiImage: photo.image)
@@ -74,14 +77,20 @@ struct PhotoSelectionView: View {
                                 .scaledToFill()
                                 .tag(idx)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 300)
+                                .frame(height: previewHeight)
                                 .clipped()
                                 .cornerRadius(16)
                                 .padding(.horizontal, 24)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 300)
+                    .frame(height: previewHeight)
+
+                    Text("The first photo sets how your Spot appears in the feed. Drag thumbnails to reorder.")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
 
                     HStack {
                         Text("\(selectedPhotoIndex + 1) of \(selectedPhotos.count)")
@@ -294,6 +303,27 @@ private struct StatefulPhotosWrapper<Content: View>: View {
 
 // MARK: - Helpers
 private extension PhotoSelectionView {
+    /// Stable-height carousel matching feed clamps; cover = first photo.
+    func postingPreviewCarouselHeight(width: CGFloat) -> CGFloat {
+        guard let cover = selectedPhotos.first else {
+            return SpotMediaAspectRatio.mediaHeight(
+                containerWidth: width,
+                displayRatio: SpotMediaAspectRatio.fallbackRatio,
+                minHeight: SpotMediaPresentationContext.postingPreview.minMediaHeight,
+                maxHeight: SpotMediaPresentationContext.postingPreview.maxMediaHeight
+            )
+        }
+        let pxW = Int(cover.image.size.width * cover.image.scale)
+        let pxH = Int(cover.image.size.height * cover.image.scale)
+        let ratio = SpotMediaAspectRatio.display(width: pxW, height: pxH)
+        return SpotMediaAspectRatio.mediaHeight(
+            containerWidth: width,
+            displayRatio: ratio,
+            minHeight: SpotMediaPresentationContext.postingPreview.minMediaHeight,
+            maxHeight: SpotMediaPresentationContext.postingPreview.maxMediaHeight
+        )
+    }
+
     var maxPhotoCount: Int { authVM.isPro ? 5 : 1 }
 
     var photoSelectionDisabled: Bool {

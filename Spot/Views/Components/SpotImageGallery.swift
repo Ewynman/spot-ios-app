@@ -7,6 +7,10 @@ struct SpotImageGallery: View {
     /// array for this spot the first time the user pages past the primary
     /// image. Used by the v2 home feed where each row only carries its primary.
     var spotId: String? = nil
+    /// Fixed height for every carousel page (from metadata-driven layout).
+    var mediaHeight: CGFloat
+    /// Stable key for resetting pager/async state when the host cell is reused for another Spot.
+    var galleryIdentity: String
     @State private var selection: Int = 0
     @State private var failedIndices: Set<Int> = []
     @State private var lazilyLoaded: [String] = []
@@ -14,64 +18,75 @@ struct SpotImageGallery: View {
 
     var body: some View {
         let all = orderedURLs
-        /// Page `TabView` + loaded `Image` intrinsic sizes can widen scroll content
-        /// unless each page uses an explicit width from the parent slot.
-        GeometryReader { geo in
-            let slotWidth = max(geo.size.width, 1)
-            TabView(selection: $selection) {
-                ForEach(Array(all.enumerated()), id: \.offset) { idx, urlString in
-                    if let url = URL(string: urlString) {
-                        RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
-                            switch phase {
-                            case .empty:
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Constants.Colors.background)
-                                    .frame(width: slotWidth, height: 320)
-                            case .success(let image):
-                                image.resizable()
-                                    .scaledToFill()
-                                    .frame(width: slotWidth, height: 320)
-                                    .clipped()
-                                    .cornerRadius(12)
-                                    .onAppear {
-                                        failedIndices.remove(idx)
+        let slotWidthKey = galleryIdentity
+        TabView(selection: $selection) {
+            ForEach(Array(all.enumerated()), id: \.offset) { idx, urlString in
+                if let url = URL(string: urlString) {
+                    RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
+                        switch phase {
+                        case .empty:
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Constants.Colors.background)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: mediaHeight)
+                        case .success(let image):
+                            image.resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: mediaHeight)
+                                .clipped()
+                                .cornerRadius(12)
+                                .onAppear {
+                                    failedIndices.remove(idx)
+                                }
+                        case .failure:
+                            Image("image_placeholder")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: mediaHeight)
+                                .clipped()
+                                .cornerRadius(12)
+                                .onAppear {
+                                    failedIndices.insert(idx)
+                                    if selection == idx, let next = firstRenderableIndex(excluding: failedIndices, count: all.count) {
+                                        selection = next
                                     }
-                            case .failure:
-                                Image("image_placeholder")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: slotWidth, height: 320)
-                                    .clipped()
-                                    .cornerRadius(12)
-                                    .onAppear {
-                                        failedIndices.insert(idx)
-                                        if selection == idx, let next = firstRenderableIndex(excluding: failedIndices, count: all.count) {
-                                            selection = next
-                                        }
-                                    }
-                            @unknown default:
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Constants.Colors.background)
-                                    .frame(width: slotWidth, height: 320)
-                            }
+                                }
+                        @unknown default:
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Constants.Colors.background)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: mediaHeight)
                         }
-                        .tag(idx)
                     }
+                    .tag(idx)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
         }
+        .tabViewStyle(.page(indexDisplayMode: all.count > 1 ? .automatic : .never))
         .frame(maxWidth: .infinity)
-        .frame(height: 320)
+        .frame(height: mediaHeight)
         .clipped()
+        .id(slotWidthKey)
         .onAppear {
             if selection >= all.count {
                 selection = 0
             }
             requestFullSetIfNeeded()
+            SpotLogger.log(SpotMediaLayoutLogs.carouselLayout, details: [
+                "galleryIdentity": galleryIdentity,
+                "photoCount": all.count,
+                "mediaHeight": String(describing: Double(mediaHeight)),
+            ])
+        }
+        .onChange(of: galleryIdentity) { _, _ in
+            selection = 0
+            failedIndices.removeAll()
+            lazilyLoaded = []
+            didRequestFullSet = false
         }
         .onChange(of: selection) { _, newValue in
-            // Trigger lazy hydration the moment the user actually pages.
             if newValue > 0 { requestFullSetIfNeeded() }
         }
     }
@@ -95,8 +110,6 @@ struct SpotImageGallery: View {
     private func requestFullSetIfNeeded() {
         guard !didRequestFullSet else { return }
         guard let spotId, let uuid = UUID(uuidString: spotId) else { return }
-        // Heuristic: if we already have multiple unique URLs, the caller has
-        // already provided the full set and we don't need to fetch.
         if Set(urls).count > 1 { return }
         didRequestFullSet = true
         Task {
@@ -121,14 +134,33 @@ struct SpotImageGallery: View {
     }
 }
 
-#Preview {
+#Preview("Multi square") {
     SpotImageGallery(
         urls: [
-            "https://picsum.photos/seed/a/800/600",
-            "https://picsum.photos/seed/b/800/600"
+            "https://picsum.photos/seed/a/800/800",
+            "https://picsum.photos/seed/b/800/800",
         ],
-        fallback: nil
+        fallback: nil,
+        mediaHeight: 320,
+        galleryIdentity: "preview-1"
     )
+    .padding()
+    .background(Color(hex: "F5F3EF"))
+}
+
+#Preview("Landscape") {
+    SpotImageGallery(
+        urls: ["https://picsum.photos/seed/lscape/1200/600"],
+        fallback: nil,
+        mediaHeight: SpotMediaAspectRatio.mediaHeight(
+            containerWidth: 350,
+            displayRatio: SpotMediaAspectRatio.display(width: 1200, height: 600),
+            minHeight: 180,
+            maxHeight: 520
+        ),
+        galleryIdentity: "preview-2"
+    )
+    .frame(width: 350)
     .padding()
     .background(Color(hex: "F5F3EF"))
 }

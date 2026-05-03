@@ -71,6 +71,8 @@ enum SpotSupabaseRepository {
         let likes_count: Int64?
         let author_is_private_snapshot: Bool?
         let created_at: String
+        let media_display_aspect_ratio: Double?
+        let media_count: Int64?
     }
 
     private struct SpotImageRow: Decodable {
@@ -151,7 +153,7 @@ enum SpotSupabaseRepository {
     ) async throws -> [Spot] {
         let rows: [SpotRow] = try await supabase
             .from("spots")
-            .select("id,user_id,vibe_tag_id,caption,latitude,longitude,location_name,likes_count,author_is_private_snapshot,created_at")
+            .select(spotRowSelectColumns)
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .execute()
@@ -169,7 +171,7 @@ enum SpotSupabaseRepository {
         guard !ids.isEmpty else { return [] }
         let rows: [SpotRow] = try await supabase
             .from("spots")
-            .select("id,user_id,vibe_tag_id,caption,latitude,longitude,location_name,likes_count,author_is_private_snapshot,created_at")
+            .select(spotRowSelectColumns)
             .in("id", values: ids)
             .execute()
             .value
@@ -332,13 +334,15 @@ enum SpotSupabaseRepository {
                 isSaved: nil,
                 createdAt: created,
                 authorIsPrivate: row.author_is_private_snapshot,
-                imageURLs: urls.isEmpty ? nil : urls
+                imageURLs: urls.isEmpty ? nil : urls,
+                mediaDisplayAspectRatio: row.media_display_aspect_ratio,
+                mediaCount: row.media_count.map { Int($0) }
             )
         }
     }
 
     private static let spotRowSelectColumns =
-        "id,user_id,vibe_tag_id,caption,latitude,longitude,location_name,likes_count,author_is_private_snapshot,created_at"
+        "id,user_id,vibe_tag_id,caption,latitude,longitude,location_name,likes_count,author_is_private_snapshot,created_at,media_display_aspect_ratio,media_count,media_layout_version"
 
     private struct UserBriefRow: Decodable {
         let id: UUID
@@ -429,7 +433,9 @@ enum SpotSupabaseRepository {
                 isSaved: nil,
                 createdAt: created,
                 authorIsPrivate: row.author_is_private_snapshot,
-                imageURLs: urls.isEmpty ? nil : urls
+                imageURLs: urls.isEmpty ? nil : urls,
+                mediaDisplayAspectRatio: row.media_display_aspect_ratio,
+                mediaCount: row.media_count.map { Int($0) }
             )
         }
     }
@@ -509,7 +515,9 @@ enum SpotSupabaseRepository {
                 isSaved: nil,
                 createdAt: parseTimestamptz(row.created_at),
                 authorIsPrivate: row.author_is_private_snapshot,
-                imageURLs: nil
+                imageURLs: nil,
+                mediaDisplayAspectRatio: row.media_display_aspect_ratio,
+                mediaCount: row.media_count.map { Int($0) }
             )
         }
     }
@@ -628,6 +636,8 @@ enum SpotSupabaseRepository {
             let pending_path: String
             let mime_type: String
             let byte_size: Int
+            let width: Int?
+            let height: Int?
         }
 
         struct PublishSpotRpcParams: Encodable {
@@ -642,6 +652,19 @@ enum SpotSupabaseRepository {
         for data in imageJPEGs {
             let assetId = UUID()
             let path = "\(userId.uuidString.lowercased())/\(assetId.uuidString.lowercased()).jpg"
+            let pixelSize = SpotJPEGImageDimensions.pixelSize(jpeg: data)
+            if let pixelSize {
+                SpotLogger.log(SpotMediaLayoutLogs.jpegDimensionsRead, details: [
+                    "assetId": assetId.uuidString,
+                    "width": pixelSize.width,
+                    "height": pixelSize.height,
+                ])
+                let displayRatio = SpotMediaAspectRatio.display(width: pixelSize.width, height: pixelSize.height)
+                SpotLogger.log(SpotMediaLayoutLogs.displayRatioCalculated, details: [
+                    "assetId": assetId.uuidString,
+                    "displayRatio": String(describing: Double(displayRatio)),
+                ])
+            }
             try await supabase
                 .from("media_assets")
                 .insert(MediaAssetInsert(
@@ -652,9 +675,14 @@ enum SpotSupabaseRepository {
                     pending_bucket: pendingImagesBucketId,
                     pending_path: path,
                     mime_type: "image/jpeg",
-                    byte_size: data.count
+                    byte_size: data.count,
+                    width: pixelSize?.width,
+                    height: pixelSize?.height
                 ))
                 .execute()
+            if pixelSize != nil {
+                SpotLogger.log(SpotMediaLayoutLogs.mediaAssetDimensionsAttached, details: ["assetId": assetId.uuidString])
+            }
 
             try await supabase.storage
                 .from(pendingImagesBucketId)

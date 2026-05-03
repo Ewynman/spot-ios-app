@@ -32,19 +32,27 @@ struct FeedContentView: View {
     @State private var lastLoadTriggerSpotId: String?
     @State private var visibleErrorMessage: String?
 
+    private static let feedScrollTopId = "feedScrollTopAnchor"
+
     var body: some View {
         Group {
             if selectedTab == "Map" {
                 MapView(spots: mapSpots)
                     .ignoresSafeArea(edges: .all)
             } else if isLoading && spots.isEmpty {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            SkeletonSpotCard()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            Color.clear.frame(height: 0).id(Self.feedScrollTopId)
+                            ForEach(0..<3, id: \.self) { _ in
+                                SkeletonSpotCard()
+                            }
                         }
+                        .padding(.horizontal, 12)
                     }
-                    .padding(.horizontal, 12)
+                    .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+                        scrollFeedToTopIfNeeded(proxy: proxy, output: output)
+                    }
                 }
             } else if !spots.isEmpty {
                 ZStack(alignment: .top) {
@@ -71,78 +79,99 @@ struct FeedContentView: View {
     /// gesture is available on iOS, even when there are no items to scroll.
     /// Without this wrapper, pulling down on the empty state does nothing.
     private var emptyState: some View {
-        ScrollView {
-            EmptyFeedView(
-                status: emptyStatus ?? "no_spots_global",
-                onRetry: { Task { await onRefresh() } }
-            )
-            .frame(maxWidth: .infinity, minHeight: 480)
+        ScrollViewReader { proxy in
+            ScrollView {
+                Color.clear.frame(height: 0).id(Self.feedScrollTopId)
+                EmptyFeedView(
+                    status: emptyStatus ?? "no_spots_global",
+                    onRetry: { Task { await onRefresh() } }
+                )
+                .frame(maxWidth: .infinity, minHeight: 480)
+            }
+            .refreshable { await onRefresh() }
+            .background(Color(hex: "F5F3EF"))
+            .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+                scrollFeedToTopIfNeeded(proxy: proxy, output: output)
+            }
         }
-        .refreshable { await onRefresh() }
-        .background(Color(hex: "F5F3EF"))
     }
 
     private var feedScroll: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(spots.indices, id: \.self) { idx in
-                    let spot = spots[idx]
-                    Group {
-                        if (spot.imageURL ?? "").isEmpty {
-                            SkeletonSpotCard()
-                        } else {
-                            SpotCard(
-                                spot: spot,
-                                showUserInfo: true,
-                                userId: userId,
-                                onDelete: { onDeleteSpot(spot) },
-                                source: "Feed",
-                                onImageFailure: { failed in
-                                    if let failedId = failed.id { failedImageSpotIds.insert(failedId) }
-                                },
-                                onImageRetry: { retrySpot in
-                                    if let rid = retrySpot.id { failedImageSpotIds.remove(rid) }
-                                }
-                            )
-                        }
-                    }
-                    .onAppear {
-                        if (spot.imageURL ?? "").isEmpty {
-                            SpotLogger.log(FeedContentViewLogs.missingImageUrl, details: ["spotId": spot.safeId])
-                        }
-                        if !firstItemRecorded {
-                            onFirstItemAppeared?()
-                            firstItemRecorded = true
-                        }
-                        let thresholdIndex = max(spots.count - 5, 0)
-                        if idx >= thresholdIndex {
-                            let triggerId = spot.safeId
-                            if lastLoadTriggerSpotId != triggerId {
-                                lastLoadTriggerSpotId = triggerId
-                                onScrolledToBottom()
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    Color.clear.frame(height: 0).id(Self.feedScrollTopId)
+                    ForEach(Array(spots.enumerated()), id: \.element.safeId) { idx, spot in
+                        Group {
+                            if (spot.imageURL ?? "").isEmpty {
+                                SkeletonSpotCard()
+                            } else {
+                                SpotCard(
+                                    spot: spot,
+                                    showUserInfo: true,
+                                    userId: userId,
+                                    onDelete: { onDeleteSpot(spot) },
+                                    source: "Feed",
+                                    onImageFailure: { failed in
+                                        if let failedId = failed.id { failedImageSpotIds.insert(failedId) }
+                                    },
+                                    onImageRetry: { retrySpot in
+                                        if let rid = retrySpot.id { failedImageSpotIds.remove(rid) }
+                                    }
+                                )
                             }
                         }
-                        onCellAppear?(spot)
+                        .onAppear {
+                            if (spot.imageURL ?? "").isEmpty {
+                                SpotLogger.log(FeedContentViewLogs.missingImageUrl, details: ["spotId": spot.safeId])
+                            }
+                            if !firstItemRecorded {
+                                onFirstItemAppeared?()
+                                firstItemRecorded = true
+                            }
+                            let thresholdIndex = max(spots.count - 5, 0)
+                            if idx >= thresholdIndex {
+                                let triggerId = spot.safeId
+                                if lastLoadTriggerSpotId != triggerId {
+                                    lastLoadTriggerSpotId = triggerId
+                                    onScrolledToBottom()
+                                }
+                            }
+                            onCellAppear?(spot)
+                        }
+                        .onDisappear {
+                            onCellDisappear?(spot)
+                        }
                     }
-                    .onDisappear {
-                        onCellDisappear?(spot)
+                    if isLoading {
+                        ProgressView().padding()
                     }
-                }
-                if isLoading {
-                    ProgressView().padding()
                 }
             }
-        }
-        .refreshable {
-            failedImageSpotIds.removeAll()
-            lastLoadTriggerSpotId = nil
-            await onRefresh()
-        }
-        .coordinateSpace(name: "RefreshControl")
-        .background(Color(hex: "F5F3EF"))
-        .onChange(of: spots.count) { _, _ in
-            if spots.isEmpty {
+            .refreshable {
+                failedImageSpotIds.removeAll()
                 lastLoadTriggerSpotId = nil
+                await onRefresh()
+            }
+            .coordinateSpace(name: "RefreshControl")
+            .background(Color(hex: "F5F3EF"))
+            .onChange(of: spots.count) { _, _ in
+                if spots.isEmpty {
+                    lastLoadTriggerSpotId = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .mainTabReselectSame)) { output in
+                scrollFeedToTopIfNeeded(proxy: proxy, output: output)
+            }
+        }
+    }
+
+    private func scrollFeedToTopIfNeeded(proxy: ScrollViewProxy, output: Notification) {
+        guard selectedTab == "Feed" else { return }
+        guard (output.userInfo?[SpotMainTabNotification.userInfoTabIndexKey] as? Int) == 0 else { return }
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.25)) {
+                proxy.scrollTo(Self.feedScrollTopId, anchor: .top)
             }
         }
     }

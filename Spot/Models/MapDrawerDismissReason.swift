@@ -17,6 +17,7 @@ enum MapDrawerDismissReason: String, Equatable, Sendable {
     case selectedSpotNoLongerVisible
     case spotSwitch
     case tabLeft
+    case tabReselected
 }
 
 /// Heuristics for drawer dismissal vs programmatic camera moves.

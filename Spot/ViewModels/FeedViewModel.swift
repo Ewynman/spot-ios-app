@@ -86,7 +86,12 @@ final class FeedViewModel: ObservableObject {
             guard let self else { return }
             await MainActor.run { self.isLoadingPage = true }
             await self.repo.loadInitial()
+            let cancelledAfterLoad = Task.isCancelled
             await MainActor.run {
+                if cancelledAfterLoad {
+                    self.isLoadingPage = false
+                    return
+                }
                 self.hasMore = self.repo.moreAvailable
                 self.recordFirstItemIfNeeded()
                 self.isLoadingPage = false
@@ -103,7 +108,12 @@ final class FeedViewModel: ObservableObject {
             guard let self else { return }
             await MainActor.run { self.isLoadingPage = true }
             await self.repo.loadMore()
+            let cancelledAfterLoad = Task.isCancelled
             await MainActor.run {
+                if cancelledAfterLoad {
+                    self.isLoadingPage = false
+                    return
+                }
                 self.hasMore = self.repo.moreAvailable
                 self.recordFirstItemIfNeeded()
                 self.isLoadingPage = false
@@ -111,20 +121,28 @@ final class FeedViewModel: ObservableObject {
         }
     }
 
+    /// Pull-to-refresh must run even when infinite-scroll (`loadMore`) has the page busy;
+    /// that used to no-op via `guard !isLoadingPage` while `isLoadingPage` stayed true for seconds.
     func refreshFeed() async {
-        guard !isLoadingPage else { return }
+        loadTask?.cancel()
         await MainActor.run { self.isLoadingPage = true }
 
-        loadTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             await self.repo.loadInitial()
+            let cancelledAfterLoad = Task.isCancelled
             await MainActor.run {
+                if cancelledAfterLoad {
+                    self.isLoadingPage = false
+                    return
+                }
                 self.hasMore = self.repo.moreAvailable
                 self.recordFirstItemIfNeeded()
                 self.isLoadingPage = false
             }
         }
-        await loadTask?.value
+        loadTask = task
+        await task.value
     }
 
     // MARK: - Insert newly posted spot
