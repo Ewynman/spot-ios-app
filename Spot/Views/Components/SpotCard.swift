@@ -94,6 +94,7 @@ struct SpotCard: View {
                 header
                 spotImage
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .measure(target: .spotDetails)
             interactionBar
             if showError {
@@ -241,6 +242,8 @@ struct SpotCard: View {
                             .font(FontManager.primaryText())
                             .fontWeight(.semibold)
                             .foregroundColor(Constants.Colors.primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                             .measure(target: .username)
                     }
                     .measure(target: .creator)
@@ -260,6 +263,8 @@ struct SpotCard: View {
                 Text(cityState(from: location))
                     .font(FontManager.primaryText())
                     .foregroundColor(Constants.Colors.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .measure(target: .location)
             }
         }
@@ -289,6 +294,18 @@ struct SpotCard: View {
     }
 
     @ViewBuilder private var spotImage: some View {
+        GeometryReader { geo in
+            let w = max(geo.size.width, 1)
+            spotImageSlot(measuredWidth: w)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 320)
+    }
+
+    /// Measured width keeps loaded `Image` views from inflating `ScrollView` / `TabView` content
+    /// with wide intrinsic sizes (e.g. map preview drawer shifting right when the image appears).
+    @ViewBuilder
+    private func spotImageSlot(measuredWidth: CGFloat) -> some View {
         if let urls = currentSpot.imageURLs, !urls.isEmpty {
             SpotImageGallery(urls: urls, fallback: currentSpot.imageURL, spotId: currentSpot.id)
         } else if let thumb = currentSpot.thumbnailURL, let turl = URL(string: thumb) {
@@ -297,21 +314,18 @@ struct SpotCard: View {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 320)
+                        .frame(width: measuredWidth, height: 320)
                 case .success(let image):
                     image.resizable()
                         .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 320)
+                        .frame(width: measuredWidth, height: 320)
                         .clipped()
                         .cornerRadius(12)
                 case .failure(let failure):
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 320)
+                        .frame(width: measuredWidth, height: 320)
                         .clipped()
                         .cornerRadius(12)
                         .onAppear {
@@ -354,7 +368,7 @@ struct SpotCard: View {
                 @unknown default:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity, maxHeight: 400)
+                        .frame(width: measuredWidth, height: 320)
                 }
             }
             .id(retryToken)
@@ -364,13 +378,11 @@ struct SpotCard: View {
                 case .empty:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 320)
+                        .frame(width: measuredWidth, height: 320)
                 case .success(let image):
                     image.resizable()
                        .scaledToFill()
-                       .frame(maxWidth: .infinity)
-                       .frame(height: 320)
+                       .frame(width: measuredWidth, height: 320)
                        .clipped()
                        .cornerRadius(12)
                         .onAppear {
@@ -385,8 +397,7 @@ struct SpotCard: View {
                     Image("image_placeholder")
                         .resizable()
                         .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 320)
+                        .frame(width: measuredWidth, height: 320)
                         .clipped()
                         .cornerRadius(12)
                         .onAppear {
@@ -423,7 +434,7 @@ struct SpotCard: View {
                 @unknown default:
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Constants.Colors.background)
-                        .frame(maxWidth: .infinity, maxHeight: 400)
+                        .frame(width: measuredWidth, height: 320)
                 }
             }
             .id(retryToken)
@@ -431,8 +442,7 @@ struct SpotCard: View {
             Image("image_placeholder")
                 .resizable()
                 .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 320)
+                .frame(width: measuredWidth, height: 320)
                 .clipped()
                 .cornerRadius(12)
                 .onAppear {

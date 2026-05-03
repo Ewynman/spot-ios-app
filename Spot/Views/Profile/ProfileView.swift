@@ -127,9 +127,7 @@ struct ProfileView: View {
 
                 // MARK: — Loading State
                 if viewModel.isLoading {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
+                    ProfileLoadingPlaceholder()
                 } else {
                     // MARK: — Profile Header + Tabs
                     VStack(spacing: 16) {

@@ -22,7 +22,7 @@ struct MapPanelHeightTests {
             availableHeight: 800,
             bottomSafeArea: 24
         )
-        // 320 ≤ 70% of (800 - 24) ≈ 543 → returned as-is.
+        // 320 ≤ 65% of (800 - 24) ≈ 504 → returned as-is.
         #expect(result.height == 320)
         #expect(result.wasClamped == false)
     }

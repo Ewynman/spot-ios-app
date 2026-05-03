@@ -180,7 +180,11 @@ struct BottomTabNavigationView: View {
 
     private func evaluateFirstRunOnboarding() {
         let firstSessionCandidate = authVM.likedSpots.isEmpty && authVM.bookmarkedSpots.isEmpty
-        if selectedTab != 0, firstRunOnboarding.currentStep == .welcome {
+        // Only force Home during the active welcome overlay. `currentStep` defaults to
+        // `.welcome` and stays that way for users who completed onboarding via migration
+        // without advancing steps; pairing with `isPresented` avoids jumping Home on
+        // every `likedSpots` / `bookmarkedSpots` change (e.g. liking from Map or Search).
+        if selectedTab != 0, firstRunOnboarding.isPresented, firstRunOnboarding.currentStep == .welcome {
             selectedTab = 0
         }
         firstRunOnboarding.startIfNeeded(

@@ -191,6 +191,11 @@ final class SpotFirstRunOnboardingManager: ObservableObject {
     init(storage: UserDefaults = .standard) {
         self.storage = storage
         hasCompletedOrSkipped = storage.bool(forKey: Keys.completed) || storage.bool(forKey: Keys.skipped)
+        // Avoid leaving `currentStep` on `.welcome` for finished accounts; that default collided with
+        // tab-shell logic keyed off "welcome" (e.g. after `likedSpots` updates).
+        if hasCompletedOrSkipped {
+            currentStep = .finale
+        }
     }
 
     var progress: CGFloat {
@@ -285,5 +290,7 @@ final class SpotFirstRunOnboardingManager: ObservableObject {
     private func markCompletedWithoutPresenting() {
         hasCompletedOrSkipped = true
         storage.set(true, forKey: Keys.completed)
+        isPresented = false
+        currentStep = .finale
     }
 }

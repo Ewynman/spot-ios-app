@@ -12,6 +12,19 @@
 
 import SwiftUI
 
+/// Bottom edge (max Y) of the map filter pill row in `mapCanvas` space — drives drawer max height.
+enum MapFilterPillRowBottomPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat?
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        switch (value, nextValue()) {
+        case (nil, nil): break
+        case let (nil, .some(n)): value = n
+        case (.some, nil): break
+        case let (.some(v), .some(n)): value = max(v, n)
+        }
+    }
+}
+
 struct MapControlsOverlay: View {
     /// `nil` = filter pill row hidden (non-Pro). Provide a binding to show it.
     var filterState: Binding<SpotMapFilterState>?
@@ -35,6 +48,14 @@ struct MapControlsOverlay: View {
                         state: filterState,
                         vibeTags: availableVibeTags,
                         onOpenVibePicker: onOpenVibePicker
+                    )
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: MapFilterPillRowBottomPreferenceKey.self,
+                                value: proxy.frame(in: .named("mapCanvas")).maxY
+                            )
+                        }
                     )
                     Spacer(minLength: 0)
                 }

@@ -14,54 +14,56 @@ struct SpotImageGallery: View {
 
     var body: some View {
         let all = orderedURLs
-        TabView(selection: $selection) {
-            ForEach(Array(all.enumerated()), id: \.offset) { idx, urlString in
-                if let url = URL(string: urlString) {
-                    RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
-                        switch phase {
-                        case .empty:
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Constants.Colors.background)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 320)
-                        case .success(let image):
-                            image.resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 320)
-                                .clipped()
-                                .cornerRadius(12)
-                                .onAppear {
-                                    failedIndices.remove(idx)
-                                }
-                        case .failure:
-                            Image("image_placeholder")
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 320)
-                                .clipped()
-                                .cornerRadius(12)
-                                .onAppear {
-                                    failedIndices.insert(idx)
-                                    if selection == idx, let next = firstRenderableIndex(excluding: failedIndices, count: all.count) {
-                                        selection = next
+        /// Page `TabView` + loaded `Image` intrinsic sizes can widen scroll content
+        /// unless each page uses an explicit width from the parent slot.
+        GeometryReader { geo in
+            let slotWidth = max(geo.size.width, 1)
+            TabView(selection: $selection) {
+                ForEach(Array(all.enumerated()), id: \.offset) { idx, urlString in
+                    if let url = URL(string: urlString) {
+                        RemoteImage(url: url, maxPixelSize: 1200, transaction: Transaction(animation: .default)) { phase in
+                            switch phase {
+                            case .empty:
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: slotWidth, height: 320)
+                            case .success(let image):
+                                image.resizable()
+                                    .scaledToFill()
+                                    .frame(width: slotWidth, height: 320)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    .onAppear {
+                                        failedIndices.remove(idx)
                                     }
-                                }
-                        @unknown default:
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Constants.Colors.background)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 320)
+                            case .failure:
+                                Image("image_placeholder")
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: slotWidth, height: 320)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    .onAppear {
+                                        failedIndices.insert(idx)
+                                        if selection == idx, let next = firstRenderableIndex(excluding: failedIndices, count: all.count) {
+                                            selection = next
+                                        }
+                                    }
+                            @unknown default:
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Constants.Colors.background)
+                                    .frame(width: slotWidth, height: 320)
+                            }
                         }
+                        .tag(idx)
                     }
-                    .tag(idx)
                 }
             }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
         }
-        .tabViewStyle(.page(indexDisplayMode: .automatic))
         .frame(maxWidth: .infinity)
         .frame(height: 320)
+        .clipped()
         .onAppear {
             if selection >= all.count {
                 selection = 0

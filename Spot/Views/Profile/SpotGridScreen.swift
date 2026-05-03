@@ -146,10 +146,7 @@ struct SpotGridScreen: View {
 
             // Content
             if isLoading && spots.isEmpty {
-                // Loading state
-                Spacer()
-                ProgressView("Loading \(context.title.lowercased())...")
-                Spacer()
+                SpotGridLoadingPlaceholder(columns: 3, cellCount: 9)
             } else if let errorMessage = errorMessage {
                 // Error state
                 VStack(spacing: 20) {

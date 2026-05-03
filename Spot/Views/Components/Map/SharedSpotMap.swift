@@ -86,8 +86,8 @@ struct SharedSpotMap: UIViewRepresentable {
     // Intent
     let cameraIntent: SharedSpotMapCameraIntent
 
-    // Callbacks
-    let onSelect: (Spot, CLLocationCoordinate2D) -> Void
+    /// `MKCoordinateRegion` is `mapView.region` immediately before pin-focus camera work — used to restore on dismiss.
+    let onSelect: (Spot, CLLocationCoordinate2D, MKCoordinateRegion) -> Void
     let onDeselect: () -> Void
     let onRegionChanged: (MKCoordinateRegion) -> Void
 
@@ -447,7 +447,8 @@ struct SharedSpotMap: UIViewRepresentable {
                 v.apply(state: .selected, animated: true)
             }
             SpotLogger.log(MapMarkerLogs.markerSelected, details: ["spotId": ann.spot.id ?? "nil"])
-            parent.onSelect(ann.spot, ann.coordinate)
+            let regionSnapshot = mapView.region
+            parent.onSelect(ann.spot, ann.coordinate, regionSnapshot)
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {

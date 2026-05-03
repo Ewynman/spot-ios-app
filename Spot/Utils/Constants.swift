@@ -216,9 +216,14 @@ enum Constants {
         /// Maximum proportion of the screen the map preview panel may consume
         /// before its inner content scrolls. Prevents the panel from pushing
         /// controls off-screen on small devices.
-        static let panelMaxScreenFraction: CGFloat = 0.70
+        static let panelMaxScreenFraction: CGFloat = 0.65
         /// Minimum panel height so the SpotCard header stays usable.
         static let panelMinHeight: CGFloat = 280
+
+        /// Top corners for the discovery map spot drawer (bottom sheet style).
+        static let mapDrawerTopCornerRadius: CGFloat = 22
+        /// Vertical gap between the bottom of the filter pill row and the top of the spot drawer.
+        static let mapDrawerGapBelowFilterPills: CGFloat = 5
     }
 }
 

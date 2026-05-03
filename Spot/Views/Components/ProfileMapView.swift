@@ -59,7 +59,7 @@ struct ProfileMapView: View {
                     userMarker: nil,
                     suppressDefaultUserDot: true,
                     cameraIntent: cameraIntent,
-                    onSelect: { spot, coord in select(spot, coord, mapHeight: geo.size.height) },
+                    onSelect: { spot, coord, _ in select(spot, coord, mapHeight: geo.size.height) },
                     onDeselect: { /* card close drives deselect */ },
                     onRegionChanged: { _ in
                         cameraIntent = .none

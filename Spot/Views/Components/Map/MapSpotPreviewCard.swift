@@ -2,41 +2,32 @@
 //  MapSpotPreviewCard.swift
 //  Spot
 //
-//  Map-safe wrapper around `SpotCard`. Solves the IMG_9741 bug where the
-//  selected card could overflow the screen and force the map to shift
-//  awkwardly. The wrapper:
-//
-//   * computes a clamped panel height from actual screen geometry
-//     (`MapPanelHeight.clamp`),
-//   * scrolls internally if `SpotCard` content exceeds available height,
-//   * pads bottom for the home indicator,
-//   * paints `Constants.Colors.background` and stays under the safe area
-//     for the home indicator without leaving an unstyled gap.
-//
-//  The preview card always shows the *full* `SpotCard`. Eddie's call:
-//  user wants the entire spot card surface, not a slim preview. The
-//  scroll-on-overflow is what keeps small devices safe.
+//  Map-safe wrapper around `SpotCard`. Supports optional peek / expanded
+//  detents on the discovery map (drag handle + toggle); profile map uses
+//  a fixed height from the host without expansion chrome.
 //
 
 import SwiftUI
 
 struct MapSpotPreviewCard: View {
     let spot: Spot
-    /// Optional override that lets the discovery map hide the delete
-    /// button while the profile map keeps it.
     var allowDelete: Bool = false
-    /// Source label propagated to `SpotCard` analytics.
     var source: String
-    /// Shown only on the profile map: a "back to all spots" affordance.
     var onBackToAll: (() -> Void)?
-    /// Required: closes the preview panel.
     var onClose: () -> Void
-    /// Optional delete handler (profile-owner only).
     var onDelete: (() -> Void)?
+    /// When non-`nil`, shows top grabber + maps swipe-from-handle to peek/expanded.
+    var drawerDetent: Binding<MapSpotDrawerDetent>? = nil
+
+    private var showsExpansionChrome: Bool { drawerDetent != nil }
+    /// Profile map: back + close. Discovery drawer: omit empty header row (dismiss via swipe).
+    private var showsProfileChromeHeader: Bool {
+        !showsExpansionChrome || onBackToAll != nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            drawerTopSection
             ScrollView(showsIndicators: false) {
                 SpotCard(
                     spot: spot,
@@ -45,16 +36,98 @@ struct MapSpotPreviewCard: View {
                     onDelete: { onDelete?() },
                     source: source
                 )
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Constants.Layout.Spacing.large)
-                .padding(.bottom, Constants.Layout.Spacing.extraLarge)
+                .padding(.bottom, showsExpansionChrome ? Constants.Layout.Spacing.medium : Constants.Layout.Spacing.extraLarge)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
             Constants.Colors.background
                 .ignoresSafeArea(edges: .bottom)
         )
+        .clipShape(expansionClipShape)
+        .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: -6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Spot preview"))
+    }
+
+    private var expansionClipShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: Constants.MapDesign.mapDrawerTopCornerRadius,
+            bottomLeadingRadius: 0,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: Constants.MapDesign.mapDrawerTopCornerRadius,
+            style: .continuous
+        )
+    }
+
+    /// Grabber, optional profile header; swipe-down-to-dismiss and detent drags.
+    private var drawerTopSection: some View {
+        VStack(spacing: 0) {
+            if showsExpansionChrome, let binding = drawerDetent {
+                grabberRow(detent: binding)
+            }
+            if showsProfileChromeHeader {
+                header
+            }
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 22)
+                .onEnded { value in
+                    handleDrawerVerticalDragEnd(translation: value.translation)
+                }
+        )
+    }
+
+    private func grabberRow(detent: Binding<MapSpotDrawerDetent>) -> some View {
+        let spring = Animation.spring(
+            response: Constants.MapDesign.selectSpringResponse,
+            dampingFraction: Constants.MapDesign.selectSpringDamping
+        )
+        return Capsule()
+            .fill(Constants.Colors.primary.opacity(0.22))
+            .frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Spot preview drawer")
+            .accessibilityHint("Swipe down to close. Double tap to expand or collapse.")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("map.spotPreviewClose")
+            .onTapGesture {
+                toggleDetent(detent: detent, animation: spring)
+            }
+    }
+
+    private func toggleDetent(detent: Binding<MapSpotDrawerDetent>, animation: Animation) {
+        withAnimation(animation) {
+            detent.wrappedValue = detent.wrappedValue == .peek ? .expanded : .peek
+        }
+    }
+
+    /// Large downward swipe dismisses the drawer (`onClose` → discovery map restores prior region).
+    private func handleDrawerVerticalDragEnd(translation: CGSize) {
+        let dy = translation.height
+        let spring = Animation.spring(
+            response: Constants.MapDesign.selectSpringResponse,
+            dampingFraction: Constants.MapDesign.selectSpringDamping
+        )
+        if dy > 100 {
+            onClose()
+            return
+        }
+        guard let detent = drawerDetent else { return }
+        withAnimation(spring) {
+            if dy < -40 {
+                detent.wrappedValue = .expanded
+            } else if dy > 48, detent.wrappedValue == .expanded {
+                detent.wrappedValue = .peek
+            }
+        }
     }
 
     // MARK: - Header
@@ -78,19 +151,22 @@ struct MapSpotPreviewCard: View {
                     .buttonStyle(.plain)
                 }
                 Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Constants.Colors.primary)
-                        .padding(8)
-                        .contentShape(Rectangle())
+                if !showsExpansionChrome {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Constants.Colors.primary)
+                            .padding(8)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.spotPreviewClose")
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, Constants.Layout.Spacing.large)
         }
         .frame(height: 36)
-        .padding(.top, 6)
+        .padding(.top, 4)
     }
 }
 
@@ -122,7 +198,43 @@ struct MapSpotPreviewCard: View {
     )
     .environmentObject(auth)
     .frame(maxWidth: .infinity, maxHeight: 380)
-    .background(Constants.Colors.background)
+    .background(Constants.Colors.accent)
+}
+
+#Preview("Map preview – expansion chrome") {
+    struct Stateful: View {
+        @State private var detent = MapSpotDrawerDetent.peek
+        var body: some View {
+            let sample = Spot(
+                id: "preview-exp",
+                userId: "u1",
+                username: "eddie",
+                userProfileImageURL: nil,
+                imageURL: "https://picsum.photos/seed/exp/800/600",
+                thumbnailURL: nil,
+                vibeTag: "Park",
+                latitude: 25.76,
+                longitude: -80.19,
+                locationName: "Miami",
+                likes: 1,
+                isLiked: false,
+                isSaved: false,
+                createdAt: Date(),
+                authorIsPrivate: false
+            )
+            let auth = AuthViewModel()
+            return MapSpotPreviewCard(
+                spot: sample,
+                source: "MapPreview",
+                onClose: {},
+                drawerDetent: $detent
+            )
+            .environmentObject(auth)
+            .frame(maxWidth: .infinity, maxHeight: detent == .expanded ? 700 : 320)
+            .background(Constants.Colors.accent)
+        }
+    }
+    return Stateful()
 }
 
 #Preview("Map preview – profile w/ back") {
@@ -157,6 +269,35 @@ struct MapSpotPreviewCard: View {
     .background(Constants.Colors.background)
 }
 
+#Preview("Map preview – narrow width") {
+    let sample = Spot(
+        id: "preview-narrow",
+        userId: "u1",
+        username: "VeryLongUsernameThatMustTruncateCleanly",
+        userProfileImageURL: nil,
+        imageURL: "https://picsum.photos/seed/spotnarrow/800/600",
+        thumbnailURL: nil,
+        vibeTag: "Romantic",
+        latitude: 25.7617,
+        longitude: -80.1918,
+        locationName: "Very Long Location Name That Should Not Overflow",
+        likes: 3,
+        isLiked: false,
+        isSaved: true,
+        createdAt: Date()
+    )
+    let auth = AuthViewModel()
+    return MapSpotPreviewCard(
+        spot: sample,
+        source: "MapPreviewNarrow",
+        onClose: {}
+    )
+    .environmentObject(auth)
+    .frame(width: 320)
+    .frame(maxHeight: 380)
+    .background(Constants.Colors.background)
+}
+
 #Preview("Map preview – constrained height") {
     let sample = Spot(
         id: "preview-tight",
@@ -181,7 +322,6 @@ struct MapSpotPreviewCard: View {
         onClose: {}
     )
     .environmentObject(auth)
-    // Tight frame mirrors the IMG_9741 scenario.
     .frame(maxWidth: .infinity, maxHeight: 220)
     .background(Constants.Colors.background)
 }

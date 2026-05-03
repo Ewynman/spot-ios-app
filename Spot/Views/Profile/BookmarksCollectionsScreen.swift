@@ -41,9 +41,7 @@ struct BookmarksCollectionsScreen: View {
             .padding(.bottom, 12)
 
             if isLoading {
-                Spacer()
-                ProgressView()
-                Spacer()
+                BookmarksCollectionsLoadingPlaceholder()
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
@@ -175,7 +173,7 @@ private struct CollectionDetailScreen: View {
 
             // Content
             if isLoading {
-                Spacer(); ProgressView(); Spacer()
+                SpotGridLoadingPlaceholder(columns: 3, cellCount: 9)
             } else if spots.isEmpty {
                 Spacer()
                 Text("No spots in this collection yet")

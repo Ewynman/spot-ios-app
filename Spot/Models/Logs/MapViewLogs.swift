@@ -22,6 +22,8 @@ enum MapViewLogs: SpotLog {
     case waitingForUserLocation
     case densityModeChanged
     case visibleSpotsTrimmed
+    case mapDrawerDismissed
+    case mapSpotSwitchAnimated
 
     var tag: String { "MapView" }
     var level: LogLevel {
@@ -38,6 +40,8 @@ enum MapViewLogs: SpotLog {
         case .waitingForUserLocation: return .info
         case .densityModeChanged: return .debug
         case .visibleSpotsTrimmed: return .debug
+        case .mapDrawerDismissed: return .debug
+        case .mapSpotSwitchAnimated: return .debug
         }
     }
     var message: String {
@@ -54,6 +58,8 @@ enum MapViewLogs: SpotLog {
         case .waitingForUserLocation: return "Map waiting for user location before viewport fetch"
         case .densityModeChanged: return "Map density mode changed"
         case .visibleSpotsTrimmed: return "Map visibleSpots trimmed to viewport cap"
+        case .mapDrawerDismissed: return "Map drawer dismissed"
+        case .mapSpotSwitchAnimated: return "Map drawer spot switch (animated)"
         }
     }
 }

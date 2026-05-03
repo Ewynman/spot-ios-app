@@ -43,6 +43,19 @@ struct MapView: View {
     @State private var filterState: SpotMapFilterState = .empty
     @State private var showVibePicker: Bool = false
 
+    /// Ignore user-move dismissal until marker-focus / programmatic camera finishes.
+    @State private var programmaticCameraSuppressUntil: Date?
+    /// Last region snapshot while the drawer is open (updated during suppression; compared after).
+    @State private var drawerRegionBaseline: MKCoordinateRegion?
+    /// Cancels stale delayed spot-switch updates when markers are tapped quickly.
+    @State private var selectionSequence: Int = 0
+    /// Discovery drawer: short peek vs raised sheet (full-width, rounded top).
+    @State private var mapDrawerDetent: MapSpotDrawerDetent = .peek
+    /// Bottom Y of the Pro filter pill row in `mapCanvas` space (`nil` when hidden or not yet laid out).
+    @State private var mapFilterPillsMaxY: CGFloat?
+    /// Viewport to restore when closing the drawer (from first pin tap in a chain).
+    @State private var regionBeforeSpotSelection: MKCoordinateRegion?
+
     @Environment(\.verticalSizeClass) private var vSize
 
     init(spots _: [Spot] = []) {}
@@ -64,25 +77,35 @@ struct MapView: View {
                         userMarker: userMarker,
                         suppressDefaultUserDot: true,
                         cameraIntent: cameraIntent,
-                        onSelect: { spot, coord in
+                        onSelect: { spot, coord, regionAtTap in
                             select(
                                 spot,
                                 coord,
-                                mapHeight: geo.size.height,
-                                bottomSafeArea: geo.safeAreaInsets.bottom
+                                regionAtTap: regionAtTap,
+                                geo: geo
                             )
                         },
-                        onDeselect: { /* tap-on-empty deselect handled by panel close */ },
+                        onDeselect: { handleAnnotationDeselectForEmptyMapTap() },
                         onRegionChanged: { region in
-                            lastRegionFromMap = region
-                            cameraIntent = .none
-                            mapVM.loadForRegion(region)
+                            handleMapRegionChanged(region)
                         }
                     )
                     .ignoresSafeArea(edges: .bottom)
                     .accessibilityIdentifier("map.mapView")
                     .overlay {
                         mapOnboardingTargets
+                    }
+
+                    if let spot = selectedSpot {
+                        mapDrawerOverlay(
+                            spot: spot,
+                            geo: geo
+                        )
+                        .transition(
+                            .move(edge: .bottom)
+                                .combined(with: .opacity)
+                        )
+                        .zIndex(5)
                     }
 
                     MapControlsOverlay(
@@ -93,13 +116,15 @@ struct MapView: View {
                         onRecenter: recenterOnUser,
                         bottomReservedHeight: selectedSpot == nil
                             ? 0
-                            : openPanelHeight(in: geo.size, safe: geo.safeAreaInsets.bottom).height
+                            : mapDrawerResolvedHeight(in: geo)
                     )
                     .ignoresSafeArea(edges: .bottom)
                     .allowsHitTesting(true)
+                    .zIndex(10)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    bottomInset(geo: geo)
+                .coordinateSpace(name: "mapCanvas")
+                .onPreferenceChange(MapFilterPillRowBottomPreferenceKey.self) { value in
+                    mapFilterPillsMaxY = value
                 }
                 .background(Constants.Colors.background)
                 .background(Constants.Colors.background.ignoresSafeArea())
@@ -132,26 +157,79 @@ struct MapView: View {
         .accessibilityIdentifier("map.screen")
     }
 
-    // MARK: - Bottom inset (preview card)
+    // MARK: - Bottom drawer (root-level overlay, full width)
 
     @ViewBuilder
-    private func bottomInset(geo: GeometryProxy) -> some View {
-        if let spot = selectedSpot {
-            let height = openPanelHeight(in: geo.size, safe: geo.safeAreaInsets.bottom)
-            MapSpotPreviewCard(
-                spot: spot,
-                source: "Map",
-                onClose: { closePanel() }
-            )
-            .measure(target: .mapMarkerPreview)
-            .frame(height: height.height)
-            .transition(.move(edge: .bottom))
-            .animation(.spring(response: Constants.MapDesign.selectSpringResponse,
-                               dampingFraction: Constants.MapDesign.selectSpringDamping),
-                       value: selectedSpot != nil)
-        } else {
-            Color.clear.frame(height: 0)
+    private func mapDrawerOverlay(spot: Spot, geo: GeometryProxy) -> some View {
+        let height = mapDrawerResolvedHeight(in: geo)
+        MapSpotPreviewCard(
+            spot: spot,
+            source: "Map",
+            onClose: { closePanel() },
+            drawerDetent: $mapDrawerDetent
+        )
+        .id(spot.id ?? spot.safeId)
+        .measure(target: .mapMarkerPreview)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(height: height)
+        .animation(
+            .spring(
+                response: Constants.MapDesign.selectSpringResponse,
+                dampingFraction: Constants.MapDesign.selectSpringDamping
+            ),
+            value: selectedSpot?.id
+        )
+        .animation(
+            .spring(
+                response: Constants.MapDesign.selectSpringResponse,
+                dampingFraction: Constants.MapDesign.selectSpringDamping
+            ),
+            value: mapDrawerDetent
+        )
+    }
+
+    /// Peek / expanded heights, capped so the drawer stops ~`mapDrawerGapBelowFilterPills` below the filter pills.
+    private func mapDrawerResolvedHeight(in geo: GeometryProxy) -> CGFloat {
+        let safe = geo.safeAreaInsets.bottom
+        let ceiling = drawerMaxHeightBelowFilterPills(in: geo)
+        switch mapDrawerDetent {
+        case .peek:
+            let requested = openPanelHeight(in: geo.size, safe: safe).height
+            return max(Constants.MapDesign.panelMinHeight, min(requested, ceiling))
+        case .expanded:
+            let requested = expandedMapDrawerHeight(in: geo.size, bottomSafeArea: safe)
+            return max(Constants.MapDesign.panelMinHeight, min(requested, ceiling))
         }
+    }
+
+    /// Max drawer height from bottom padding up to `gap` below the measured filter row (or a safe fallback when non‑Pro).
+    private func drawerMaxHeightBelowFilterPills(in geo: GeometryProxy) -> CGFloat {
+        let bottomPad = max(geo.safeAreaInsets.bottom, 8)
+        let gap = Constants.MapDesign.mapDrawerGapBelowFilterPills
+        let pillsBottom = filterPillsBottomY(in: geo)
+        let topOfDrawer = pillsBottom + gap
+        return max(0, geo.size.height - topOfDrawer - bottomPad)
+    }
+
+    private func filterPillsBottomY(in geo: GeometryProxy) -> CGFloat {
+        if let y = mapFilterPillsMaxY, y > 1 { return y }
+        // Non–Pro (no pill row): approximate top chrome so the drawer still doesn’t run under the status area.
+        return geo.safeAreaInsets.top + 52
+    }
+
+    /// Peek height used for pin camera lift — matches capped peek drawer.
+    private func peekPanelHeightForCameraLift(in geo: GeometryProxy) -> CGFloat {
+        let safe = geo.safeAreaInsets.bottom
+        let requested = openPanelHeight(in: geo.size, safe: safe).height
+        let ceiling = drawerMaxHeightBelowFilterPills(in: geo)
+        return max(Constants.MapDesign.panelMinHeight, min(requested, ceiling))
+    }
+
+    private func expandedMapDrawerHeight(in size: CGSize, bottomSafeArea: CGFloat) -> CGFloat {
+        let topReveal: CGFloat = 8
+        let usable = size.height - bottomSafeArea - topReveal
+        let maxDrawer = size.height * Constants.MapDesign.panelMaxScreenFraction
+        return max(Constants.MapDesign.panelMinHeight, min(usable, maxDrawer))
     }
 
     private var mapOnboardingTargets: some View {
@@ -258,9 +336,10 @@ struct MapView: View {
         MemoryDebugLogger.snapshot("map_disappear")
         locationManager.stopUpdatingLocation()
         hasCenteredOnUser = false
-        selectedSpot = nil
-        selectedSpotCoordinate = nil
-        cameraIntent = .none
+        mapFilterPillsMaxY = nil
+        if selectedSpot != nil {
+            dismissSelectedSpot(reason: .tabLeft, animated: false)
+        }
         mapVM.clearVisibleSpots()
     }
 
@@ -328,24 +407,95 @@ struct MapView: View {
 
     // MARK: - Actions
 
+    private var isProgrammaticCameraSuppressActive: Bool {
+        guard let until = programmaticCameraSuppressUntil else { return false }
+        return Date() < until
+    }
+
+    private func scheduleProgrammaticCameraSuppression() {
+        programmaticCameraSuppressUntil = Date().addingTimeInterval(
+            MapDiscoveryDrawerPolicy.programmaticCameraSuppressionSeconds
+        )
+    }
+
     private func select(
         _ spot: Spot,
         _ coordinate: CLLocationCoordinate2D,
-        mapHeight: CGFloat,
-        bottomSafeArea: CGFloat
+        regionAtTap: MKCoordinateRegion,
+        geo: GeometryProxy
     ) {
-        selectedSpot = spot
-        selectedSpotCoordinate = coordinate
+        /// Snapshot restore target only when opening from “no drawer” — keeps the original viewport through pin switches.
+        let hadDrawerOpen = selectedSpot != nil
+        let newId = spot.id
+        let oldId = selectedSpot?.id
+        let isSwitch = oldId != nil && newId != nil && oldId != newId
+
+        if isSwitch {
+            SpotLogger.log(MapViewLogs.mapSpotSwitchAnimated, details: [
+                "fromSpotId": oldId ?? "nil",
+                "toSpotId": newId ?? "nil"
+            ])
+            selectionSequence += 1
+            let seq = selectionSequence
+            withAnimation(.easeInOut(duration: 0.16)) {
+                selectedSpot = nil
+                selectedSpotCoordinate = nil
+                drawerRegionBaseline = nil
+                mapDrawerDetent = .peek
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                guard seq == selectionSequence else { return }
+                applyMarkerSelection(
+                    spot,
+                    coordinate,
+                    regionAtTap: regionAtTap,
+                    geo: geo,
+                    captureRestoreRegion: !hadDrawerOpen
+                )
+            }
+        } else {
+            selectionSequence += 1
+            applyMarkerSelection(
+                spot,
+                coordinate,
+                regionAtTap: regionAtTap,
+                geo: geo,
+                captureRestoreRegion: !hadDrawerOpen
+            )
+        }
+    }
+
+    private func applyMarkerSelection(
+        _ spot: Spot,
+        _ coordinate: CLLocationCoordinate2D,
+        regionAtTap: MKCoordinateRegion,
+        geo: GeometryProxy,
+        captureRestoreRegion: Bool
+    ) {
+        if captureRestoreRegion {
+            regionBeforeSpotSelection = regionAtTap
+        }
+        withAnimation(
+            .spring(
+                response: Constants.MapDesign.selectSpringResponse,
+                dampingFraction: Constants.MapDesign.selectSpringDamping
+            )
+        ) {
+            selectedSpot = spot
+            selectedSpotCoordinate = coordinate
+            mapDrawerDetent = .peek
+        }
+        drawerRegionBaseline = nil
+        scheduleProgrammaticCameraSuppression()
+
         SpotLogger.log(MapViewLogs.homeSheetOpen, details: ["spotId": spot.id ?? "nil"])
         FeedEventService.record(.mapPinTap, spotId: spot.id)
         FeedEventService.record(.detailOpen, spotId: spot.id, metadata: ["surface": "map_panel"])
-        let panel = openPanelHeight(
-            in: CGSize(width: 0, height: mapHeight),
-            safe: bottomSafeArea
-        )
+        let panelHeight = peekPanelHeightForCameraLift(in: geo)
         let dynamicLift = max(
             Constants.MapDesign.selectedPinCameraLift,
-            panel.height * 0.42
+            panelHeight * 0.42
         )
         let span = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
         cameraIntent = .focus(
@@ -356,12 +506,89 @@ struct MapView: View {
         )
     }
 
-    private func closePanel() {
-        SpotLogger.log(MapViewLogs.homeSheetClose, details: ["spotId": selectedSpot?.id ?? "nil"])
-        selectedSpot = nil
-        selectedSpotCoordinate = nil
-        // Don't auto-zoom-out — keep user in their current region.
+    private func handleMapRegionChanged(_ region: MKCoordinateRegion) {
+        lastRegionFromMap = region
         cameraIntent = .none
+        mapVM.loadForRegion(region)
+
+        guard selectedSpot != nil else {
+            drawerRegionBaseline = nil
+            return
+        }
+
+        if isProgrammaticCameraSuppressActive {
+            drawerRegionBaseline = region
+            return
+        }
+
+        if let base = drawerRegionBaseline {
+            if MapDiscoveryDrawerPolicy.regionsMeaningfullyDiffer(base, region) {
+                dismissSelectedSpot(reason: .mapMoved, animated: true)
+            }
+        } else {
+            drawerRegionBaseline = region
+        }
+    }
+
+    private func handleAnnotationDeselectForEmptyMapTap() {
+        let priorId = selectedSpot?.id
+        guard let priorId else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard selectedSpot?.id == priorId else { return }
+            dismissSelectedSpot(reason: .emptyMapTap, animated: true)
+        }
+    }
+
+    private func dismissSelectedSpot(
+        reason: MapDrawerDismissReason,
+        animated: Bool = true
+    ) {
+        guard let spot = selectedSpot else { return }
+        let spotId = spot.id ?? spot.safeId
+        SpotLogger.log(MapViewLogs.mapDrawerDismissed, details: [
+            "reason": reason.rawValue,
+            "spotId": spotId
+        ])
+        SpotLogger.log(MapViewLogs.homeSheetClose, details: [
+            "spotId": spotId,
+            "reason": reason.rawValue
+        ])
+        let restoreRegion = regionBeforeSpotSelection
+        let restoreViewport = shouldRestoreViewportAfterDismiss(reason: reason)
+        let apply = {
+            self.selectedSpot = nil
+            self.selectedSpotCoordinate = nil
+            self.drawerRegionBaseline = nil
+            self.programmaticCameraSuppressUntil = nil
+            self.mapDrawerDetent = .peek
+            self.regionBeforeSpotSelection = nil
+            if restoreViewport, let region = restoreRegion {
+                self.cameraIntent = .region(region, animated: true)
+                self.scheduleProgrammaticCameraSuppression()
+            } else {
+                self.cameraIntent = .none
+            }
+        }
+        if animated {
+            withAnimation(.easeInOut(duration: 0.18), apply)
+        } else {
+            apply()
+        }
+    }
+
+    /// After dismiss, zoom back to the pre-spot viewport unless the user already moved the map (e.g. pan dismiss).
+    private func shouldRestoreViewportAfterDismiss(reason: MapDrawerDismissReason) -> Bool {
+        switch reason {
+        case .mapMoved:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func closePanel() {
+        dismissSelectedSpot(reason: .closeButton, animated: true)
     }
 
     private func recenterOnUser() {
@@ -369,6 +596,9 @@ struct MapView: View {
         guard let loc = locationManager.userLocation else {
             SpotLogger.log(MapViewLogs.userLocationUnavailable)
             return
+        }
+        if selectedSpot != nil {
+            dismissSelectedSpot(reason: .mapMoved, animated: false)
         }
         // The recenter button is an explicit user request — re-arm the
         // initial-center latch so any pending location publisher events
@@ -398,7 +628,7 @@ struct MapView: View {
             followedUserIds: []
         )
         if !stillMatches {
-            closePanel()
+            dismissSelectedSpot(reason: .selectedSpotNoLongerVisible, animated: true)
         }
     }
 
