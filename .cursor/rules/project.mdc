@@ -2,135 +2,138 @@
 alwaysApply: true
 ---
 
-Created By: Wynman, Edward
-Date: 04/06/2026
+Created By: Wynman, Edward  
+Date: 04/06/2026 (updated: documentation + rules refresh)
 
-# Spot Project Context
+# Spot Project Rules
 
-## App Background
+Spot is a **social place-discovery** iOS app. A **Spot** is a saved place recommendation from someone, centered around **vibe** and discovery. The app emphasizes premium, minimal UI, vibe tags, social discovery, maps, posting, profiles, **Pro** subscription features, and **user safety**.
 
-Spot is a SwiftUI iOS social discovery app focused on user-generated location-based posts ("spots"). The product centers on photo posts, place tagging, vibe tagging, personalized feed ranking, map discovery, profile/social graph features, and a Pro subscription path.
+## Product language
 
-Primary product flows include:
-- authentication and onboarding
-- home feed and map exploration
-- multi-step spot creation and upload
-- search across users/places/vibes
-- profile and follow-request flows
-- deep-link routing for spot detail and subscription return
+- Use **Spot** for saved place recommendations (not “post” as the primary user-facing noun unless context is clearly composer/publish).
+- Use **vibe tags** for vibe/category discovery tags.
+- Use **spot drawer** or **bottom drawer** for the map bottom preview card.
+- Use **Pro** for paid subscription features.
 
-## Architecture Deep Dive
+## UI rules
 
-The app follows a componentized SwiftUI architecture with MVVM-oriented screens and a service/repository layer:
+- Follow **colors and layout** from `Spot/Utils/Constants.swift` (`Constants.Colors` — e.g. background `#F5F3EF`, primary text `#1D2C24`, accent `#DEE6D8` for vibe surfaces). Do not introduce off-brand colors unless updating those central tokens.
+- Keep UI **premium, clean, and minimal**.
+- Add **SwiftUI previews** for new or significantly changed screens/components when practical.
 
-- **UI layer (`Spot/Views`)**: composable SwiftUI components and feature screens
-- **State layer (`Spot/ViewModels`)**: `ObservableObject` view models managing screen state and orchestration
-- **Domain/data layer (`Spot/Services`, `Spot/Models`)**: Firebase-backed services, repositories, and codable models
-- **Cross-cutting utilities (`Spot/Utils`, `Spot/Managers`)**: logging, validation, geohash, permissions, location, moderation policy
+## Engineering rules
 
-State is intentionally mixed between global environment state and local screen state:
-- global app-level state via `@EnvironmentObject` (e.g., auth, deep links, permissions)
-- per-screen state via `@StateObject` view models
+- Follow existing **SwiftUI + ViewModel + service/repository** patterns under `Spot/`.
+- Keep production code changes **minimal and scoped** to the requested task; avoid drive-by refactors.
+- **Do not add secrets** (Supabase service role, Azure keys, private keys) to the repo, docs, or client plist in public artifacts.
+- Use **`SpotLogger`** and existing `SpotLog` enums for structured logging; respect `LoggingConfig` / DEBUG toggles.
+- Handle **loading, empty, error, and unauthenticated** states in user-facing flows.
+- Prefer **typed services** and **mockable** boundaries for testability.
+- Avoid broad architecture refactors unless explicitly requested.
 
-## Core Module Map
+## Security rules
 
-### App Entry and Root Composition
-- `Spot/SpotApp.swift`: app entry (`@main`), launch orchestration, dependency injection
-- `Spot/AppDelegate.swift`: Firebase, analytics/crash, app-check, URL/user-activity bridge
-- `Spot/Views/RootView.swift`: auth gate + main tabs + deep-link/paywall overlay handling
-- `Spot/Views/Components/BottomTabNavigationView.swift`: custom tab shell (Home, Map, Post, Search, Profile)
+- **User safety** is priority one.
+- All database and storage access must respect **authentication** and **Supabase RLS**; never rely on client-only authorization for sensitive operations.
+- **Never ship service-role keys** in the app.
+- **Every image** uploaded for a Spot or profile picture must go through the **moderation** pipeline (see `docs/engineering/image-moderation.md`).
+- Document security-sensitive changes in **`docs/engineering/database-and-rls.md`**, **`docs/engineering/networking-and-auth.md`**, or **`docs/engineering/image-moderation.md`** as applicable.
 
-### Feature Modules
-- `Spot/Views/Auth`, `Spot/Views/Onboarding`, `Spot/Services/Auth*`: signup/login/verify lifecycle
-- `Spot/Views/Home`, `Spot/ViewModels/FeedViewModel.swift`, `Spot/Services/Feed/*`: feed retrieval, ranking, blending
-- `Spot/Views/PostFlow`, `Spot/ViewModels/PostFlowViewModel.swift`, `Spot/Services/Spots/*`: post composer, upload, moderation-gated publish
-- `Spot/Views/Search`, `Spot/ViewModels/SearchViewModel.swift`, `Spot/Services/Search/*`: suggestions, filters, paginated search results
-- `Spot/Views/Profile`, `Spot/ViewModels/ProfileViewModel.swift`, profile/follow services: profile content and social relationships
-- `Spot/Views/Home/MapView.swift`, `Spot/ViewModels/MapViewModel.swift`, `Spot/Services/Map/*`: map viewport-driven discovery
+## Testing rules
 
-### Data/Service Highlights
-- `Spot/Services/AuthService.swift`: Supabase Auth + `public.users` lifecycle
-- `Spot/Services/Feed/FeedRepository.swift`: home feed via `get_home_feed_v1` RPC + image signing
-- `Spot/Services/Feed/FeedRanker.swift`: on-device scoring (used in tests / non-RPC experiments)
-- `Spot/Services/Spots/SpotUploader.swift`: media upload + spot write + metadata fan-out
-- `Spot/Services/AuthorPrivacyCache.swift`: actor-based privacy/follow cache and filtering
-- `Spot/Services/DeepLinkRouter.swift` + `Spot/ViewModels/DeepLinkState.swift`: parse and execute deep-link routes
+- Add or extend **unit tests** in **`SpotTests/`** for non-UI logic (mocks/fakes; no live Supabase, Sign in with Apple, or StoreKit prompts in unit tests).
+- Add or extend **UI tests** in **`SpotUITests/`** for stable flows when practical; prefer **`accessibilityIdentifier`** over localized strings.
+- Schemes: **Spot** (app; may run `Spot.xctestplan` with unit + UI), **SpotTests** (unit only), **SpotUITests** (UI only). Do not place UI tests in `SpotTests` or unit tests in `SpotUITests`.
+- Do not weaken production code solely to satisfy weak tests; use legitimate DI or test hooks when needed.
 
-## External Integrations
+## Documentation rules
 
-- Supabase (Auth, Postgres, Storage client for spots/avatars)
-- Firebase: Analytics, Crashlytics, App Check, and other non-data SDKs linked for ops/monitoring
-- Apple frameworks: SwiftUI, MapKit, CoreLocation, UserNotifications, StoreKit, Security, PhotosUI
-- Subscription web flow integrated through hosted checkout endpoints and deep-link return
+- When changing behavior, architecture, configuration, security, database/RLS, Universal Links, subscriptions, or release process, update **`docs/`** as described in **`docs/operations/documentation-maintenance.md`**.
+- Use **`docs/README.md`** as the documentation index.
+- Use **Mermaid** for new flow diagrams under **`docs/diagrams/`** and link from product/engineering pages.
+- Keep **root `README.md`** high-level; deep detail lives in **`docs/`**.
+- Keep Universal Links documentation at **`docs/engineering/universal-links.md`**.
 
-## Major Runtime Flows
+## Feature-specific reminders
 
-1. App launch -> launch view -> root auth gate (`WelcomeView`, `ConfirmEmailView`, or tab shell)
-2. Authenticated users enter tab navigation with feature-specific view models
-3. Feed path: `get_home_feed_v1` RPC -> primary image signing -> UI
-4. Post path: media + metadata capture -> upload -> moderation polling -> publish complete
-5. Search path: debounced query + typed filters + paginated result grids
-6. Deep links: parsed centrally and routed with auth-aware gating
+- **Do not alter the existing Pro tour / paywall behavior** unless a task explicitly asks for it.
+- **Map spot drawer** should update correctly when selecting a new Spot and close when the map moves away from the selected spot (keep aligned with map policy tests).
+- **Pro-gated map filtering** must stay clearly entitlement-gated and tested where applicable.
+- **Auth gating** must run before sensitive network/database/posting actions.
+- Treat **RLS** as required for production readiness on every new table or policy.
 
-## Testing Strategy
+---
 
-### Targets and schemes
+## App background (concise)
 
-| Scheme | Purpose |
-|--------|---------|
-| **Spot** | Main app: run, debug, archive. Test action runs **both** bundles via `Spot.xctestplan` (unit + UI). |
-| **SpotTests** | Fast **unit tests only** (`SpotTests` target). Use for pre-commit and CI default jobs. |
-| **SpotUITests** | **UI tests only** (`SpotUITests` target). Slower; runs on simulator with launch args (`SpotUITestAppConfiguration`). |
+Primary flows: authentication and onboarding; home feed and map exploration; multi-step spot creation and upload; search across users/places/vibes; profile and follow-request flows; deep-link routing for spot detail and subscription return.
 
-Test plans:
+## Architecture (concise)
 
-- **`Spot.xctestplan`** — Used by the **Spot** scheme: `SpotTests` + `SpotUITests`.
-- **`SpotUITests.xctestplan`** — Used by the **SpotUITests** scheme: UI bundle only.
+- **UI** — `Spot/Views`: SwiftUI components and feature screens.
+- **State** — `Spot/ViewModels`: `ObservableObject` view models.
+- **Data** — `Spot/Services`, `Spot/Models`: **Supabase**-backed repositories and models; **Firebase** for analytics, Crashlytics, App Check (see `AppDelegate`).
+- **Cross-cutting** — `Spot/Utils`, `Spot/Managers`: logging, validation, geohash, permissions, location, moderation policy, tours.
 
-Unit tests live under `SpotTests/` (Swift Testing `@Test` and `@testable import Spot`). UI tests live under `SpotUITests/` (XCTest + `XCUIApplication`). Do not put UI tests in `SpotTests` or unit tests in `SpotUITests`.
+Global **`@EnvironmentObject`** for auth, deep links, permissions; per-screen **`@StateObject`** view models where used.
 
-Priority areas for automated coverage include feed ranking, deep-link parsing, post-flow state, validators, normalization, moderation policy, geohash logic, auth/session behavior (unit), and smoke flows for launch, auth gate, navigation, posting, map, and profile (UI).
+## Core module map
 
-### Code coverage expectations for new code
+- **`Spot/SpotApp.swift`** — `@main`, launch orchestration, DI.
+- **`Spot/AppDelegate.swift`** — Firebase, analytics/crash, app-check, URL/user-activity bridge.
+- **`Spot/Views/RootView.swift`** — auth gate, tabs, deep-link/paywall overlays.
+- **`Spot/Views/Components/BottomTabNavigationView.swift`** — tab shell (Home, Map, Post, Search, Profile).
+- **Auth / onboarding** — `Spot/Views/Auth`, `Spot/Views/Onboarding`, `Spot/Services/Auth*`.
+- **Feed** — `Spot/Views/Home`, `Spot/ViewModels/FeedViewModel.swift`, `Spot/Services/Feed/*` — `get_home_feed_v1` RPC + signing.
+- **Post** — `Spot/Views/PostFlow`, `Spot/ViewModels/PostFlowViewModel.swift`, `Spot/Services/Spots/*`, `Spot/Services/Supabase/*` (publish + media).
+- **Search** — `Spot/Views/Search`, `Spot/ViewModels/SearchViewModel.swift`, `Spot/Services/Search/*`.
+- **Profile** — `Spot/Views/Profile`, `Spot/ViewModels/ProfileViewModel.swift`, profile/follow services.
+- **Map** — `Spot/Views/Home/MapView.swift`, `Spot/ViewModels/MapViewModel.swift`, `Spot/Services/Map/*`.
 
-When adding or changing production code, aim for **high meaningful coverage**, not box-checking:
+## Data / service highlights
 
-- **Non-UI logic** (view models, services, validators, models, utilities): add or extend **unit tests** in `SpotTests`, using mocks/fakes — no live network, Supabase, Sign in with Apple, StoreKit, or device-only prompts.
-- **UI flows**: add **UI smoke tests** in `SpotUITests` where stable `accessibilityIdentifier`s exist; prefer identifiers over localized text.
-- Cover **happy path, empty/error edge cases, and guard branches** that encode product rules.
-- If production changes exist only to enable testing (e.g. internal access, DI, accessibility IDs), keep them **minimal** and **DEBUG- or test-gated** where appropriate so release behavior is unchanged.
+- **`Spot/Services/AuthService.swift`** — Supabase Auth + `public.users` lifecycle.
+- **`Spot/Services/Feed/FeedRepository.swift`** — home feed via `get_home_feed_v1` + image signing.
+- **`Spot/Services/Feed/FeedRanker.swift`** — on-device scoring (tests / experiments).
+- **`Spot/Services/Supabase/SpotSupabaseRepository.swift`** — spots, media, RPCs (e.g. publish with approved assets).
+- **`Spot/Services/AuthorPrivacyCache.swift`** — actor-based privacy/follow cache.
+- **`Spot/Services/DeepLinkRouter.swift`**, **`Spot/ViewModels/DeepLinkState.swift`** — Universal Links and custom scheme routing.
 
-Agents should run the relevant scheme(s) after substantive changes (see commands below).
+## External integrations
 
-## Build and Test Commands
+- **Supabase** — Auth, Postgres, Storage for app data.
+- **Firebase** — Analytics, Crashlytics, App Check, and related SDKs (not the primary app data plane).
+- **Apple** — SwiftUI, MapKit, CoreLocation, UserNotifications, StoreKit, Security, PhotosUI.
+- **Subscriptions** — StoreKit + hosted checkout / deep-link return (`spotapp://subscription/return`).
 
-Use an **available iPhone Simulator** UDID (or a concrete `platform=iOS Simulator,name=…` destination). Prefer piping through `xcbeautify` when installed.
+## Major runtime flows
+
+1. Launch → auth gate (`WelcomeView`, `ConfirmEmailView`, or tab shell).
+2. Authenticated users → tab navigation and feature VMs.
+3. Feed → `get_home_feed_v1` → signing → UI.
+4. Post → capture → moderation-gated media → publish RPC.
+5. Search → debounced query, filters, pagination.
+6. Deep links → `DeepLinkRouter` + `DeepLinkState` with auth-aware pending routes.
+
+## Build and test commands
+
+Use an available **iPhone Simulator** UDID (or `platform=iOS Simulator,name=…`). Prefer `xcbeautify` when installed.
 
 ```sh
 SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
 BEAUTIFY=$(command -v xcbeautify >/dev/null && echo "xcbeautify" || echo "cat")
 
-# --- Main app (production scheme): build only ---
 xcodebuild -scheme Spot -destination "id=$SIM_ID" build | $BEAUTIFY
-
-# --- Spot scheme: all tests (Spot.xctestplan → SpotTests + SpotUITests) ---
 xcodebuild -scheme Spot -destination "id=$SIM_ID" test | $BEAUTIFY
-
-# --- Unit tests only (fast / CI default) ---
 xcodebuild -scheme SpotTests -destination "id=$SIM_ID" test | $BEAUTIFY
-
-# --- UI tests only ---
 xcodebuild -scheme SpotUITests -destination "id=$SIM_ID" test | $BEAUTIFY
 ```
 
-Alternative destination (when a named simulator is installed), matching common CI docs:
+Optional: `-enableCodeCoverage YES` on `xcodebuild test` when collecting coverage.
 
-```sh
-xcodebuild test -scheme SpotTests \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
+## Code coverage expectations
 
-xcodebuild test -scheme SpotUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-```
+For new production code, aim for **meaningful** tests: happy path, empty/error branches, and guard rules. Keep test-only production changes minimal and DEBUG- or test-gated when they must exist.
 
-Optional: enable **code coverage** in the scheme’s Test action (Xcode) or pass `-enableCodeCoverage YES` to `xcodebuild test` when gathering coverage reports for CI.
+Agents should run the **relevant scheme(s)** after substantive non-doc changes.

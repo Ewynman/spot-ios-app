@@ -1,326 +1,86 @@
-# Spot Architecture Documentation
-
-## Table of Contents
-1. [System Overview](#system-overview)
-2. [Architecture Patterns](#architecture-patterns)
-3. [Core Flows](#core-flows)
-   - [Login Flow](#login-flow)
-   - [Posting Flow](#posting-flow)
-   - [Account Deletion Flow](#account-deletion-flow)
-   - [Feed Algorithm Flow](#feed-algorithm-flow)
-   - [Deep Linking Flow](#deep-linking-flow)
-   - [Moderation Flow](#moderation-flow)
-4. [Component Architecture](#component-architecture)
-5. [Data Flow](#data-flow)
+# Spot
 
----
+## Overview
 
-## System Overview
-
-Spot is a location-based social media iOS application built with SwiftUI and Firebase. The app enables users to discover and share "spots" (location-tagged photos with vibe tags) through a personalized feed algorithm.
+**Spot** is a SwiftUI iOS app for social **place discovery**: users share and browse **Spots** (saved place recommendations with photos, location, and **vibe tags**). The stack centers on **Supabase** (Auth, Postgres, Storage) with **Firebase** used for analytics, crash reporting, and App Check. See **[docs/README.md](docs/README.md)** for the full documentation index.
 
-### Technology Stack
-- **Frontend**: SwiftUI (iOS)
-- **Backend**: Firebase (Auth, Firestore, Storage)
-- **Architecture**: MVVM with Service Layer
-- **State Management**: `@Published`, `@StateObject`, `@EnvironmentObject`
-
-### Key Services
-- **Firebase Auth**: User authentication and session management
-- **Firestore**: NoSQL database for users, spots, and relationships
-- **Firebase Storage**: Image storage and CDN
-- **CoreLocation**: Location services and geocoding
-
----
-
-## Architecture Patterns
-
-### MVVM Pattern
-- **Views**: SwiftUI declarative UI components
-- **ViewModels**: Observable objects managing UI state and business logic
-- **Services**: Stateless service classes abstracting Firebase APIs
-- **Repositories**: Stateful data management with pagination and caching
-
-### Service Layer
-- **AuthService**: Authentication operations
-- **SpotService**: Spot CRUD operations
-- **FeedRepository**: Feed pagination and ranking
-- **SearchService**: Search functionality
-- **UserSpotService**: User-spot interactions (likes, bookmarks)
-
----
-
-## Core Flows
-
-### Login Flow
-![Login Flow Diagram](Images/loginFlow.png)
-
-
-**Key Components:**
-- `LoginView`: UI for email/password input
-- `AuthService.signIn()`: Core authentication logic
-- `AuthViewModel`: Manages auth state and user data
-- `RootView`: Routes based on authentication state
-
-**Error Handling:**
-- Maps Firebase error codes to user-friendly messages
-- Handles network errors gracefully
-- Validates input before submission
+## Quick start
 
----
-
-### Posting Flow
-![Posting Flow Diagram](Images/postingFlow.png)
-
-**Key Components:**
-- `PostFlowView`: Multi-step wizard UI
-- `SpotUploader`: Handles image upload and document creation
-- `VibeTagService`: Ensures vibe tags exist globally
-- `ModerationPolicy`: Evaluates moderation scores
-
-**Error Handling:**
-- Validates all fields before submission
-- Cleans up uploaded images on failure
-- Handles moderation timeouts gracefully
-
----
-
-### Account Deletion Flow
-![Account Deletion Flow Diagram](Images/accountDeletionFlow.png)
-
-**Key Components:**
-- `AuthService.deleteAccount()`: Orchestrates deletion
-- `DispatchGroup`: Coordinates async deletions
-- `Firebase Storage`: Image cleanup
-- `Firestore`: Document deletion
-
-**Safety Measures:**
-- Requires password reauthentication
-- Best-effort cleanup (continues on individual failures)
-- Clears all user-related caches
-
----
-
-### Feed Algorithm Flow
-![Feed Algorithm Diagram](Images/feedAlgorithm.png)
-
-**Ranking Algorithm Details:**
-
-**Scoring Formula:**
-\`\`\`
-score = (0.45 × vibeScore) + (0.25 × freshnessScore) + 
-        (0.20 × affinityScore) + (0.10 × distanceScore)
-\`\`\`
-
-**Component Scores:**
-- **Vibe Score**: \`userVibeStats[vibeTag] / totalVibeStats\` (0-1)
-- **Freshness Score**: \`exp(-ageHours / 72)\` (exponential decay)
-- **Affinity Score**: \`1.0\` if followee, else \`0.0\`
-- **Distance Score**: \`1.0\` if ≤25km, else \`25km / distanceKm\`
-
-**Blending Strategy:**
-- Target ratio: 50% followees, 50% global
-- Creator cap: Maximum 2 spots per creator per page
-- Deduplication: Removes spots already seen
-- Backfill: Fills remaining slots if under target
-
-**Key Components:**
-- `FeedRepository`: Manages pagination and cursors
-- `FeedCandidateService`: Fetches candidate spots
-- `FeedRanker`: Scores and blends spots
-- `AuthorPrivacyCache`: Filters private content
-
----
-
-### Deep Linking Flow
-![Deep Linking Flow](Images/deepLinkFlow.png)
-
-**Key Components:**
-- `DeepLinkRouter`: Parses URLs and routes
-- `DeepLinkState`: Manages navigation state
-- `RootView`: Handles URL events
-- `AuthorPrivacyCache`: Filters private content
-
-**Supported URL Formats:**
-- Universal: \`https://spotapp.online/s/{spotId}\`
-- Custom Scheme: \`spotapp://spot/{spotId}\`
-- Query Variant: \`spotapp://open?spotId={spotId}\`
-
----
-
-### Moderation Flow
-![Post Moderation Flow](Images/moderationFlow.png)
-
-**Moderation Thresholds:**
-- **Sexual Content**: Block at score ≥ 3
-- **Violence**: Block at score ≥ 3
-- **Hate Speech**: Block at score ≥ 4
-- **Self-Harm**: Block at score ≥ 3
-
-**Key Components:**
-- `ModerationPolicy`: Evaluates scores against thresholds
-- `PostFlowView.awaitModerationAndFinish()`: Polls for status
-- Cloud Function: Processes images and updates documents
-
----
-
-## Component Architecture
-
-### View Layer
-\`\`\`
-Views/
-├── Auth/
-│   ├── LoginView
-│   ├── SignupView
-│   └── ConfirmEmailView
-├── Home/
-│   ├── HomepageView
-│   └── MapView
-├── PostFlow/
-│   ├── PostFlowView
-│   ├── PhotoSelectionView
-│   ├── LocationSelectionView
-│   └── VibeSelectionView
-├── Profile/
-│   └── ProfileView
-└── Components/
-    └── SpotCard
-\`\`\`
-
-### ViewModel Layer
-\`\`\`
-ViewModels/
-├── AuthViewModel (EnvironmentObject)
-├── FeedViewModel
-├── ProfileViewModel
-└── SearchViewModel
-\`\`\`
-
-### Service Layer
-\`\`\`
-Services/
-├── Auth/
-│   └── AuthService
-├── Spots/
-│   ├── SpotService
-│   └── SpotUploader
-├── Feed/
-│   ├── FeedRepository
-│   ├── FeedRanker
-│   └── FeedCandidateService
-├── Search/
-│   └── SearchService
-└── UserSpotService
-\`\`\`
-
-### Data Models
-\`\`\`
-Models/
-├── Spot
-├── User
-├── Place
-└── VibeTag
-\`\`\`
-
----
-
-## Data Flow
-
-### Authentication Flow
-\`\`\`
-LoginView → AuthViewModel → AuthService → Firebase Auth
-                                    ↓
-                            Firestore (User Document)
-                                    ↓
-                            AuthViewModel (State Update)
-                                    ↓
-                            RootView (Route to Home)
-\`\`\`
-
-### Posting Flow
-\`\`\`
-PostFlowView → SpotUploader → Firebase Storage (Images)
-                                    ↓
-                            Firestore (Spot Document)
-                                    ↓
-                            Cloud Function (Moderation)
-                                    ↓
-                            PostFlowView (Poll Status)
-                                    ↓
-                            FeedRepository (Refresh)
-\`\`\`
-
-### Feed Flow
-\`\`\`
-HomepageView → FeedViewModel → FeedRepository
-                                    ↓
-                            FeedCandidateService (Fetch)
-                                    ↓
-                            AuthorPrivacyCache (Filter)
-                                    ↓
-                            FeedRanker (Score & Blend)
-                                    ↓
-                            FeedViewModel (Update State)
-                                    ↓
-                            HomepageView (Render)
-\`\`\`
-
----
-
-## Key Design Decisions
-
-### 1. Privacy Filtering
-- **AuthorPrivacyCache**: Actor-based cache for thread-safe privacy checks
-- **Denormalization**: \`authorIsPrivate\` stored on spot documents
-- **Batch Fetching**: Chunked queries to minimize Firestore reads
-
-### 2. Feed Ranking
-- **On-Device Ranking**: Reduces server load, enables real-time personalization
-- **Weighted Scoring**: Configurable weights for different signals
-- **Creator Diversity**: Caps per-creator spots to prevent feed dominance
-
-### 3. Image Moderation
-- **Async Processing**: Non-blocking upload with polling
-- **Client-Side Evaluation**: \`ModerationPolicy\` evaluates scores locally
-- **Graceful Degradation**: Timeout handling for slow moderation APIs
-
-### 4. State Management
-- **Shared Repositories**: \`FeedRepository.shared\` for single source of truth
-- **Environment Objects**: \`AuthViewModel\` accessible throughout app
-- **Optimistic Updates**: Immediate UI updates with rollback on failure
-
-### 5. Error Handling
-- **Structured Logging**: \`SpotLogger\` with consistent format
-- **User-Friendly Messages**: Mapped error codes to readable text
-- **Retry Logic**: Built into pagination and moderation polling
-
----
-
-## Performance Optimizations
-
-1. **Privacy Cache**: 5-minute TTL reduces Firestore reads
-2. **Batch Queries**: Chunked \`whereField(..., in: [...])\` queries
-3. **Image Compression**: JPEG 0.7 quality before upload
-4. **Lazy Loading**: \`LazyVStack\` for feed rendering
-5. **Pagination**: Cursor-based pagination with \`DocumentSnapshot\`
-6. **Deduplication**: Prevents duplicate spots in feed
-
----
-
-## Security Considerations
-
-1. **Reauthentication**: Required for sensitive operations (delete account)
-2. **Privacy Filtering**: Server-side rules + client-side cache
-3. **Input Validation**: Username, email, and location validation
-4. **Moderation**: Content moderation before public visibility
-5. **Firestore Rules**: Server-side security rules for data access
-
----
-
-## Future Enhancements
-
-1. **Offline Support**: Local caching with sync
-2. **Push Notifications**: Real-time updates for interactions
-3. **Analytics**: Event tracking and user behavior analysis
-4. **A/B Testing**: Feed algorithm experimentation
-5. **Advanced Search**: Full-text search with Algolia or similar
+1. Clone the repository and open **`Spot.xcodeproj`** in Xcode.
+2. Configure **`Spot/Info.plist`** → `Supabase` with your project **`url`** and **`anonKey`** from the [Supabase dashboard](https://supabase.com/dashboard) (never commit real keys to a public fork).
+3. Select the **Spot** scheme and an **iPhone Simulator** (or device), then Run (**⌘R**).
+
+## Repository structure
+
+| Path | Contents |
+| --- | --- |
+| `Spot/` | iOS app sources (Views, ViewModels, Services, Models, Utils) |
+| `SpotTests/` | Swift Testing unit tests |
+| `SpotUITests/` | XCTest UI tests |
+| `supabase/migrations/` | Postgres / RLS / storage / moderation SQL |
+| `docs/` | Product, engineering, diagram, and operations documentation |
+| `Spot.xcodeproj` | Xcode project |
+| `Spot.xctestplan` / `SpotUITests.xctestplan` | Test plans |
+
+## Requirements
+
+- **macOS** with **Xcode** (recent release recommended; minimum version: TODO: verify team standard).
+- **Apple Developer** account for device testing, Sign in with Apple, push, and Associated Domains as used by the app.
+- **Supabase** project access for backend configuration.
+
+iOS deployment targets vary by target in the project (e.g. **17.0** / **18.5** in `project.pbxproj`); use Xcode to confirm the app target.
+
+## Configuration
+
+- **Supabase** — `Spot/Info.plist` under the `Supabase` dictionary (`url`, `anonKey`). Loaded in `Spot/Supabase/Supabase.swift`.
+- **Share / Universal Links** — `Spot/Info.plist` → `SpotURLs` (`shareURLBase`, `universalLinkDomains`, `customScheme`); see [docs/engineering/configuration.md](docs/engineering/configuration.md).
+- **Entitlements** — `Spot/Spot.entitlements` (Associated Domains, Sign in with Apple).
+
+Do not add **service role** keys, Azure secrets, or other server-only credentials to the app bundle or docs.
+
+## Running the app
+
+1. Open **`Spot.xcodeproj`**.
+2. Scheme: **Spot**.
+3. Choose a simulator or a signed development device, then Run.
+
+## Testing
+
+| Goal | Scheme / command |
+| --- | --- |
+| Unit tests only | **SpotTests** |
+| UI tests only | **SpotUITests** |
+| Default combined plan | **Spot** scheme Test action (`Spot.xctestplan`) |
+
+Example (simulator UDID):
+
+```sh
+SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
+BEAUTIFY=$(command -v xcbeautify >/dev/null && echo "xcbeautify" || echo "cat")
+xcodebuild -scheme SpotTests -destination "id=$SIM_ID" test | $BEAUTIFY
+```
+
+See [docs/engineering/testing.md](docs/engineering/testing.md) for philosophy and layout.
+
+## Documentation
+
+- **Index:** [docs/README.md](docs/README.md) — product, engineering, diagrams, operations, and suggested reading paths.
+- **Architecture:** [docs/engineering/architecture.md](docs/engineering/architecture.md)
+- **Local setup:** [docs/engineering/local-setup.md](docs/engineering/local-setup.md)
+- **RLS / security:** [docs/engineering/database-and-rls.md](docs/engineering/database-and-rls.md), [docs/engineering/networking-and-auth.md](docs/engineering/networking-and-auth.md)
+
+## Security and safety
+
+Authentication and **Row Level Security (RLS)** on Supabase are authoritative for data access. **Image moderation** is required for Spot and profile media. See the engineering docs above and [docs/engineering/image-moderation.md](docs/engineering/image-moderation.md). Operational response: [docs/operations/incident-response.md](docs/operations/incident-response.md).
+
+## Universal Links
+
+Spot share and open-in-app links are documented in **[docs/engineering/universal-links.md](docs/engineering/universal-links.md)** (paths, entitlements, AASA, testing).
+
+## Release
+
+High-level checklists: [docs/engineering/release-process.md](docs/engineering/release-process.md) and [docs/operations/runbooks.md](docs/operations/runbooks.md).
+
+## Support
+
+User-facing support and policy links: see [docs/product/support-and-policies.md](docs/product/support-and-policies.md) and in-app Settings (TODO: verify exact URLs in code).
