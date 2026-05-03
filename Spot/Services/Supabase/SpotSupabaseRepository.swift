@@ -12,6 +12,33 @@ enum SpotSupabaseRepository {
     /// Private bucket: `spot_images.storage_path` is the object key in the `spots` bucket (e.g. `userId/spotId_0.jpg`).
     /// `public_url` (if present) may hold the same path or a legacy full `https://` URL; signing uses `storage_path` first.
     private static let spotsStorageBucketId = "spots"
+    private static let pendingImagesBucketId = "pending_images"
+
+    private enum SupabasePlist {
+        static let baseURL: URL = {
+            guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
+                  let root = NSDictionary(contentsOfFile: path) as? [String: Any],
+                  let supabase = root["Supabase"] as? [String: Any],
+                  let urlString = supabase["url"] as? String,
+                  let url = URL(string: urlString)
+            else {
+                fatalError("Supabase.url missing in Info.plist")
+            }
+            return url
+        }()
+
+        static let anonKey: String = {
+            guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
+                  let root = NSDictionary(contentsOfFile: path) as? [String: Any],
+                  let supabase = root["Supabase"] as? [String: Any],
+                  let key = supabase["anonKey"] as? String,
+                  !key.isEmpty
+            else {
+                fatalError("Supabase.anonKey missing in Info.plist")
+            }
+            return key
+        }()
+    }
     /// Signed URL lifetime for spot images (feed / grids refresh on reload).
     private static let spotImageSignedURLExpirySeconds = 604_800 // 7 days
 
@@ -51,6 +78,7 @@ enum SpotSupabaseRepository {
         let sort_index: Int
         let storage_path: String?
         let public_url: String?
+        let storage_bucket: String?
 
         /// Object path inside the `spots` bucket, or a legacy absolute URL in `public_url`.
         var imageReference: String {
@@ -65,33 +93,48 @@ enum SpotSupabaseRepository {
         return lower.hasPrefix("https://") || lower.hasPrefix("http://")
     }
 
-    /// Maps stored object paths to HTTPS URLs (signed for storage paths).
-    private static func resolveStoredImageURLs(_ stored: [String]) async throws -> [String] {
-        guard !stored.isEmpty else { return [] }
-        var uniquePaths: [String] = []
-        var seen = Set<String>()
-        for s in stored where !isStoredAbsoluteURL(s) && !s.isEmpty {
-            if seen.insert(s).inserted {
-                uniquePaths.append(s)
+    /// Maps stored object paths to HTTPS URLs (signed per `storage_bucket`, default `spots`).
+    static func resolveStoredImageURLs(paths: [String], buckets: [String?]) async throws -> [String] {
+        guard !paths.isEmpty else { return [] }
+        precondition(paths.count == buckets.count)
+
+        struct BucketPath: Hashable {
+            let bucket: String
+            let path: String
+        }
+
+        var toSign = Set<BucketPath>()
+        for (p, b) in zip(paths, buckets) where !isStoredAbsoluteURL(p) && !p.isEmpty {
+            let bucket = b ?? spotsStorageBucketId
+            toSign.insert(BucketPath(bucket: bucket, path: p))
+        }
+
+        var signedByKey: [BucketPath: String] = [:]
+        let grouped = Dictionary(grouping: toSign, by: \.bucket)
+        for (bucket, keys) in grouped {
+            let uniquePaths = Array(Set(keys.map(\.path)))
+            var offset = 0
+            let chunkSize = 100
+            while offset < uniquePaths.count {
+                let end = min(offset + chunkSize, uniquePaths.count)
+                let chunk = Array(uniquePaths[offset..<end])
+                let signedResults = try await supabase.storage
+                    .from(bucket)
+                    .createSignedURLs(paths: chunk, expiresIn: spotImageSignedURLExpirySeconds)
+                for item in signedResults {
+                    if case let .success(path, url) = item {
+                        signedByKey[BucketPath(bucket: bucket, path: path)] = url.absoluteString
+                    }
+                }
+                offset = end
             }
         }
-        var pathToSigned: [String: String] = [:]
-        let chunkSize = 100
-        var offset = 0
-        while offset < uniquePaths.count {
-            let end = min(offset + chunkSize, uniquePaths.count)
-            let chunk = Array(uniquePaths[offset..<end])
-            let signed = try await supabase.storage
-                .from(spotsStorageBucketId)
-                .createSignedURLs(paths: chunk, expiresIn: spotImageSignedURLExpirySeconds)
-            for (path, url) in zip(chunk, signed) {
-                pathToSigned[path] = url.absoluteString
-            }
-            offset = end
-        }
-        return stored.map { s in
-            if isStoredAbsoluteURL(s) { return s }
-            return pathToSigned[s] ?? s
+
+        return zip(paths, buckets).map { path, bucket in
+            if isStoredAbsoluteURL(path) { return path }
+            if path.isEmpty { return path }
+            let b = bucket ?? spotsStorageBucketId
+            return signedByKey[BucketPath(bucket: b, path: path)] ?? path
         }
     }
 
@@ -146,24 +189,27 @@ enum SpotSupabaseRepository {
         do {
             let images: [SpotImageRow] = try await supabase
                 .from("spot_images")
-                .select("spot_id,storage_path,public_url,sort_index")
+                .select("spot_id,storage_path,public_url,sort_index,storage_bucket")
                 .in("spot_id", values: uuids)
                 .execute()
                 .value
-            var best: [UUID: (url: String, sort: Int)] = [:]
+            var bestRow: [UUID: SpotImageRow] = [:]
             for img in images {
-                let ref = img.imageReference
-                if let cur = best[img.spot_id] {
-                    if img.sort_index < cur.sort { best[img.spot_id] = (ref, img.sort_index) }
+                if let cur = bestRow[img.spot_id] {
+                    if img.sort_index < cur.sort_index { bestRow[img.spot_id] = img }
                 } else {
-                    best[img.spot_id] = (ref, img.sort_index)
+                    bestRow[img.spot_id] = img
                 }
             }
-            let ordered = spotIds.compactMap { sid -> String? in
-                guard let u = UUID(uuidString: sid) else { return nil }
-                return best[u]?.url
+            var paths: [String] = []
+            var buckets: [String?] = []
+            for sid in spotIds {
+                guard let u = UUID(uuidString: sid), let row = bestRow[u] else { continue }
+                let ref = row.imageReference
+                paths.append(ref)
+                buckets.append(isStoredAbsoluteURL(ref) ? nil : (row.storage_bucket ?? spotsStorageBucketId))
             }
-            return (try? await resolveStoredImageURLs(ordered)) ?? ordered
+            return (try? await resolveStoredImageURLs(paths: paths, buckets: buckets)) ?? paths
         } catch {
             return []
         }
@@ -233,7 +279,7 @@ enum SpotSupabaseRepository {
         let spotIds = rows.map(\.id)
         let images: [SpotImageRow] = try await supabase
             .from("spot_images")
-            .select("spot_id,storage_path,public_url,sort_index")
+            .select("spot_id,storage_path,public_url,sort_index,storage_bucket")
             .in("spot_id", values: spotIds)
             .execute()
             .value
@@ -247,11 +293,16 @@ enum SpotSupabaseRepository {
         }
 
         let spotIdOrder = rows.map(\.id)
-        var flatStored: [String] = []
+        var flatPaths: [String] = []
+        var flatBuckets: [String?] = []
         for sid in spotIdOrder {
-            flatStored.append(contentsOf: (imagesBySpot[sid] ?? []).map(\.imageReference))
+            for img in imagesBySpot[sid] ?? [] {
+                let ref = img.imageReference
+                flatPaths.append(ref)
+                flatBuckets.append(isStoredAbsoluteURL(ref) ? nil : (img.storage_bucket ?? spotsStorageBucketId))
+            }
         }
-        let flatResolved = try await resolveStoredImageURLs(flatStored)
+        let flatResolved = try await resolveStoredImageURLs(paths: flatPaths, buckets: flatBuckets)
         var cursor = 0
         var resolvedBySpot: [UUID: [String]] = [:]
         for sid in spotIdOrder {
@@ -301,7 +352,7 @@ enum SpotSupabaseRepository {
 
         let userIds = Array(Set(rows.map(\.user_id)))
         let users: [UserBriefRow] = try await supabase
-            .from("users")
+            .from(SupabaseTableName.usersPublic)
             .select("id,username,profile_image_url")
             .in("id", values: userIds)
             .execute()
@@ -324,7 +375,7 @@ enum SpotSupabaseRepository {
         let spotIds = rows.map(\.id)
         let images: [SpotImageRow] = try await supabase
             .from("spot_images")
-            .select("spot_id,storage_path,public_url,sort_index")
+            .select("spot_id,storage_path,public_url,sort_index,storage_bucket")
             .in("spot_id", values: spotIds)
             .execute()
             .value
@@ -338,11 +389,16 @@ enum SpotSupabaseRepository {
         }
 
         let spotIdOrder = rows.map(\.id)
-        var flatStored: [String] = []
+        var flatPaths: [String] = []
+        var flatBuckets: [String?] = []
         for sid in spotIdOrder {
-            flatStored.append(contentsOf: (imagesBySpot[sid] ?? []).map(\.imageReference))
+            for img in imagesBySpot[sid] ?? [] {
+                let ref = img.imageReference
+                flatPaths.append(ref)
+                flatBuckets.append(isStoredAbsoluteURL(ref) ? nil : (img.storage_bucket ?? spotsStorageBucketId))
+            }
         }
-        let flatResolved = try await resolveStoredImageURLs(flatStored)
+        let flatResolved = try await resolveStoredImageURLs(paths: flatPaths, buckets: flatBuckets)
         var cursor = 0
         var resolvedBySpot: [UUID: [String]] = [:]
         for sid in spotIdOrder {
@@ -405,7 +461,7 @@ enum SpotSupabaseRepository {
 
         let userIds = Array(Set(rows.map(\.user_id)))
         let users: [UserBriefRow] = try await supabase
-            .from("users")
+            .from(SupabaseTableName.usersPublic)
             .select("id,username,profile_image_url")
             .in("id", values: userIds)
             .execute()
@@ -545,7 +601,7 @@ enum SpotSupabaseRepository {
         }
     }
 
-    /// Uploads JPEGs to the `spots` storage bucket, inserts `spots` + `spot_images`. Returns new spot id.
+    /// Pending upload → Edge Function `moderate-image` → RPC `publish_spot_with_approved_media_assets_v1`.
     static func publishSpotFromDraft(
         userId: UUID,
         imageJPEGs: [Data],
@@ -558,70 +614,183 @@ enum SpotSupabaseRepository {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "No images"])
         }
 
-        let privacyRow: UserPrivateRow = try await supabase
-            .from("users")
-            .select("is_private")
-            .eq("id", value: userId)
-            .single()
-            .execute()
-            .value
-
         guard let primaryVibe = vibeTags.first else {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
         }
         let vibeId = try await resolveOrCreateVibeTagId(displayName: primaryVibe)
 
-        struct SpotInsert: Encodable {
-            let user_id: UUID
-            let vibe_tag_id: UUID
-            let caption: String?
-            let latitude: Double
-            let longitude: Double
-            let location_name: String
-            let author_is_private_snapshot: Bool
+        struct MediaAssetInsert: Encodable {
+            let id: UUID
+            let owner_id: UUID
+            let kind: String
+            let status: String
+            let pending_bucket: String
+            let pending_path: String
+            let mime_type: String
+            let byte_size: Int
+        }
+
+        struct PublishSpotRpcParams: Encodable {
+            let p_vibe_tag_id: UUID
+            let p_latitude: Double
+            let p_longitude: Double
+            let p_location_name: String
+            let p_media_asset_ids: [UUID]
+        }
+
+        var approvedAssetIds: [UUID] = []
+        for data in imageJPEGs {
+            let assetId = UUID()
+            let path = "\(userId.uuidString.lowercased())/\(assetId.uuidString.lowercased()).jpg"
+            try await supabase
+                .from("media_assets")
+                .insert(MediaAssetInsert(
+                    id: assetId,
+                    owner_id: userId,
+                    kind: "spot_image",
+                    status: "pending",
+                    pending_bucket: pendingImagesBucketId,
+                    pending_path: path,
+                    mime_type: "image/jpeg",
+                    byte_size: data.count
+                ))
+                .execute()
+
+            try await supabase.storage
+                .from(pendingImagesBucketId)
+                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+
+            let moderate = try await invokeModerateImageFunction(mediaAssetId: assetId)
+            guard moderate.approved else {
+                if moderate.reason == "image_policy_rejected" {
+                    throw NSError(
+                        domain: "SpotImageModeration",
+                        code: 422,
+                        userInfo: [NSLocalizedDescriptionKey: "One of your photos can't be posted. Please replace it and try again."]
+                    )
+                }
+                    throw NSError(
+                        domain: "SpotImageModeration",
+                        code: 503,
+                        userInfo: [NSLocalizedDescriptionKey: "We couldn't check one of your photos. Please try again."]
+                    )
+            }
+            approvedAssetIds.append(assetId)
         }
 
         let trimmedPlace = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let spotRow: SpotIdRow = try await supabase
-            .from("spots")
-            .insert(SpotInsert(
-                user_id: userId,
-                vibe_tag_id: vibeId,
-                caption: nil,
-                latitude: latitude,
-                longitude: longitude,
-                location_name: trimmedPlace,
-                author_is_private_snapshot: privacyRow.is_private
-            ))
-            .select("id")
-            .single()
-            .execute()
-            .value
+        let spotIdString: String = try await supabase.rpc(
+            "publish_spot_with_approved_media_assets_v1",
+            params: PublishSpotRpcParams(
+                p_vibe_tag_id: vibeId,
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_location_name: trimmedPlace,
+                p_media_asset_ids: approvedAssetIds
+            )
+        )
+        .execute()
+        .value
 
-        let spotId = spotRow.id
+        guard let spotId = UUID(uuidString: spotIdString) else {
+            throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid spot id from server"])
+        }
+        return spotId
+    }
 
-        struct SpotImageInsert: Encodable {
-            let spot_id: UUID
-            let storage_path: String
-            let public_url: String
+    /// Signed URL for the first image on a newly published spot (any approved storage bucket).
+    static func signFirstImageURLForSpot(spotId: UUID) async throws -> String? {
+        struct Row: Decodable {
+            let storage_path: String?
+            let storage_bucket: String?
             let sort_index: Int
         }
+        let rows: [Row] = try await supabase
+            .from("spot_images")
+            .select("storage_path,storage_bucket,sort_index")
+            .eq("spot_id", value: spotId)
+            .order("sort_index", ascending: true)
+            .limit(1)
+            .execute()
+            .value
+        guard let row = rows.first else { return nil }
+        let ref = row.storage_path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if ref.isEmpty { return nil }
+        if isStoredAbsoluteURL(ref) { return ref }
+        let bucket = row.storage_bucket ?? spotsStorageBucketId
+        return try await supabase.storage
+            .from(bucket)
+            .createSignedURL(path: ref, expiresIn: spotImageSignedURLExpirySeconds)
+            .absoluteString
+    }
 
-        for (idx, data) in imageJPEGs.enumerated() {
-            let path = "\(userId.uuidString.lowercased())/\(spotId.uuidString.lowercased())_\(idx).jpg"
-            try await supabase.storage
-                .from(spotsStorageBucketId)
-                .upload(
-                    path,
-                    data: data,
-                    options: FileOptions(contentType: "image/jpeg", upsert: true)
-                )
-            try await supabase
-                .from("spot_images")
-                .insert(SpotImageInsert(spot_id: spotId, storage_path: path, public_url: path, sort_index: idx))
-                .execute()
+    /// Parses Edge Function JSON. **Contract:** body must include boolean `approved` (see `supabase/functions/moderate-image/index.ts`).
+    /// A placeholder that returns only `{ "ok": true }` will parse as not approved and trigger the generic 503 user message.
+    private static func parseModerateImageJSON(_ data: Data) -> (approved: Bool, reason: String?, jsonKeys: String) {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (false, "moderation_unavailable", "")
+        }
+        let keys = obj.keys.sorted().joined(separator: ",")
+        let approved = obj["approved"] as? Bool ?? false
+        let reason =
+            (obj["reason"] as? String)
+            ?? (obj["error"] as? String)
+        return (approved, reason, keys)
+    }
+
+    private static func invokeModerateImageFunction(mediaAssetId: UUID) async throws -> (approved: Bool, reason: String?) {
+        let session = try await supabase.auth.session
+        supabase.functions.setAuth(token: session.accessToken)
+        let url = SupabasePlist.baseURL
+            .appendingPathComponent("functions")
+            .appendingPathComponent("v1")
+            .appendingPathComponent("moderate-image")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(SupabasePlist.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["mediaAssetId": mediaAssetId.uuidString])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let parsed = parseModerateImageJSON(data)
+        guard let http = resp as? HTTPURLResponse else {
+            SpotLogger.log(SpotImageModerationLogs.moderateInvokeUnexpectedResponse, details: [
+                "mediaAssetId": mediaAssetId.uuidString,
+                "reason": "non_http_response",
+            ])
+            return (false, "moderation_unavailable")
         }
 
-        return spotId
+        let bodyPrefix = String(String(data: data, encoding: .utf8) ?? "").prefix(500)
+        let outcome: (Bool, String?)
+        if http.statusCode >= 500 {
+            outcome = (false, parsed.reason ?? "moderation_unavailable")
+        } else if http.statusCode == 422 {
+            outcome = (parsed.approved, parsed.reason)
+        } else if http.statusCode >= 400 {
+            outcome = (false, parsed.reason ?? "moderation_unavailable")
+        } else {
+            outcome = (parsed.approved, parsed.reason)
+        }
+
+        if !outcome.0 {
+            let isExpectedPolicy =
+                http.statusCode == 422 && outcome.1 == "image_policy_rejected"
+            if isExpectedPolicy {
+                SpotLogger.log(SpotImageModerationLogs.policyRejectedByEdgeFunction, details: [
+                    "mediaAssetId": mediaAssetId.uuidString,
+                ])
+            } else {
+                SpotLogger.log(SpotImageModerationLogs.moderateInvokeUnexpectedResponse, details: [
+                    "mediaAssetId": mediaAssetId.uuidString,
+                    "httpStatus": String(http.statusCode),
+                    "reason": outcome.1 ?? "",
+                    "jsonKeys": parsed.jsonKeys,
+                    "bodyPrefix": String(bodyPrefix),
+                ])
+            }
+        }
+
+        return outcome
     }
 }

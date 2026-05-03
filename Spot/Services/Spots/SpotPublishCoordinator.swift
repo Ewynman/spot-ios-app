@@ -28,7 +28,8 @@ protocol SpotPublishing: AnyObject {
 @MainActor
 final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
     static let shared = SpotPublishCoordinator()
-    private let publishTimeoutSeconds: UInt64 = 7
+    /// Upload + Edge moderation + RPC publish can exceed the legacy short upload window.
+    private let publishTimeoutSeconds: UInt64 = 90
 
     enum BannerPhase: Equatable {
         case hidden
@@ -76,11 +77,7 @@ final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
             let spotId = try await publishSpotWithTimeout(draft: draft)
             let spotIdString = spotId.uuidString
             let postedAt = Date()
-            let firstImagePath = "\(uid.uuidString.lowercased())/\(spotId.uuidString.lowercased())_0.jpg"
-            let signedFirstImage: String? = try? await supabase.storage
-                .from("spots")
-                .createSignedURL(path: firstImagePath, expiresIn: 604_800)
-                .absoluteString
+            let signedFirstImage = try? await SpotSupabaseRepository.signFirstImageURLForSpot(spotId: spotId)
 
             let postedSpot = Spot(
                 id: spotIdString,
@@ -128,8 +125,17 @@ final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
                 NotificationCenter.default.post(name: .spotDidPostFailed, object: nil)
             }
         } catch {
-            SpotLogger.log(SpotPublishCoordinatorLogs.spotUploadFailed, details: ["error": error.localizedDescription])
-            await presentErrorToast("Error Posting Spot Try Again Later")
+            let ns = error as NSError
+            if ns.domain == "SpotImageModeration" {
+                SpotLogger.log(SpotPublishCoordinatorLogs.spotUploadFailed, details: [
+                    "error": error.localizedDescription,
+                    "code": ns.code
+                ])
+                await presentErrorToast(ns.localizedDescription)
+            } else {
+                SpotLogger.log(SpotPublishCoordinatorLogs.spotUploadFailed, details: ["error": error.localizedDescription])
+                await presentErrorToast("Error Posting Spot Try Again Later")
+            }
             NotificationCenter.default.post(name: .spotDidPostFailed, object: nil)
         }
 

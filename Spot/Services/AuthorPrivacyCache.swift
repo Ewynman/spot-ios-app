@@ -76,7 +76,7 @@ actor AuthorPrivacyCache {
             guard !uuids.isEmpty else { continue }
             do {
                 let rows: [UserPrivRow] = try await supabase
-                    .from("users")
+                    .from(SupabaseTableName.usersPublic)
                     .select("id,is_private")
                     .in("id", values: uuids)
                     .execute()

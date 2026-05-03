@@ -757,26 +757,33 @@ enum FeedAPI {
         struct Row: Decodable {
             let storage_path: String?
             let public_url: String?
+            let storage_bucket: String?
             let sort_index: Int
         }
 
         do {
             let rows: [Row] = try await supabase
                 .from("spot_images")
-                .select("storage_path,public_url,sort_index")
+                .select("storage_path,public_url,storage_bucket,sort_index")
                 .eq("spot_id", value: spotId)
                 .order("sort_index", ascending: true)
                 .execute()
                 .value
 
-            var stored: [String] = []
+            var paths: [String] = []
+            var buckets: [String?] = []
             for r in rows {
                 let path = r.storage_path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let publicUrl = r.public_url?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if !path.isEmpty { stored.append(path) }
-                else if !publicUrl.isEmpty { stored.append(publicUrl) }
+                if !path.isEmpty {
+                    paths.append(path)
+                    buckets.append(r.storage_bucket)
+                } else if !publicUrl.isEmpty {
+                    paths.append(publicUrl)
+                    buckets.append(nil)
+                }
             }
-            return await resolveOrSign(stored)
+            return try await SpotSupabaseRepository.resolveStoredImageURLs(paths: paths, buckets: buckets)
         } catch {
             SpotLogger.log(FeedSupabaseLogs.primaryImageSignFailed, details: [
                 "phase": "fullGallery",
@@ -784,36 +791,6 @@ enum FeedAPI {
                 "error": error.localizedDescription
             ])
             return []
-        }
-    }
-
-    private static func resolveOrSign(_ stored: [String]) async -> [String] {
-        guard !stored.isEmpty else { return [] }
-        var pathsToSign: [String] = []
-        for s in stored {
-            let lower = s.lowercased()
-            if lower.hasPrefix("https://") || lower.hasPrefix("http://") { continue }
-            if !pathsToSign.contains(s) { pathsToSign.append(s) }
-        }
-        var byPath: [String: String] = [:]
-        if !pathsToSign.isEmpty {
-            do {
-                let signed = try await supabase.storage
-                    .from(spotsStorageBucketId)
-                    .createSignedURLs(paths: pathsToSign, expiresIn: spotImageSignedURLExpirySeconds)
-                for (p, u) in zip(pathsToSign, signed) { byPath[p] = u.absoluteString }
-            } catch {
-                SpotLogger.log(FeedSupabaseLogs.primaryImageSignFailed, details: [
-                    "phase": "resolveOrSign",
-                    "count": pathsToSign.count,
-                    "error": error.localizedDescription
-                ])
-            }
-        }
-        return stored.map { s in
-            let lower = s.lowercased()
-            if lower.hasPrefix("https://") || lower.hasPrefix("http://") { return s }
-            return byPath[s] ?? s
         }
     }
 
@@ -905,13 +882,15 @@ enum FeedAPI {
         }
 
         do {
-            let signed = try await supabase.storage
+            let signedResults = try await supabase.storage
                 .from(spotsStorageBucketId)
                 .createSignedURLs(paths: pathsToSign, expiresIn: spotImageSignedURLExpirySeconds)
-            for (path, url) in zip(pathsToSign, signed) {
-                guard let spotIds = pathRowIndex[path] else { continue }
-                for sid in spotIds {
-                    result[sid] = url.absoluteString
+            for item in signedResults {
+                if case let .success(path, url) = item {
+                    guard let spotIds = pathRowIndex[path] else { continue }
+                    for sid in spotIds {
+                        result[sid] = url.absoluteString
+                    }
                 }
             }
         } catch {

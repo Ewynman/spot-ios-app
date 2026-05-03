@@ -118,7 +118,7 @@ enum ProfileService {
         let row: ProfileSupabaseSchema.PublicUserRow
         do {
             row = try await supabase
-                .from("users")
+                .from(SupabaseTableName.usersPublic)
                 .select("id,username,profile_image_url,is_private,is_pro,pro_until")
                 .eq("id", value: targetUUID)
                 .single()

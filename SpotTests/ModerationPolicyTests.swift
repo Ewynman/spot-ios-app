@@ -24,13 +24,13 @@ struct ModerationPolicyTests {
     }
 
     @Test func evaluateSexualOverThresholdBlocks() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:sexual")
     }
 
     @Test func evaluateViolenceOverThresholdBlocks() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["violence": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["violence": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:violence")
     }
@@ -42,42 +42,42 @@ struct ModerationPolicyTests {
     }
 
     @Test func evaluateSelfHarmOverThresholdBlocks() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["selfharm": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["selfharm": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:selfharm")
     }
 
     @Test func evaluateBelowThresholdApproved() {
-        let (approved, _) = ModerationPolicy.evaluate(scores: ["sexual": 2, "violence": 1, "hate": 3])
+        let (approved, _) = ModerationPolicy.evaluate(scores: ["sexual": 2, "violence": 2, "hate": 3])
         #expect(approved)
     }
 
     @Test func evaluateDoubleValueRounds() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": 3.7])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": 4.2])
         #expect(!approved)
         #expect(reason == "over_threshold:sexual")
     }
 
     @Test func evaluateStringValueParsed() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": "3"])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["sexual": "4"])
         #expect(!approved)
         #expect(reason == "over_threshold:sexual")
     }
 
     @Test func evaluateCaseInsensitiveKeys() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["SEXUAL": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["SEXUAL": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:sexual")
     }
 
     @Test func evaluateAdultAlias() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["adult": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["adult": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:sexual")
     }
 
     @Test func evaluateViolentAlias() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["violent": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["violent": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:violence")
     }
@@ -89,7 +89,7 @@ struct ModerationPolicyTests {
     }
 
     @Test func evaluateSelfInjuryAlias() {
-        let (approved, reason) = ModerationPolicy.evaluate(scores: ["selfinjury": 3])
+        let (approved, reason) = ModerationPolicy.evaluate(scores: ["selfinjury": 4])
         #expect(!approved)
         #expect(reason == "over_threshold:selfharm")
     }

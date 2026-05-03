@@ -199,7 +199,7 @@ struct BlockedUsersView: View {
                     return
                 }
                 let rows: [UserRow] = try await supabase
-                    .from("users")
+                    .from(SupabaseTableName.usersPublic)
                     .select("id,username,profile_image_url")
                     .in("id", values: ids)
                     .execute()

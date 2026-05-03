@@ -21,7 +21,7 @@ final class SpotSearchDataSource {
         guard !prefix.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
         let lower = prefix.lowercased()
         let rows: [UserRow] = try await supabase
-            .from("users")
+            .from(SupabaseTableName.usersPublic)
             .select("id,username,profile_image_url")
             .limit(400)
             .execute()

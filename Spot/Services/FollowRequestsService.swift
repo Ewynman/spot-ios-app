@@ -63,7 +63,7 @@ final class FollowRequestsService {
         var usersById: [UUID: UserMini] = [:]
         if !requesterIds.isEmpty {
             let users: [UserMini] = try await supabase
-                .from("users")
+                .from(SupabaseTableName.usersPublic)
                 .select("id,username,profile_image_url")
                 .in("id", values: requesterIds)
                 .execute()

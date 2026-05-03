@@ -1,10 +1,11 @@
 import Foundation
 
 struct ModerationPolicy {
-    static let sexualBlockAt: Int = 3
-    static let violenceBlockAt: Int = 3
-    static let hateBlockAt: Int = 4 // consider 6 for looser initial settings
-    static let selfHarmBlockAt: Int = 3
+    /// Matches default `spot_image` thresholds in `supabase/functions/moderate-image` (Azure 0/2/4/6 scale).
+    static let sexualBlockAt: Int = 4
+    static let violenceBlockAt: Int = 4
+    static let hateBlockAt: Int = 4
+    static let selfHarmBlockAt: Int = 4
 
     /// Evaluate Azure-like severity scores map and decide if approved
     /// - Parameter scores: map of category->severity (0-7 or similar). Keys are case/format agnostic.
