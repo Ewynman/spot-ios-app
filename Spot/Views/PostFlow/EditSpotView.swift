@@ -10,7 +10,7 @@ struct EditSpotView: View {
     @EnvironmentObject var authVM: AuthViewModel
 
     // Form state
-    @State private var selectedImages: [UIImage] = []
+    @State private var selectedPhotos: [PostComposerPhoto] = []
     @State private var selectedLocation: LocationData?
     @State private var selectedVibe: String = ""
     @State private var selectedVibes: [String] = []
@@ -25,7 +25,7 @@ struct EditSpotView: View {
         NavigationStack {
             VStack(spacing: 16) {
                 // Images (optional replacement)
-                PhotoSelectionView(selectedImages: $selectedImages, draftCount: 0, onOpenDrafts: {})
+                PhotoSelectionView(selectedPhotos: $selectedPhotos, draftCount: 0, onOpenDrafts: {})
                     .environmentObject(authVM)
 
                 if existingImageURLs.isEmpty == false {
@@ -75,7 +75,7 @@ struct EditSpotView: View {
                 }
 
                 // Vibe
-                VibeSelectionView(selectedVibes: $selectedVibes, maxVibes: selectedImages.count > 1 ? 5 : 3)
+                VibeSelectionView(selectedVibes: $selectedVibes, maxVibes: selectedPhotos.count > 1 ? 5 : 3)
                     .environmentObject(authVM)
 
                 Spacer()
@@ -185,7 +185,7 @@ struct EditSpotView: View {
                 guard let sid = UUID(uuidString: spotId) else {
                     throw NSError(domain: "EditSpotView", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid spot id"])
                 }
-                if !selectedImages.isEmpty {
+                if !selectedPhotos.isEmpty {
                     throw NSError(domain: "EditSpotView", code: 0, userInfo: [NSLocalizedDescriptionKey: "Image replacement in edit flow is temporarily unavailable."])
                 }
                 try await SpotSupabaseRepository.updateSpotMetadata(

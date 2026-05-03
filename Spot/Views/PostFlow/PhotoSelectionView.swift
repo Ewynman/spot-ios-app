@@ -8,7 +8,7 @@ private let postImageMaxPixelSize: CGFloat = 1600
 struct PhotoSelectionView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var permissionManager: PermissionManager
-    @Binding var selectedImages: [UIImage]
+    @Binding var selectedPhotos: [PostComposerPhoto]
     let draftCount: Int
     let onOpenDrafts: () -> Void
     @State private var photoPickerItems: [PhotosPickerItem] = []
@@ -26,7 +26,7 @@ struct PhotoSelectionView: View {
                     Text("Create a Spot")
                         .font(FontManager.sectionHeader())
                         .foregroundColor(Constants.Colors.primary)
-                    Text(selectedImages.isEmpty ? "Start with photos, or continue a saved draft." : "Review, reorder, replace, and add photos.")
+                    Text(selectedPhotos.isEmpty ? "Start with photos, or continue a saved draft." : "Review, reorder, replace, and add photos.")
                         .font(FontManager.primaryText())
                         .foregroundColor(.gray)
                 }
@@ -50,7 +50,7 @@ struct PhotoSelectionView: View {
             }
             .padding(.horizontal, 24)
 
-            if selectedImages.isEmpty {
+            if selectedPhotos.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 28))
@@ -68,8 +68,8 @@ struct PhotoSelectionView: View {
             } else {
                 VStack(spacing: 12) {
                     TabView(selection: $selectedPhotoIndex) {
-                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, image in
-                            Image(uiImage: image)
+                        ForEach(Array(selectedPhotos.enumerated()), id: \.element.id) { idx, photo in
+                            Image(uiImage: photo.image)
                                 .resizable()
                                 .scaledToFill()
                                 .tag(idx)
@@ -84,7 +84,7 @@ struct PhotoSelectionView: View {
                     .frame(height: 300)
 
                     HStack {
-                        Text("\(selectedPhotoIndex + 1) of \(selectedImages.count)")
+                        Text("\(selectedPhotoIndex + 1) of \(selectedPhotos.count)")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Spacer()
@@ -108,12 +108,12 @@ struct PhotoSelectionView: View {
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
-                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { idx, image in
+                            ForEach(Array(selectedPhotos.enumerated()), id: \.element.id) { idx, photo in
                                 VStack(spacing: 6) {
                                     Button {
                                         selectedPhotoIndex = idx
                                     } label: {
-                                        Image(uiImage: image)
+                                        Image(uiImage: photo.image)
                                             .resizable()
                                             .scaledToFill()
                                             .frame(width: 62, height: 62)
@@ -134,7 +134,7 @@ struct PhotoSelectionView: View {
                                         Button { moveImage(from: idx, to: idx + 1) } label: {
                                             Image(systemName: "arrow.right.circle")
                                         }
-                                        .disabled(idx == selectedImages.count - 1)
+                                        .disabled(idx == selectedPhotos.count - 1)
                                     }
                                     .foregroundColor(Constants.Colors.primary)
                                     .font(.caption)
@@ -149,7 +149,7 @@ struct PhotoSelectionView: View {
             // Additional actions
             VStack(spacing: 20) {
                 // Gallery button for first add when grid is empty or for additional adds
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: max(1, maxPhotoCount - selectedImages.count), matching: .images) {
+                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: max(1, maxPhotoCount - selectedPhotos.count), matching: .images) {
                     HStack(spacing: 12) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 24))
@@ -169,7 +169,7 @@ struct PhotoSelectionView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(photoSelectionDisabled || selectedImages.count >= maxPhotoCount)
+                .disabled(photoSelectionDisabled || selectedPhotos.count >= maxPhotoCount)
 
                 if photoSelectionDisabled {
                     Button("Enable Photo Access in Settings") {
@@ -240,10 +240,10 @@ struct PhotoSelectionView: View {
             if !newImages.isEmpty {
                 SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
                 // Append up to the max allowed count
-                let available = max(0, maxPhotoCount - selectedImages.count)
+                let available = max(0, maxPhotoCount - selectedPhotos.count)
                 if available > 0 {
-                    selectedImages.append(contentsOf: newImages.prefix(available))
-                    selectedPhotoIndex = max(0, selectedImages.count - 1)
+                    selectedPhotos.append(contentsOf: newImages.prefix(available).map { PostComposerPhoto(image: $0) })
+                    selectedPhotoIndex = max(0, selectedPhotos.count - 1)
                 }
             } else {
                 SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
@@ -252,14 +252,15 @@ struct PhotoSelectionView: View {
         .task(id: replacePickerItem) {
             guard let replacePickerItem else { return }
             defer { self.replacePickerItem = nil }
-            guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedImages.count else { return }
+            guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedPhotos.count else { return }
             if let data = try? await replacePickerItem.loadTransferable(type: Data.self),
                let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
-                selectedImages[selectedPhotoIndex] = uiImage
+                let id = selectedPhotos[selectedPhotoIndex].id
+                selectedPhotos[selectedPhotoIndex] = PostComposerPhoto(id: id, image: uiImage)
             }
         }
         .sheet(isPresented: $showCamera) {
-            CameraView(selectedImages: $selectedImages, maxCount: maxPhotoCount)
+            CameraView(selectedPhotos: $selectedPhotos, maxCount: maxPhotoCount)
         }
         .alert("Photo Access Needed", isPresented: $showPhotoSettingsAlert) {
             Button("Open Settings") { permissionManager.openPhotoSettings() }
@@ -277,18 +278,18 @@ struct PhotoSelectionView: View {
 }
 
 #Preview {
-    StatefulImagesWrapper { binding in
+    StatefulPhotosWrapper { binding in
         let auth = AuthViewModel()
         auth.isPro = true
-        return PhotoSelectionView(selectedImages: binding, draftCount: 2, onOpenDrafts: {})
+        return PhotoSelectionView(selectedPhotos: binding, draftCount: 2, onOpenDrafts: {})
             .environmentObject(auth)
     }
 }
 
-private struct StatefulImagesWrapper<Content: View>: View {
-    @State var images: [UIImage] = []
-    let content: (Binding<[UIImage]>) -> Content
-    var body: some View { content($images) }
+private struct StatefulPhotosWrapper<Content: View>: View {
+    @State var photos: [PostComposerPhoto] = []
+    let content: (Binding<[PostComposerPhoto]>) -> Content
+    var body: some View { content($photos) }
 }
 
 // MARK: - Helpers
@@ -300,9 +301,9 @@ private extension PhotoSelectionView {
     }
 
     func moveImage(from: Int, to: Int) {
-        guard from != to, from >= 0, to >= 0, from < selectedImages.count, to < selectedImages.count else { return }
-        let img = selectedImages.remove(at: from)
-        selectedImages.insert(img, at: to)
+        guard from != to, from >= 0, to >= 0, from < selectedPhotos.count, to < selectedPhotos.count else { return }
+        let slot = selectedPhotos.remove(at: from)
+        selectedPhotos.insert(slot, at: to)
         if selectedPhotoIndex == from {
             selectedPhotoIndex = to
         } else if from < selectedPhotoIndex && to >= selectedPhotoIndex {
@@ -313,9 +314,9 @@ private extension PhotoSelectionView {
     }
 
     func deleteSelectedImage() {
-        guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedImages.count else { return }
-        selectedImages.remove(at: selectedPhotoIndex)
-        selectedPhotoIndex = max(0, min(selectedPhotoIndex, selectedImages.count - 1))
+        guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedPhotos.count else { return }
+        selectedPhotos.remove(at: selectedPhotoIndex)
+        selectedPhotoIndex = max(0, min(selectedPhotoIndex, selectedPhotos.count - 1))
     }
 
     func openCameraIfPermitted() {
@@ -362,6 +363,7 @@ private func resizedPostImage(_ image: UIImage, maxPixelSize: CGFloat) -> UIImag
     let target = CGSize(width: floor(width * ratio), height: floor(height * ratio))
     let format = UIGraphicsImageRendererFormat.default()
     format.scale = 1
+    format.opaque = true
     let renderer = UIGraphicsImageRenderer(size: target, format: format)
     return renderer.image { _ in
         image.draw(in: CGRect(origin: .zero, size: target))
@@ -370,7 +372,7 @@ private func resizedPostImage(_ image: UIImage, maxPixelSize: CGFloat) -> UIImag
 
 // MARK: - Camera View
 struct CameraView: UIViewControllerRepresentable {
-    @Binding var selectedImages: [UIImage]
+    @Binding var selectedPhotos: [PostComposerPhoto]
     let maxCount: Int
     @Environment(\.dismiss) var dismiss
 
@@ -398,13 +400,16 @@ struct CameraView: UIViewControllerRepresentable {
             if let image = info[.originalImage] as? UIImage {
                 SpotLogger.log(PhotoSelectionViewLogs.photoCapturedWithCamera)
                 let normalized = resizedPostImage(image, maxPixelSize: postImageMaxPixelSize) ?? image
-                var imgs = parent.selectedImages
+                let photo = PostComposerPhoto(image: normalized)
+                var imgs = parent.selectedPhotos
                 if parent.maxCount <= 1 {
-                    imgs = [normalized]
+                    imgs = [photo]
+                } else if imgs.count < parent.maxCount {
+                    imgs.append(photo)
                 } else {
-                    if imgs.count < parent.maxCount { imgs.append(normalized) } else { imgs[parent.maxCount - 1] = normalized }
+                    imgs[parent.maxCount - 1] = photo
                 }
-                parent.selectedImages = imgs
+                parent.selectedPhotos = imgs
             } else {
                 SpotLogger.log(PhotoSelectionViewLogs.capturePhotoFailed)
             }

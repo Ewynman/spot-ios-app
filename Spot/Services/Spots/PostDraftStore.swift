@@ -108,7 +108,7 @@ enum PostDraftStore {
         for (index, image) in images.enumerated() {
             let fileName = imageFileName(draftID: resolvedID, index: index)
             let url = draftsDirectory.appendingPathComponent(fileName)
-            guard let data = image.jpegData(compressionQuality: 0.78) else { continue }
+            guard let data = image.spot_jpegDataOpaque(compressionQuality: 0.78) else { continue }
             do {
                 try data.write(to: url, options: .atomic)
             } catch {

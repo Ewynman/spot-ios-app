@@ -148,6 +148,7 @@ final class SpotLogger {
     /// ]
     /// ```
     static func log(_ entry: some SpotLog, details: [String: Any] = [:], file: String = #file, function: String = #function, line: Int = #line) {
+        guard entry.level >= minimumLevel else { return }
         guard shouldEmit(entry: entry, details: details, file: file) else { return }
         log(entry.level, message: body(for: entry, details: details), file: file, function: function, line: line)
     }
@@ -269,7 +270,10 @@ final class SpotLogger {
 
     private static func log(_ level: LogLevel, message: String, file: String, function: String, line: Int) {
         #if DEBUG
-        guard debugLoggingEnabled else { return }
+        // Master "console logging" switch suppresses verbose output but never hides errors.
+        if level != .error {
+            guard debugLoggingEnabled else { return }
+        }
         #endif
         guard level >= minimumLevel else { return }
         guard shouldEmitRawLog(message: message, file: file) else { return }

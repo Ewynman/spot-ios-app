@@ -145,6 +145,17 @@ struct SettingsView: View {
                         VStack(spacing: 12) {
                             sectionHeader("Debug")
                             NavigationLink {
+                                LoggingSettingsDetailView()
+                            } label: {
+                                settingsRow(
+                                    title: "Console logging",
+                                    icon: "ladybug",
+                                    subtitle: "Feed, upload, auth…"
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            NavigationLink {
                                 AlgorithmDebugView()
                             } label: {
                                 settingsRow(

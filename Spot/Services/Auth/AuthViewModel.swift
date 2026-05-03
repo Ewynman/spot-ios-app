@@ -287,7 +287,11 @@ class AuthViewModel: ObservableObject {
                 await MainActor.run {
                     self.isPro = isProValue
                     self.proUntil = proUntilDate
-                    self.customVibeTags = []
+                    if isProValue, let uidStr = self.userId {
+                        self.customVibeTags = VibeTagService.savedCustomTagNames(forUserId: uidStr)
+                    } else {
+                        self.customVibeTags = []
+                    }
                     self.currentUserProfileImageURL = row.profile_image_url
                     self.currentUserUsername = row.username
                 }

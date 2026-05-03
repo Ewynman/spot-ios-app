@@ -39,7 +39,7 @@ final class SupabaseUserService {
         do {
             session = try await supabase.auth.session
         } catch {
-            SpotLogger.log(SupabaseUserServiceLogs.syncFailed, details: [
+            SpotLogger.log(SupabaseUserServiceLogs.syncSkippedNoSession, details: [
                 "phase": "session",
                 "error": error.localizedDescription
             ])
@@ -94,10 +94,23 @@ final class SupabaseUserService {
                 .execute()
             SpotLogger.log(SupabaseUserServiceLogs.syncSucceeded, details: ["uid": user.id.uuidString])
         } catch {
-            SpotLogger.log(SupabaseUserServiceLogs.syncFailed, details: [
-                "uid": user.id.uuidString,
-                "error": error.localizedDescription
-            ])
+            let message = error.localizedDescription
+            let lower = message.lowercased()
+            let isPermissionDenied = lower.contains("permission denied")
+                || lower.contains("42501")
+                || lower.contains("insufficient privilege")
+            if isPermissionDenied {
+                SpotLogger.log(SupabaseUserServiceLogs.syncFailedPermissionDenied, details: [
+                    "uid": user.id.uuidString,
+                    "error": message,
+                    "hint": "Grant authenticated INSERT, SELECT, DELETE on public.users; column-scoped UPDATE as in security migration."
+                ])
+            } else {
+                SpotLogger.log(SupabaseUserServiceLogs.syncFailedUpsert, details: [
+                    "uid": user.id.uuidString,
+                    "error": message
+                ])
+            }
         }
     }
 }

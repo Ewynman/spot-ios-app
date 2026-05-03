@@ -13,7 +13,14 @@ import UIKit
 @MainActor
 class PostFlowViewModel: ObservableObject {
     @Published var currentStep = 1
-    @Published var selectedImages: [UIImage] = []
+    /// Stable per-slot ids for `PhotoSelectionView` / `TabView` (reorder-safe).
+    @Published var selectedPhotos: [PostComposerPhoto] = []
+
+    /// Drafts, validation, and publish still consume `[UIImage]`.
+    var selectedImages: [UIImage] {
+        get { selectedPhotos.map(\.image) }
+        set { selectedPhotos = newValue.map { PostComposerPhoto(image: $0) } }
+    }
     @Published var selectedLocation: LocationData?
     @Published var selectedVibe: String = ""
     @Published var selectedVibes: [String] = []
@@ -137,7 +144,7 @@ class PostFlowViewModel: ObservableObject {
     }
 
     private func resetComposerAfterQueued() {
-        selectedImages = []
+        selectedPhotos = []
         selectedLocation = nil
         selectedVibe = ""
         selectedVibes = []
@@ -200,7 +207,7 @@ class PostFlowViewModel: ObservableObject {
                 var output: [Data] = []
                 output.reserveCapacity(images.count)
                 for image in images {
-                    let data = autoreleasepool(invoking: { image.jpegData(compressionQuality: 0.78) })
+                    let data = autoreleasepool(invoking: { image.spot_jpegDataOpaque(compressionQuality: 0.78) })
                     guard let data else {
                         continuation.resume(returning: nil)
                         return
@@ -261,7 +268,7 @@ class PostFlowViewModel: ObservableObject {
     }
 
     private func resetComposerForDraftExit() {
-        selectedImages = []
+        selectedPhotos = []
         selectedLocation = nil
         selectedVibe = ""
         selectedVibes = []

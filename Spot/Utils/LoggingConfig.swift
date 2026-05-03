@@ -2,19 +2,43 @@
 //  LoggingConfig.swift
 //  Spot
 //
-//  Created for centralized logging configuration
+//  Centralized logging: defaults from `Config/LoggingDefaults.plist`, overrides in
+//  Settings (DEBUG), and release builds limited to errors only.
 //
 
 import Foundation
 
-/// Centralized logging configuration
-/// Use this to enable/disable debug categories at app startup
-struct LoggingConfig {
-    /// Configure debug logging categories
-    /// Call this in AppDelegate or App init to control what debug logs are enabled
+enum LoggingConfig {
+
+    private static let bundledDefaultsFileName = "LoggingDefaults"
+
+    /// Register plist defaults, reset runtime flags, and apply the active scheme (DEBUG vs release).
     static func configure() {
-        let defaults: [String: Any] = [
+        registerDefaultKeys()
+        resetRuntimeFlags()
+
+#if DEBUG
+        applyDevelopmentLoggingFromUserDefaults()
+#else
+        SpotLogger.setMinimumLevel(.error)
+        SpotLogger.mapOnlyLoggingEnabled = false
+#endif
+    }
+
+    /// Re-read `UserDefaults` and reapply toggles (call after changing settings in-app).
+    static func applyFromUserDefaults() {
+#if DEBUG
+        resetRuntimeFlags()
+        applyDevelopmentLoggingFromUserDefaults()
+#endif
+    }
+
+    // MARK: - Defaults registration
+
+    private static func registerDefaultKeys() {
+        var defaults: [String: Any] = [
             Constants.UserDefaultsKeys.debugLoggingEnabled: true,
+            Constants.UserDefaultsKeys.logAllDebugCategories: false,
             Constants.UserDefaultsKeys.logSpotCard: false,
             Constants.UserDefaultsKeys.logPrivacy: false,
             Constants.UserDefaultsKeys.logFeedComponent: false,
@@ -23,11 +47,31 @@ struct LoggingConfig {
             Constants.UserDefaultsKeys.logNetworkComponent: false,
             Constants.UserDefaultsKeys.logDeepLink: false
         ]
-        UserDefaults.standard.register(defaults: defaults)
 
-        // Reset all dynamic logging flags before applying selected presets.
+        if let fromPlist = loadBundledLoggingDefaultsPlist() {
+            for (key, value) in fromPlist {
+                defaults[key] = value
+            }
+        }
+
+        UserDefaults.standard.register(defaults: defaults)
+    }
+
+    private static func loadBundledLoggingDefaultsPlist() -> [String: Any]? {
+        guard let url = Bundle.main.url(forResource: bundledDefaultsFileName, withExtension: "plist"),
+              let data = try? Data(contentsOf: url),
+              let root = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dict = root as? [String: Any] else {
+            return nil
+        }
+        return dict
+    }
+
+    // MARK: - Runtime reset + DEBUG apply
+
+    private static func resetRuntimeFlags() {
         DebugCategory.disableAll()
-        SpotLogger.enableAllDebug = true
+        SpotLogger.enableAllDebug = false
         SpotLogger.mapOnlyLoggingEnabled = false
         ComponentLogging.spotCard = false
         ComponentLogging.profileView = false
@@ -47,83 +91,90 @@ struct LoggingConfig {
         ComponentLogging.locationSelection = false
         ComponentLogging.photoSelection = false
         FeedFlags.enableDiagnosticLogging = false
+    }
 
-    #if DEBUG
+#if DEBUG
+    private static func applyDevelopmentLoggingFromUserDefaults() {
+        let ud = UserDefaults.standard
         SpotLogger.setMinimumLevel(.debug)
-        SpotLogger.setDebugLoggingEnabled(UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.debugLoggingEnabled))
+        SpotLogger.setDebugLoggingEnabled(ud.bool(forKey: Constants.UserDefaultsKeys.debugLoggingEnabled))
 
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logSpotCard) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logAllDebugCategories) {
+            SpotLogger.enableAllDebug = true
+            enableAllDebugLogging()
+            return
+        }
+
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logSpotCard) {
             enableSpotCardLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logPrivacy) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logPrivacy) {
             enablePrivacyLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logFeedComponent) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logFeedComponent) {
             enableFeedComponentLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logPostFlow) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logPostFlow) {
             enablePostFlowLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logAuth) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logAuth) {
             enableAuthLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logNetworkComponent) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logNetworkComponent) {
             enableNetworkComponentLogging()
         }
-        if UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.logDeepLink) {
+        if ud.bool(forKey: Constants.UserDefaultsKeys.logDeepLink) {
             enableDeepLinkLogging()
         }
-#else
-        SpotLogger.setMinimumLevel(.error)
-#endif
     }
-    
+#endif
+
     // MARK: - Category-Based Presets (Simple)
-    
+
     static func enableUILogging() {
         DebugCategory.enable(.ui)
         DebugCategory.enable(.navigation)
     }
-     
+
     static func enableFeedLogging() {
         DebugCategory.enable(.feed)
         FeedFlags.enableDiagnosticLogging = true
     }
-    
+
     static func enableNetworkLogging() {
         DebugCategory.enable(.network)
     }
-    
+
     static func enableImageLogging() {
         DebugCategory.enable(.image)
     }
-    
+
     static func enableAllDebugLogging() {
         DebugCategory.enableAll()
         SpotLogger.enableAllDebug = true
         FeedFlags.enableDiagnosticLogging = true
     }
-    
+
     // MARK: - Component-Specific Presets (Includes component flags)
-    
+
     static func enableSpotCardLogging() {
         ComponentLogging.spotCard = true
         DebugCategory.enable(.ui)
         DebugCategory.enable(.image)
     }
-    
+
     static func enablePrivacyLogging() {
         ComponentLogging.authorPrivacyCache = true
         DebugCategory.enable(.privacy)
     }
-    
+
     static func enableFeedComponentLogging() {
         ComponentLogging.feedRepository = true
         ComponentLogging.feedRanker = true
         DebugCategory.enable(.feed)
         FeedFlags.enableDiagnosticLogging = true
     }
-    
+
     static func enablePostFlowLogging() {
         ComponentLogging.postFlow = true
         ComponentLogging.locationSelection = true
@@ -131,20 +182,20 @@ struct LoggingConfig {
         DebugCategory.enable(.moderation)
         DebugCategory.enable(.location)
     }
-    
+
     static func enableAuthLogging() {
         ComponentLogging.authService = true
         ComponentLogging.authViewModel = true
         DebugCategory.enable(.auth)
     }
-    
+
     static func enableNetworkComponentLogging() {
         ComponentLogging.spotService = true
         ComponentLogging.imageService = true
         DebugCategory.enable(.network)
         DebugCategory.enable(.image)
     }
-    
+
     static func enableDeepLinkLogging() {
         ComponentLogging.deepLinkRouter = true
         DebugCategory.enable(.deepLink)

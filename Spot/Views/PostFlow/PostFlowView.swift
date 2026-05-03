@@ -64,7 +64,7 @@ struct PostFlowView: View {
                                 switch viewModel.currentStep {
                                 case 1:
                                     PhotoSelectionView(
-                                        selectedImages: $viewModel.selectedImages,
+                                        selectedPhotos: $viewModel.selectedPhotos,
                                         draftCount: viewModel.availableDrafts.count,
                                         onOpenDrafts: {
                                             showDraftsSheet = true
@@ -76,7 +76,7 @@ struct PostFlowView: View {
                                 case 3:
                                     VibeSelectionView(
                                         selectedVibes: $viewModel.selectedVibes,
-                                        maxVibes: viewModel.selectedImages.count > 1 ? 5 : 3
+                                        maxVibes: viewModel.selectedPhotos.count > 1 ? 5 : 3
                                     )
                                 default:
                                     EmptyView()
@@ -154,7 +154,7 @@ struct PostFlowView: View {
                 showRulesIfNeeded()
             }
         }
-        .onChange(of: viewModel.selectedImages) { _, _ in
+        .onChange(of: viewModel.selectedPhotos) { _, _ in
             viewModel.persistDraftSnapshot()
         }
         .onChange(of: viewModel.selectedLocation) { _, _ in

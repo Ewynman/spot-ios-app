@@ -1,11 +1,24 @@
 import Foundation
 
+/// Owns the “custom vibe” list for the **signed-in** user and global `vibe_tags` registration.
+///
+/// **Privacy / visibility**
+/// - **Device-local list:** `UserDefaults` keys `spot.userCustomVibeTagNames.<userId>` are only read for
+///   the current account on this device. Other users’ apps never load your key; this is not a server “private list.”
+/// - **Pro-gated UI:** Only Pro users can add new custom tags in the composer (`VibeSelectionView` + `AuthViewModel.isPro`).
+/// - **Global catalog:** When a custom label is first used, `ensureTagExists` upserts into Supabase `vibe_tags`,
+///   which is the shared catalog — so **that label string can appear for everyone** (search, picker, other posts).
 final class VibeTagService {
     static let shared = VibeTagService()
     private init() {}
 
     private static func customTagsKey(userId: String) -> String {
         "spot.userCustomVibeTagNames.\(userId)"
+    }
+
+    /// Saved custom vibe names for this account on **this device** (used for “Your Vibes” chips).
+    static func savedCustomTagNames(forUserId userId: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: customTagsKey(userId: userId)) ?? []
     }
 
     /// Ensures a global vibe tag exists in `vibe_tags` and returns its id string.
