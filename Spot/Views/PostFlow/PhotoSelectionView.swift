@@ -11,6 +11,8 @@ struct PhotoSelectionView: View {
     @Binding var selectedPhotos: [PostComposerPhoto]
     let draftCount: Int
     let onOpenDrafts: () -> Void
+    /// Called when a non‑Pro user selects multiple photos at once (only the first is kept).
+    var onFreeTierGalleryOverflow: (() -> Void)?
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var replacePickerItem: PhotosPickerItem?
     @State private var showCamera = false
@@ -239,6 +241,7 @@ struct PhotoSelectionView: View {
             guard !photoPickerItems.isEmpty else { return }
             var newImages: [UIImage] = []
             let maxCount = maxPhotoCount
+            let pickerCount = photoPickerItems.count
             for item in photoPickerItems.prefix(maxCount) {
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
@@ -253,6 +256,10 @@ struct PhotoSelectionView: View {
                 if available > 0 {
                     selectedPhotos.append(contentsOf: newImages.prefix(available).map { PostComposerPhoto(image: $0) })
                     selectedPhotoIndex = max(0, selectedPhotos.count - 1)
+                    if !authVM.isPro, maxPhotoCount == 1, pickerCount > 1 {
+                        onFreeTierGalleryOverflow?()
+                        AnalyticsService.shared.logEvent("post_multiple_images_upsell_shown", parameters: [:])
+                    }
                 }
             } else {
                 SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
@@ -290,7 +297,7 @@ struct PhotoSelectionView: View {
     StatefulPhotosWrapper { binding in
         let auth = AuthViewModel()
         auth.isPro = true
-        return PhotoSelectionView(selectedPhotos: binding, draftCount: 2, onOpenDrafts: {})
+        return PhotoSelectionView(selectedPhotos: binding, draftCount: 2, onOpenDrafts: {}, onFreeTierGalleryOverflow: nil)
             .environmentObject(auth)
     }
 }

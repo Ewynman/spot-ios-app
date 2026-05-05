@@ -75,6 +75,16 @@ struct HomepageView: View {
                 await feedVM.loadInitialSpots()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .homeFeedLocallyRemove)) { output in
+            let info = output.userInfo ?? [:]
+            Task { @MainActor in
+                if let authorId = info[SpotHomeFeedNotification.authorUserIdKey] as? String, !authorId.isEmpty {
+                    feedVM.locallyRemoveSpotsFromAuthor(userId: authorId)
+                } else if let spotId = info[SpotHomeFeedNotification.spotIdKey] as? String, !spotId.isEmpty {
+                    feedVM.locallyRemoveSpot(id: spotId)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .spotDidPostSuccess)) { notification in
             postSuccessToastTask?.cancel()
             postSuccessRefreshTask?.cancel()

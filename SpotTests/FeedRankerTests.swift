@@ -99,6 +99,20 @@ struct FeedRankerTests {
         #expect(s >= 0)
     }
 
+    @Test func singleLikedTagDoesNotMaxOutVibeComponent() {
+        let ranker = FeedRanker.shared
+        let spot = makeSpot(vibeTag: "Coffee")
+        let ctx = FeedRanker.Context(
+            followeeIds: [],
+            userVibeStats: ["Coffee": 1],
+            userLocation: nil,
+            seenSpotIds: []
+        )
+        let s = ranker.score(spot, ctx: ctx)
+        // Legacy raw ratio would hit ~0.45 on vibe weight alone; smoothing keeps total score bounded.
+        #expect(s < 0.55)
+    }
+
     @Test func blendMergesFolloweesAndGlobal() {
         let ranker = FeedRanker.shared
         let f1 = makeSpot(id: "f1", userId: "u1")

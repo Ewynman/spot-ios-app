@@ -39,7 +39,7 @@ struct SpotUnavailableView: View {
                 Text("Go Back")
                     .font(FontManager.primaryText())
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(Constants.Colors.buttonText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Constants.Colors.primary)

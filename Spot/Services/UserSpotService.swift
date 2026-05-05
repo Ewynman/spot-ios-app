@@ -233,16 +233,29 @@ class UserSpotService {
             completion(.failure(NSError(domain: "No user", code: 0)))
             return
         }
+        SpotLogger.log(UserSpotServiceLogs.followAttempt, details: ["followeeSuffix": String(targetUserId.suffix(8))])
         Task {
             do {
                 struct FollowInsert: Encodable {
                     let follower_id: UUID
                     let followee_id: UUID
                 }
-                try await supabase
-                    .from("follows")
-                    .insert(FollowInsert(follower_id: follower, followee_id: followee))
-                    .execute()
+                do {
+                    try await supabase
+                        .from("follows")
+                        .insert(FollowInsert(follower_id: follower, followee_id: followee))
+                        .execute()
+                } catch {
+                    if PostgresErrorDigest.isLikelyUniqueViolation(error) {
+                        SpotLogger.log(UserSpotServiceLogs.followDuplicateIgnored, details: ["followeeSuffix": String(targetUserId.suffix(8))])
+                    } else {
+                        SpotLogger.log(UserSpotServiceLogs.followFailed, details: [
+                            "followeeSuffix": String(targetUserId.suffix(8)),
+                            "error": error.localizedDescription
+                        ])
+                        throw error
+                    }
+                }
                 try await supabase
                     .from("follow_requests")
                     .delete()
@@ -250,6 +263,8 @@ class UserSpotService {
                     .eq("target_user_id", value: followee)
                     .eq("status", value: "pending")
                     .execute()
+                await AuthorPrivacyCache.shared.onFollowRelationshipChanged(followeeUserId: targetUserId)
+                SpotLogger.log(UserSpotServiceLogs.followSucceeded, details: ["followeeSuffix": String(targetUserId.suffix(8))])
                 completion(.success(()))
             } catch {
                 completion(.failure(error))
@@ -305,6 +320,7 @@ class UserSpotService {
             completion(.failure(NSError(domain: "No user", code: 0)))
             return
         }
+        SpotLogger.log(UserSpotServiceLogs.unfollowAttempt, details: ["followeeSuffix": String(targetUserId.suffix(8))])
         Task {
             do {
                 try await supabase
@@ -313,8 +329,14 @@ class UserSpotService {
                     .eq("follower_id", value: follower)
                     .eq("followee_id", value: followee)
                     .execute()
+                await AuthorPrivacyCache.shared.onFollowRelationshipChanged(followeeUserId: targetUserId)
+                SpotLogger.log(UserSpotServiceLogs.unfollowSucceeded, details: ["followeeSuffix": String(targetUserId.suffix(8))])
                 completion(.success(()))
             } catch {
+                SpotLogger.log(UserSpotServiceLogs.unfollowFailed, details: [
+                    "followeeSuffix": String(targetUserId.suffix(8)),
+                    "error": error.localizedDescription
+                ])
                 completion(.failure(error))
             }
         }
@@ -468,4 +490,5 @@ class UserSpotService {
 
         return spots
     }
+
 }

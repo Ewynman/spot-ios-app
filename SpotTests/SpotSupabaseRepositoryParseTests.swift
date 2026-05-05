@@ -55,4 +55,12 @@ struct SpotSupabaseRepositoryParseTests {
             #expect(Int(parsed.timeIntervalSince1970) == 1_767_225_600)
         }
     }
+
+    @Test func postgresILikeEscapeLeavesPlainText() {
+        #expect(SpotSupabaseRepository.postgresILikeEscaped("new york") == "new york")
+    }
+
+    @Test func postgresILikeEscapeEscapesWildcardsAndBackslash() {
+        #expect(SpotSupabaseRepository.postgresILikeEscaped("a%b_c\\d") == "a\\%b\\_c\\\\d")
+    }
 }

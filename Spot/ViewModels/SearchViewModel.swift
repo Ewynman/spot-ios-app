@@ -179,7 +179,8 @@ final class SearchViewModel: ObservableObject {
             }
             gridSpots.append(contentsOf: accumulated)
             lastGridDoc = nextCursor
-            hasMoreGrid = !(accumulated.isEmpty && nextCursor == nil)
+            // `lastGridDoc` is the next server offset; nil means no further pages (see `SpotSearchDataSource`).
+            hasMoreGrid = nextCursor != nil
             SpotLogger.log(SearchViewModelLogs.gridLoadedPage, details: [
                 "pageCount": accumulated.count,
                 "total": gridSpots.count,

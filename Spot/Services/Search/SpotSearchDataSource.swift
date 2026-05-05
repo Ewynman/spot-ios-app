@@ -42,14 +42,18 @@ final class SpotSearchDataSource {
     func searchLocationSuggestions(prefix: String, limit: Int = 20) async throws -> [String] {
         guard !prefix.isEmpty else { return [] }
         let lower = prefix.lowercased()
-        struct PlaceRow: Decodable { let name: String?; let location_name: String? }
+        let escaped = SpotSupabaseRepository.postgresILikeEscaped(lower)
+        struct PlaceRow: Decodable { let location_name: String? }
+        // Server-side prefix filter; cap rows then dedupe for distinct suggestion strings.
         let rows: [PlaceRow] = try await supabase
             .from("spots")
             .select("location_name")
-            .limit(300)
+            .ilike("location_name", pattern: escaped + "%")
+            .order("location_name", ascending: true)
+            .limit(200)
             .execute()
             .value
-        let names = rows.compactMap { $0.location_name ?? $0.name }
+        let names = rows.compactMap { $0.location_name?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let titles = Array(Set(names.filter { $0.lowercased().hasPrefix(lower) })).sorted()
         SpotLogger.log(SearchDataSourceLogs.locationSuggestions, details: ["prefix": prefix, "count": titles.count])
         return Array(titles.prefix(limit))
@@ -73,36 +77,59 @@ final class SpotSearchDataSource {
 
     // MARK: Spots by exact location/vibe
     func fetchSpotsByLocation(_ locationLower: String, last: String? = nil) async throws -> SearchPage<Spot> {
-        let spots = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: 500, offset: 0)
-        let items = spots.filter { ($0.locationName ?? "").lowercased() == locationLower }
-        return SearchPage(items: Array(items.prefix(pageSize)), lastDocument: nil)
+        let offset = Int(last ?? "") ?? 0
+        let spots = try await SpotSupabaseRepository.fetchSpotsForSearchGridByLocation(
+            locationNameLower: locationLower,
+            limit: pageSize,
+            offset: offset
+        )
+        let next = spots.count < pageSize ? nil : String(offset + spots.count)
+        return SearchPage(items: spots, lastDocument: next)
     }
 
     func fetchSpotsByVibe(_ vibeLower: String, last: String? = nil) async throws -> SearchPage<Spot> {
-        let spots = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: 500, offset: 0)
-        let items = spots.filter { ($0.vibeTag ?? "").lowercased() == vibeLower }
-        return SearchPage(items: Array(items.prefix(pageSize)), lastDocument: nil)
+        let offset = Int(last ?? "") ?? 0
+        let ids = try await SpotSupabaseRepository.fetchVibeTagIds(nameLowers: [vibeLower])
+        guard !ids.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+        let spots = try await SpotSupabaseRepository.fetchSpotsForSearchGridByVibeTagIds(
+            vibeTagIds: ids,
+            limit: pageSize,
+            offset: offset
+        )
+        let next = spots.count < pageSize ? nil : String(offset + spots.count)
+        return SearchPage(items: spots, lastDocument: next)
     }
 
     // MARK: Multiple vibes (Pro)
     func fetchSpotsByVibes(_ vibeLowers: [String], last: String? = nil) async throws -> SearchPage<Spot> {
         let lowers = Array(Set(vibeLowers.map { $0.lowercased() }))
         guard !lowers.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
-        let spots = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: 500, offset: 0)
-        let items = spots.filter { lowers.contains(($0.vibeTag ?? "").lowercased()) }
-        return SearchPage(items: Array(items.prefix(pageSize)), lastDocument: nil)
+        let offset = Int(last ?? "") ?? 0
+        let ids = try await SpotSupabaseRepository.fetchVibeTagIds(nameLowers: lowers)
+        guard !ids.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+        let spots = try await SpotSupabaseRepository.fetchSpotsForSearchGridByVibeTagIds(
+            vibeTagIds: ids,
+            limit: pageSize,
+            offset: offset
+        )
+        let next = spots.count < pageSize ? nil : String(offset + spots.count)
+        return SearchPage(items: spots, lastDocument: next)
     }
 
     // MARK: Location + Multiple vibes (Pro)
     func fetchSpotsByLocationAndVibes(_ locationLower: String, vibeLowers: [String], last: String? = nil) async throws -> SearchPage<Spot> {
         let lowers = Array(Set(vibeLowers.map { $0.lowercased() }))
         guard !lowers.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
-        let spots = try await SpotSupabaseRepository.fetchGlobalFeedSpots(limit: 500, offset: 0)
-        let filtered = spots.filter { spot in
-            let locationMatch = (spot.locationName ?? "").lowercased() == locationLower
-            let vibeMatch = lowers.contains((spot.vibeTag ?? "").lowercased())
-            return locationMatch && vibeMatch
-        }
-        return SearchPage(items: Array(filtered.prefix(pageSize)), lastDocument: nil)
+        let offset = Int(last ?? "") ?? 0
+        let ids = try await SpotSupabaseRepository.fetchVibeTagIds(nameLowers: lowers)
+        guard !ids.isEmpty else { return SearchPage(items: [], lastDocument: nil) }
+        let spots = try await SpotSupabaseRepository.fetchSpotsForSearchGridByLocationAndVibeTagIds(
+            locationNameLower: locationLower,
+            vibeTagIds: ids,
+            limit: pageSize,
+            offset: offset
+        )
+        let next = spots.count < pageSize ? nil : String(offset + spots.count)
+        return SearchPage(items: spots, lastDocument: next)
     }
 }

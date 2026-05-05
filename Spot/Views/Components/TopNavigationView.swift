@@ -63,7 +63,7 @@ struct TopNavigationView: View {
                     }) {
                         Image(systemName: "plus")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(Constants.Colors.buttonText)
                             .frame(width: 40, height: 40)
                             .background(Constants.Colors.primary)
                             .clipShape(Circle())

@@ -142,14 +142,28 @@ enum ProfileService {
         var hasRequested = false
         var canView = true
         if let currentUserId, currentUserId != id, let viewerUUID = UUID(uuidString: currentUserId) {
-            isFollowing = (try? await ProfileSupabaseSchema.hasFollowEdge(
-                followerId: viewerUUID,
-                followeeId: targetUUID
-            )) ?? false
-            hasRequested = (try? await ProfileSupabaseSchema.hasPendingFollowRequest(
-                requesterId: viewerUUID,
-                targetUserId: targetUUID
-            )) ?? false
+            do {
+                isFollowing = try await ProfileSupabaseSchema.hasFollowEdge(
+                    followerId: viewerUUID,
+                    followeeId: targetUUID
+                )
+            } catch {
+                SpotLogger.log(ProfileServiceLogs.followStateQueryFailed, details: [
+                    "error": error.localizedDescription
+                ])
+                isFollowing = false
+            }
+            do {
+                hasRequested = try await ProfileSupabaseSchema.hasPendingFollowRequest(
+                    requesterId: viewerUUID,
+                    targetUserId: targetUUID
+                )
+            } catch {
+                SpotLogger.log(ProfileServiceLogs.pendingFollowRequestQueryFailed, details: [
+                    "error": error.localizedDescription
+                ])
+                hasRequested = false
+            }
             canView = !targetIsPrivate || isFollowing
         }
 

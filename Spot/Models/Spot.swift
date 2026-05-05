@@ -31,6 +31,8 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
     var mediaDisplayAspectRatio: Double?
     /// Optional media row count from `spots.media_count` when selected with the spot row.
     var mediaCount: Int?
+    /// When known (e.g. feed enrichment), gates multi-vibe card UI for non‑Pro authors.
+    var authorIsPro: Bool?
 
     // Explicit initializer to preserve source compatibility for existing call sites
     init(
@@ -52,7 +54,8 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         authorIsPrivate: Bool? = nil,
         imageURLs: [String]? = nil,
         mediaDisplayAspectRatio: Double? = nil,
-        mediaCount: Int? = nil
+        mediaCount: Int? = nil,
+        authorIsPro: Bool? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -73,6 +76,7 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
         self.authorIsPrivate = authorIsPrivate
         self.mediaDisplayAspectRatio = mediaDisplayAspectRatio
         self.mediaCount = mediaCount
+        self.authorIsPro = authorIsPro
     }
 
     static func withResolvedLocation(_ spot: Spot) async -> Spot {
@@ -113,5 +117,13 @@ struct Spot: Identifiable, Codable, Equatable, Hashable {
             return [vibeTag]
         }
         return []
+    }
+
+    /// Card / rotating tag UI: multiple vibes only when the author is Pro; otherwise first tag only.
+    func visibleVibeLabelsForCard() -> [String] {
+        let all = displayVibeTags
+        guard all.count > 1 else { return all }
+        if authorIsPro == true { return all }
+        return [all[0]]
     }
 }

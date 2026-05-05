@@ -176,7 +176,7 @@ enum SpotSupabaseRepository {
             .execute()
             .value
 
-        let mapped = try await mapRowsToSpots(rows, defaultUsername: "User", defaultProfileURL: nil)
+        let mapped = try await mapRowsToSpotsPerAuthor(rows)
         let byId = Dictionary(uniqueKeysWithValues: mapped.compactMap { s -> (String, Spot)? in
             guard let id = s.id else { return nil }
             return (id, s)
@@ -232,32 +232,91 @@ enum SpotSupabaseRepository {
         longitude: Double,
         locationName: String
     ) async throws {
-        guard let primaryVibe = vibeTags.first else {
+        guard !vibeTags.isEmpty else {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
         }
-        let vibeId = try await resolveOrCreateVibeTagId(displayName: primaryVibe)
         let trimmedPlace = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        struct SpotUpdate: Encodable {
-            let vibe_tag_id: UUID
-            let latitude: Double
-            let longitude: Double
-            let location_name: String
+        var vibeIds: [UUID] = []
+        vibeIds.reserveCapacity(vibeTags.count)
+        for tag in vibeTags {
+            vibeIds.append(try await resolveOrCreateVibeTagId(displayName: tag))
         }
 
-        try await supabase
-            .from("spots")
-            .update(SpotUpdate(
-                vibe_tag_id: vibeId,
-                latitude: latitude,
-                longitude: longitude,
-                location_name: trimmedPlace
-            ))
-            .eq("id", value: id)
-            .execute()
+        struct UpdateSpotRpcParams: Encodable {
+            let p_spot_id: UUID
+            let p_vibe_tag_ids: [UUID]
+            let p_latitude: Double
+            let p_longitude: Double
+            let p_location_name: String
+        }
+
+        try await supabase.rpc(
+            "update_spot_metadata_v1",
+            params: UpdateSpotRpcParams(
+                p_spot_id: id,
+                p_vibe_tag_ids: vibeIds,
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_location_name: trimmedPlace
+            )
+        )
+        .execute()
     }
 
     // MARK: - Mapping
+
+    private struct SpotVibeJunctionRow: Decodable {
+        let spot_id: UUID
+        let vibe_tag_id: UUID
+        let sort_order: Int
+    }
+
+    private static func fetchVibeLabelListsBySpotId(spotIds: [UUID]) async throws -> [UUID: [String]] {
+        guard !spotIds.isEmpty else { return [:] }
+        let svt: [SpotVibeJunctionRow] = try await supabase
+            .from("spot_vibe_tags")
+            .select("spot_id,vibe_tag_id,sort_order")
+            .in("spot_id", values: spotIds)
+            .execute()
+            .value
+
+        let distinctVibeIds = Array(Set(svt.map(\.vibe_tag_id)))
+        var idToName: [UUID: String] = [:]
+        if !distinctVibeIds.isEmpty {
+            let vibes: [VibeRow] = try await supabase
+                .from("vibe_tags")
+                .select("id,name")
+                .in("id", values: distinctVibeIds)
+                .execute()
+                .value
+            for v in vibes { idToName[v.id] = v.name }
+        }
+
+        var bySpot: [UUID: [String]] = [:]
+        let grouped = Dictionary(grouping: svt, by: \.spot_id)
+        for (sid, rows) in grouped {
+            let sorted = rows.sorted { $0.sort_order < $1.sort_order }
+            let names = sorted.compactMap { idToName[$0.vibe_tag_id] }.filter { !$0.isEmpty }
+            if !names.isEmpty { bySpot[sid] = names }
+        }
+        return bySpot
+    }
+
+    private static func fetchAuthorProFlag(userId: UUID) async throws -> Bool {
+        struct Row: Decodable {
+            let is_pro: Bool?
+            let pro_until: String?
+        }
+        let rows: [Row] = try await supabase
+            .from(SupabaseTableName.usersPublic)
+            .select("is_pro,pro_until")
+            .eq("id", value: userId)
+            .limit(1)
+            .execute()
+            .value
+        guard let r = rows.first else { return false }
+        return EffectiveProResolver.effectiveIsPro(isPro: r.is_pro ?? false, proUntilRaw: r.pro_until)
+    }
 
     private static func mapRowsToSpots(
         _ rows: [SpotRow],
@@ -265,6 +324,8 @@ enum SpotSupabaseRepository {
         defaultProfileURL: String?
     ) async throws -> [Spot] {
         guard !rows.isEmpty else { return [] }
+
+        let authorIsPro = try await fetchAuthorProFlag(userId: rows[0].user_id)
 
         let vibeIds = Set(rows.compactMap(\.vibe_tag_id))
         var vibeNames: [UUID: String] = [:]
@@ -279,6 +340,7 @@ enum SpotSupabaseRepository {
         }
 
         let spotIds = rows.map(\.id)
+        let labelsBySpot = try await fetchVibeLabelListsBySpotId(spotIds: spotIds)
         let images: [SpotImageRow] = try await supabase
             .from("spot_images")
             .select("spot_id,storage_path,public_url,sort_index,storage_bucket")
@@ -316,7 +378,17 @@ enum SpotSupabaseRepository {
         return rows.map { row in
             let urls = resolvedBySpot[row.id] ?? []
             let primary = urls.first
-            let vibe = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let fallback = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let labels: [String]
+            if let junction = labelsBySpot[row.id], !junction.isEmpty {
+                labels = junction
+            } else if !fallback.isEmpty {
+                labels = [fallback]
+            } else {
+                labels = []
+            }
+            let vibe = labels.first ?? ""
+            let vibeTagsOut: [String]? = labels.isEmpty ? nil : labels
             let created = parseTimestamptz(row.created_at)
             return Spot(
                 id: row.id.uuidString,
@@ -326,6 +398,7 @@ enum SpotSupabaseRepository {
                 imageURL: primary,
                 thumbnailURL: primary,
                 vibeTag: vibe,
+                vibeTags: vibeTagsOut,
                 latitude: row.latitude,
                 longitude: row.longitude,
                 locationName: row.location_name,
@@ -336,7 +409,8 @@ enum SpotSupabaseRepository {
                 authorIsPrivate: row.author_is_private_snapshot,
                 imageURLs: urls.isEmpty ? nil : urls,
                 mediaDisplayAspectRatio: row.media_display_aspect_ratio,
-                mediaCount: row.media_count.map { Int($0) }
+                mediaCount: row.media_count.map { Int($0) },
+                authorIsPro: authorIsPro
             )
         }
     }
@@ -348,6 +422,8 @@ enum SpotSupabaseRepository {
         let id: UUID
         let username: String
         let profile_image_url: String?
+        let is_pro: Bool?
+        let pro_until: String?
     }
 
     /// Map spot rows to `Spot` with per-author username / avatar from `public.users`.
@@ -357,7 +433,7 @@ enum SpotSupabaseRepository {
         let userIds = Array(Set(rows.map(\.user_id)))
         let users: [UserBriefRow] = try await supabase
             .from(SupabaseTableName.usersPublic)
-            .select("id,username,profile_image_url")
+            .select("id,username,profile_image_url,is_pro,pro_until")
             .in("id", values: userIds)
             .execute()
             .value
@@ -377,6 +453,7 @@ enum SpotSupabaseRepository {
         }
 
         let spotIds = rows.map(\.id)
+        let labelsBySpot = try await fetchVibeLabelListsBySpotId(spotIds: spotIds)
         let images: [SpotImageRow] = try await supabase
             .from("spot_images")
             .select("spot_id,storage_path,public_url,sort_index,storage_bucket")
@@ -415,8 +492,19 @@ enum SpotSupabaseRepository {
             let u = byUser[row.user_id]
             let urls = resolvedBySpot[row.id] ?? []
             let primary = urls.first
-            let vibe = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let fallback = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let labels: [String]
+            if let junction = labelsBySpot[row.id], !junction.isEmpty {
+                labels = junction
+            } else if !fallback.isEmpty {
+                labels = [fallback]
+            } else {
+                labels = []
+            }
+            let vibe = labels.first ?? ""
+            let vibeTagsOut: [String]? = labels.isEmpty ? nil : labels
             let created = parseTimestamptz(row.created_at)
+            let authorPro = u.map { EffectiveProResolver.effectiveIsPro(isPro: $0.is_pro ?? false, proUntilRaw: $0.pro_until) } ?? false
             return Spot(
                 id: row.id.uuidString,
                 userId: row.user_id.uuidString,
@@ -425,6 +513,7 @@ enum SpotSupabaseRepository {
                 imageURL: primary,
                 thumbnailURL: primary,
                 vibeTag: vibe,
+                vibeTags: vibeTagsOut,
                 latitude: row.latitude,
                 longitude: row.longitude,
                 locationName: row.location_name,
@@ -435,7 +524,8 @@ enum SpotSupabaseRepository {
                 authorIsPrivate: row.author_is_private_snapshot,
                 imageURLs: urls.isEmpty ? nil : urls,
                 mediaDisplayAspectRatio: row.media_display_aspect_ratio,
-                mediaCount: row.media_count.map { Int($0) }
+                mediaCount: row.media_count.map { Int($0) },
+                authorIsPro: authorPro
             )
         }
     }
@@ -453,6 +543,141 @@ enum SpotSupabaseRepository {
         return try await mapRowsToSpotsPerAuthor(rows)
     }
 
+    // MARK: - Search grids (server-side filter + offset pagination)
+
+    /// Escapes `%`, `_`, and `\` for use inside a Postgres `ILIKE` pattern (default backslash escape).
+    static func postgresILikeEscaped(_ s: String) -> String {
+        s
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    /// Resolves `vibe_tags.id` rows for the given `name_lower` values.
+    static func fetchVibeTagIds(nameLowers: [String]) async throws -> [UUID] {
+        let unique = Array(Set(nameLowers.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty }))
+        guard !unique.isEmpty else { return [] }
+        struct IdRow: Decodable { let id: UUID }
+        let rows: [IdRow] = try await supabase
+            .from("vibe_tags")
+            .select("id")
+            .in("name_lower", values: unique)
+            .execute()
+            .value
+        return rows.map(\.id)
+    }
+
+    /// Spots whose `location_name` matches `locationNameLower` exactly (case-insensitive), newest first.
+    static func fetchSpotsForSearchGridByLocation(
+        locationNameLower: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> [Spot] {
+        let q = locationNameLower.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty, limit > 0 else { return [] }
+        let pattern = postgresILikeEscaped(q)
+        let rows: [SpotRow] = try await supabase
+            .from("spots")
+            .select(spotRowSelectColumns)
+            .ilike("location_name", pattern: pattern)
+            .order("created_at", ascending: false)
+            .range(from: offset, to: offset + limit - 1)
+            .execute()
+            .value
+        return try await mapRowsToSpotsPerAuthor(rows)
+    }
+
+    /// Spots tagged with any of the given vibe tag ids (primary or junction), newest first.
+    static func fetchSpotsForSearchGridByVibeTagIds(
+        vibeTagIds: [UUID],
+        limit: Int,
+        offset: Int
+    ) async throws -> [Spot] {
+        guard !vibeTagIds.isEmpty, limit > 0 else { return [] }
+
+        struct SpotIdRow: Decodable {
+            let spot_id: UUID
+            let created_at: String?
+        }
+
+        struct VibeSearchRpcParams: Encodable {
+            let p_vibe_tag_ids: [UUID]
+            let p_limit: Int
+            let p_offset: Int
+        }
+
+        let idRows: [SpotIdRow] = try await supabase.rpc(
+            "list_spot_ids_for_vibe_search_v1",
+            params: VibeSearchRpcParams(p_vibe_tag_ids: vibeTagIds, p_limit: limit, p_offset: offset)
+        )
+        .execute()
+        .value
+
+        let orderedIds = idRows.map(\.spot_id)
+        guard !orderedIds.isEmpty else { return [] }
+
+        let rows: [SpotRow] = try await supabase
+            .from("spots")
+            .select(spotRowSelectColumns)
+            .in("id", values: orderedIds)
+            .execute()
+            .value
+
+        let order = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
+        let sortedRows = rows.sorted { (order[$0.id] ?? 999_999) < (order[$1.id] ?? 999_999) }
+        return try await mapRowsToSpotsPerAuthor(sortedRows)
+    }
+
+    /// Spots matching location (exact, case-insensitive) and any of the vibe tag ids (primary or junction).
+    static func fetchSpotsForSearchGridByLocationAndVibeTagIds(
+        locationNameLower: String,
+        vibeTagIds: [UUID],
+        limit: Int,
+        offset: Int
+    ) async throws -> [Spot] {
+        let q = locationNameLower.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty, !vibeTagIds.isEmpty, limit > 0 else { return [] }
+        let pattern = postgresILikeEscaped(q)
+
+        struct SpotIdRow: Decodable {
+            let spot_id: UUID
+            let created_at: String?
+        }
+
+        struct LocVibeRpcParams: Encodable {
+            let p_location_pattern: String
+            let p_vibe_tag_ids: [UUID]
+            let p_limit: Int
+            let p_offset: Int
+        }
+
+        let idRows: [SpotIdRow] = try await supabase.rpc(
+            "list_spot_ids_for_location_and_vibe_search_v1",
+            params: LocVibeRpcParams(
+                p_location_pattern: pattern,
+                p_vibe_tag_ids: vibeTagIds,
+                p_limit: limit,
+                p_offset: offset
+            )
+        )
+        .execute()
+        .value
+
+        let orderedIds = idRows.map(\.spot_id)
+        guard !orderedIds.isEmpty else { return [] }
+
+        let rows: [SpotRow] = try await supabase
+            .from("spots")
+            .select(spotRowSelectColumns)
+            .in("id", values: orderedIds)
+            .execute()
+            .value
+
+        let order = Dictionary(uniqueKeysWithValues: orderedIds.enumerated().map { ($0.element, $0.offset) })
+        let sortedRows = rows.sorted { (order[$0.id] ?? 999_999) < (order[$1.id] ?? 999_999) }
+        return try await mapRowsToSpotsPerAuthor(sortedRows)
+    }
+
     /// Lightweight map dataset: one image per spot (for preview cards), bounded count.
     /// Avoids loading all image variants and keeps memory stable when opening the map.
     static func fetchMapSpots(limit: Int) async throws -> [Spot] {
@@ -468,7 +693,7 @@ enum SpotSupabaseRepository {
         let userIds = Array(Set(rows.map(\.user_id)))
         let users: [UserBriefRow] = try await supabase
             .from(SupabaseTableName.usersPublic)
-            .select("id,username,profile_image_url")
+            .select("id,username,profile_image_url,is_pro,pro_until")
             .in("id", values: userIds)
             .execute()
             .value
@@ -487,6 +712,9 @@ enum SpotSupabaseRepository {
             for v in vibes { vibeNames[v.id] = v.name }
         }
 
+        let mapSpotIds = rows.map(\.id)
+        let labelsBySpot = try await fetchVibeLabelListsBySpotId(spotIds: mapSpotIds)
+
         let orderedSpotIds = rows.map(\.id.uuidString)
         let previewURLs = await fetchPreviewImageURLs(spotIds: orderedSpotIds)
         var previewById: [String: String] = [:]
@@ -497,8 +725,19 @@ enum SpotSupabaseRepository {
         return rows.map { row in
             let sid = row.id.uuidString
             let u = byUser[row.user_id]
-            let vibe = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let fallback = row.vibe_tag_id.flatMap { vibeNames[$0] } ?? ""
+            let labels: [String]
+            if let junction = labelsBySpot[row.id], !junction.isEmpty {
+                labels = junction
+            } else if !fallback.isEmpty {
+                labels = [fallback]
+            } else {
+                labels = []
+            }
+            let vibe = labels.first ?? ""
+            let vibeTagsOut: [String]? = labels.isEmpty ? nil : labels
             let preview = previewById[sid]
+            let authorPro = u.map { EffectiveProResolver.effectiveIsPro(isPro: $0.is_pro ?? false, proUntilRaw: $0.pro_until) } ?? false
             return Spot(
                 id: sid,
                 userId: row.user_id.uuidString,
@@ -507,6 +746,7 @@ enum SpotSupabaseRepository {
                 imageURL: preview,
                 thumbnailURL: preview,
                 vibeTag: vibe,
+                vibeTags: vibeTagsOut,
                 latitude: row.latitude,
                 longitude: row.longitude,
                 locationName: row.location_name,
@@ -517,7 +757,8 @@ enum SpotSupabaseRepository {
                 authorIsPrivate: row.author_is_private_snapshot,
                 imageURLs: nil,
                 mediaDisplayAspectRatio: row.media_display_aspect_ratio,
-                mediaCount: row.media_count.map { Int($0) }
+                mediaCount: row.media_count.map { Int($0) },
+                authorIsPro: authorPro
             )
         }
     }
@@ -533,6 +774,45 @@ enum SpotSupabaseRepository {
             .execute()
             .value
         return try await mapRowsToSpotsPerAuthor(rows)
+    }
+
+    /// Home feed rows only include a single `vibe_name` — load full ordered junction list + author Pro for card display.
+    static func enrichSpotsForCardPresentation(_ spots: [Spot]) async throws -> [Spot] {
+        let spotUUIDs = spots.compactMap { $0.id }.compactMap(UUID.init)
+        guard !spotUUIDs.isEmpty else { return spots }
+
+        async let labelTask = fetchVibeLabelListsBySpotId(spotIds: spotUUIDs)
+        let userUUIDs = Array(Set(spots.compactMap { $0.userId }.compactMap(UUID.init)))
+        async let proTask = fetchAuthorProFlags(userIds: userUUIDs)
+
+        let (labelMap, proMap) = try await (labelTask, proTask)
+
+        return spots.map { s in
+            var m = s
+            if let sid = s.id, let u = UUID(uuidString: sid), let labs = labelMap[u], !labs.isEmpty {
+                m.vibeTags = labs
+                m.vibeTag = labs.first
+            }
+            if let uid = s.userId {
+                m.authorIsPro = proMap[uid]
+            }
+            return m
+        }
+    }
+
+    private static func fetchAuthorProFlags(userIds: [UUID]) async throws -> [String: Bool] {
+        guard !userIds.isEmpty else { return [:] }
+        let users: [UserBriefRow] = try await supabase
+            .from(SupabaseTableName.usersPublic)
+            .select("id,is_pro,pro_until")
+            .in("id", values: userIds)
+            .execute()
+            .value
+        var out: [String: Bool] = [:]
+        for u in users {
+            out[u.id.uuidString] = EffectiveProResolver.effectiveIsPro(isPro: u.is_pro ?? false, proUntilRaw: u.pro_until)
+        }
+        return out
     }
 
     // MARK: - Publish (storage + inserts)
@@ -622,10 +902,14 @@ enum SpotSupabaseRepository {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "No images"])
         }
 
-        guard let primaryVibe = vibeTags.first else {
+        guard !vibeTags.isEmpty else {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
         }
-        let vibeId = try await resolveOrCreateVibeTagId(displayName: primaryVibe)
+        var vibeIds: [UUID] = []
+        vibeIds.reserveCapacity(vibeTags.count)
+        for tag in vibeTags {
+            vibeIds.append(try await resolveOrCreateVibeTagId(displayName: tag))
+        }
 
         struct MediaAssetInsert: Encodable {
             let id: UUID
@@ -641,7 +925,7 @@ enum SpotSupabaseRepository {
         }
 
         struct PublishSpotRpcParams: Encodable {
-            let p_vibe_tag_id: UUID
+            let p_vibe_tag_ids: [UUID]
             let p_latitude: Double
             let p_longitude: Double
             let p_location_name: String
@@ -710,7 +994,7 @@ enum SpotSupabaseRepository {
         let spotIdString: String = try await supabase.rpc(
             "publish_spot_with_approved_media_assets_v1",
             params: PublishSpotRpcParams(
-                p_vibe_tag_id: vibeId,
+                p_vibe_tag_ids: vibeIds,
                 p_latitude: latitude,
                 p_longitude: longitude,
                 p_location_name: trimmedPlace,

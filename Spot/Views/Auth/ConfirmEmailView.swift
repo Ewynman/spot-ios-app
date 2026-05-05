@@ -61,6 +61,8 @@ struct ConfirmEmailView: View {
                     .keyboardType(.numberPad)
                     .multilineTextAlignment(.center)
                     .font(FontManager.sectionHeader())
+                    .foregroundColor(Constants.Colors.primary)
+                    .tint(Constants.Colors.primary)
                     .frame(width: 44, height: 52)
                     .background(Constants.Colors.background)
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Constants.Colors.primary, lineWidth: 1))

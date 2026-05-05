@@ -177,8 +177,10 @@ struct MapView: View {
         )
         .id(spot.id ?? spot.safeId)
         .measure(target: .mapMarkerPreview)
+        .frame(width: geo.size.width)
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: height)
+        .clipped()
         .animation(
             .spring(
                 response: Constants.MapDesign.selectSpringResponse,

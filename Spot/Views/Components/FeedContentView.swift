@@ -179,10 +179,10 @@ struct FeedContentView: View {
     private func refreshFailedToast(message: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "wifi.exclamationmark")
-                .foregroundColor(.white)
+                .foregroundColor(Constants.Colors.buttonText)
             Text(message)
                 .font(FontManager.primaryText())
-                .foregroundColor(.white)
+                .foregroundColor(Constants.Colors.buttonText)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
             Button {
@@ -191,7 +191,7 @@ struct FeedContentView: View {
                 Text("Retry")
                     .font(FontManager.primaryText())
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(Constants.Colors.buttonText)
             }
             .buttonStyle(.plain)
         }

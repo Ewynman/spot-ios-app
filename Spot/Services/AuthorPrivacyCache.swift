@@ -41,6 +41,12 @@ actor AuthorPrivacyCache {
         authorIdToEntry.removeValue(forKey: authorId)
     }
 
+    /// Call after a successful follow/unfollow so following-based privacy and map filters refresh.
+    func onFollowRelationshipChanged(followeeUserId: String) {
+        authorIdToEntry.removeValue(forKey: followeeUserId)
+        followingFetchedAt = .distantPast
+    }
+
     /// Preload cache for the provided authors in a single batched pass.
     func warm(authorIds: Set<String>) async {
         guard !authorIds.isEmpty else { return }

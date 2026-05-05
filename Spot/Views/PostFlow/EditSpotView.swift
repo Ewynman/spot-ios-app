@@ -25,7 +25,16 @@ struct EditSpotView: View {
         NavigationStack {
             VStack(spacing: 16) {
                 // Images (optional replacement)
-                PhotoSelectionView(selectedPhotos: $selectedPhotos, draftCount: 0, onOpenDrafts: {})
+                PhotoSelectionView(
+                    selectedPhotos: $selectedPhotos,
+                    draftCount: 0,
+                    onOpenDrafts: {},
+                    onFreeTierGalleryOverflow: {
+                        errorMessage = Constants.PostLimits.freeMultipleImagesMessage
+                        toastIsError = false
+                        withAnimation { showToast = true }
+                    }
+                )
                     .environmentObject(authVM)
 
                 if existingImageURLs.isEmpty == false {
@@ -75,7 +84,12 @@ struct EditSpotView: View {
                 }
 
                 // Vibe
-                VibeSelectionView(selectedVibes: $selectedVibes, maxVibes: selectedPhotos.count > 1 ? 5 : 3)
+                VibeSelectionView(
+                    selectedVibes: $selectedVibes,
+                    maxVibes: authVM.isPro
+                        ? Constants.PostLimits.maxProPostVibes
+                        : Constants.PostLimits.maxFreePostVibes
+                )
                     .environmentObject(authVM)
 
                 Spacer()
@@ -141,7 +155,11 @@ struct EditSpotView: View {
         }
         // Vibe
         selectedVibe = spot.vibeTag ?? ""
-        selectedVibes = spot.displayVibeTags
+        if authVM.isPro {
+            selectedVibes = spot.displayVibeTags
+        } else {
+            selectedVibes = Array(spot.displayVibeTags.prefix(Constants.PostLimits.maxFreePostVibes))
+        }
     }
 
     private var existingImageURLs: [String] {

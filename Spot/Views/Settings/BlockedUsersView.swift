@@ -185,18 +185,41 @@ struct BlockedUsersView: View {
         isLoading = true
         Task {
             do {
-                struct UserRow: Decodable {
-                    let id: UUID
-                    let username: String
-                    let profile_image_url: String?
+                guard let currentId = authVM.userId, let uid = UUID(uuidString: currentId) else {
+                    await MainActor.run {
+                        self.blockedUserDetails = []
+                        self.isLoading = false
+                    }
+                    return
                 }
-                let ids = authVM.blockedUsers.compactMap(UUID.init(uuidString:))
+
+                struct BlockRow: Decodable { let blocked_user_id: UUID }
+                let blockRows: [BlockRow] = try await supabase
+                    .from("user_blocks")
+                    .select("blocked_user_id")
+                    .eq("blocker_id", value: uid)
+                    .execute()
+                    .value
+
+                let ids = blockRows.map(\.blocked_user_id)
+                let idStrings = ids.map { $0.uuidString }
+
+                await MainActor.run {
+                    self.authVM.blockedUsers = idStrings
+                }
+
                 guard !ids.isEmpty else {
                     await MainActor.run {
                         self.blockedUserDetails = []
                         self.isLoading = false
                     }
                     return
+                }
+
+                struct UserRow: Decodable {
+                    let id: UUID
+                    let username: String
+                    let profile_image_url: String?
                 }
                 let rows: [UserRow] = try await supabase
                     .from(SupabaseTableName.usersPublic)

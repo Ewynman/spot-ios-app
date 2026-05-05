@@ -18,7 +18,11 @@ struct VibeSelectionView: View {
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
 
-                Text("Select up to \(maxVibes) vibes that best capture your spot.")
+                Text(
+                    authVM.isPro
+                        ? "Select up to \(maxVibes) vibes that best capture your spot."
+                        : "Select one vibe that best captures your spot."
+                )
                     .font(FontManager.primaryText())
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -129,8 +133,20 @@ struct VibeSelectionView: View {
             selectedVibes.removeAll { $0 == vibe }
             return
         }
+        if !authVM.isPro {
+            if !selectedVibes.isEmpty {
+                validationMessage = Constants.PostLimits.freeMultipleVibesMessage
+                AnalyticsService.shared.logEvent("post_multiple_vibes_upsell_shown", parameters: [:])
+            } else {
+                validationMessage = nil
+            }
+            selectedVibes = [vibe]
+            reloadRecentAndFrequent()
+            return
+        }
         if selectedVibes.count >= maxVibes {
-            validationMessage = "You can select up to \(maxVibes) vibe tags."
+            validationMessage = Constants.PostLimits.proTooManyVibesMessage
+            AnalyticsService.shared.logEvent("post_vibe_limit_reached", parameters: ["max": maxVibes])
             return
         }
         validationMessage = nil

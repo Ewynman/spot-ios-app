@@ -71,6 +71,12 @@ struct PostFlowView: View {
                                             onOpenDrafts: {
                                                 showDraftsSheet = true
                                                 viewModel.refreshDrafts()
+                                            },
+                                            onFreeTierGalleryOverflow: {
+                                                viewModel.showToastWith(
+                                                    message: Constants.PostLimits.freeMultipleImagesMessage,
+                                                    isError: false
+                                                )
                                             }
                                         )
                                     case 2:
@@ -78,7 +84,9 @@ struct PostFlowView: View {
                                     case 3:
                                         VibeSelectionView(
                                             selectedVibes: $viewModel.selectedVibes,
-                                            maxVibes: viewModel.selectedPhotos.count > 1 ? 5 : 3
+                                            maxVibes: authVM.isPro
+                                                ? Constants.PostLimits.maxProPostVibes
+                                                : Constants.PostLimits.maxFreePostVibes
                                         )
                                     default:
                                         EmptyView()
@@ -162,6 +170,16 @@ struct PostFlowView: View {
             if newValue {
                 showVerifyEmailAlert = false
                 showRulesIfNeeded()
+            }
+        }
+        .onChange(of: authVM.isPro) { _, isPro in
+            if !isPro {
+                if viewModel.selectedPhotos.count > Constants.PostLimits.maxFreePostImages {
+                    viewModel.selectedPhotos = Array(viewModel.selectedPhotos.prefix(Constants.PostLimits.maxFreePostImages))
+                }
+                if viewModel.selectedVibes.count > Constants.PostLimits.maxFreePostVibes {
+                    viewModel.selectedVibes = Array(viewModel.selectedVibes.prefix(Constants.PostLimits.maxFreePostVibes))
+                }
             }
         }
         .onChange(of: viewModel.selectedPhotos) { _, _ in
@@ -281,10 +299,10 @@ struct NavigationButtonsView: View {
             Button(action: currentStep == totalSteps ? onFinish : onNext) {
                 Text(currentStep == totalSteps ? (isBusy ? "Posting…" : "Post") : "Next")
                     .font(FontManager.buttonText())
-                    .foregroundColor(.white)
+                    .foregroundColor(canProceed && !isBusy ? Constants.Colors.buttonText : Constants.Colors.primary.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(canProceed && !isBusy ? Constants.Colors.primary : Color.gray)
+                    .background(canProceed && !isBusy ? Constants.Colors.primary : Color.gray.opacity(0.35))
                     .cornerRadius(20)
             }
             .disabled(!canProceed || isBusy)
@@ -461,7 +479,7 @@ struct ToastView: View {
     var body: some View {
         Text(message)
             .font(FontManager.primaryText())
-            .foregroundColor(.white)
+            .foregroundColor(Constants.Colors.buttonText)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(isError ? Color.red : Constants.Colors.primary)

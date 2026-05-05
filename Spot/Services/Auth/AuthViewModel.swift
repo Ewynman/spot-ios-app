@@ -52,7 +52,7 @@ class AuthViewModel: ObservableObject {
     private func listenToSupabaseAuthState() {
         supabaseAuthTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.configureUITestSyntheticAuthIfNeeded()
+            self.configureUITestSyntheticAuthIfNeeded()
             for await (event, session) in supabase.auth.authStateChanges {
                 if self.uiTestSyntheticSessionActive { continue }
                 self.applySupabaseAuthChange(event: event, session: session)
@@ -237,23 +237,26 @@ class AuthViewModel: ObservableObject {
     }
 
     func refreshBlockedUsers() {
+        Task { await syncBlockedUsersFromServer() }
+    }
+
+    /// Fetches `user_blocks` for the signed-in user and replaces `blockedUsers`.
+    private func syncBlockedUsersFromServer() async {
         guard let userId = userId, let uid = UUID(uuidString: userId) else { return }
-        Task {
-            do {
-                struct Row: Decodable { let blocked_user_id: UUID }
-                let rows: [Row] = try await supabase
-                    .from("user_blocks")
-                    .select("blocked_user_id")
-                    .eq("blocker_id", value: uid)
-                    .execute()
-                    .value
-                let blocked = rows.map { $0.blocked_user_id.uuidString }
-                await MainActor.run {
-                    self.blockedUsers = blocked
-                }
-            } catch {
-                SpotLogger.log(AuthViewModelLogs.refreshBlockedUsersFailed, details: ["error": error.localizedDescription])
+        do {
+            struct Row: Decodable { let blocked_user_id: UUID }
+            let rows: [Row] = try await supabase
+                .from("user_blocks")
+                .select("blocked_user_id")
+                .eq("blocker_id", value: uid)
+                .execute()
+                .value
+            let blocked = rows.map { $0.blocked_user_id.uuidString }
+            await MainActor.run {
+                self.blockedUsers = blocked
             }
+        } catch {
+            SpotLogger.log(AuthViewModelLogs.refreshBlockedUsersFailed, details: ["error": error.localizedDescription])
         }
     }
 
@@ -712,11 +715,7 @@ class AuthViewModel: ObservableObject {
             .insert(BlockInsert(blocker_id: blocker, blocked_user_id: blocked))
             .execute()
 
-        await MainActor.run {
-            if !blockedUsers.contains(targetUserId) {
-                blockedUsers.append(targetUserId)
-            }
-        }
+        await syncBlockedUsersFromServer()
 
         SpotLogger.log(AuthViewModelLogs.userBlocked, details: ["targetUserId": targetUserId])
     }
@@ -734,9 +733,7 @@ class AuthViewModel: ObservableObject {
             .eq("blocked_user_id", value: blocked)
             .execute()
 
-        await MainActor.run {
-            blockedUsers.removeAll { $0 == targetUserId }
-        }
+        await syncBlockedUsersFromServer()
 
         SpotLogger.log(AuthViewModelLogs.userUnblocked, details: ["targetUserId": targetUserId])
     }

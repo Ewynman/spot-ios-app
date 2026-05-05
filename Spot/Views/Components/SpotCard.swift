@@ -192,6 +192,7 @@ struct SpotCard: View {
         }
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(spot: currentSpot)
+                .environmentObject(authVM)
         }
         .sheet(isPresented: $showCollectionPicker) {
             CollectionPickerSheet(spotId: currentSpot.safeId, onDone: { showCollectionPicker = false }) {
@@ -214,7 +215,7 @@ struct SpotCard: View {
                 Text("Vibe Tags")
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
-                ForEach(currentSpot.displayVibeTags, id: \.self) { tag in
+                ForEach(currentSpot.visibleVibeLabelsForCard(), id: \.self) { tag in
                     Text(tag)
                         .font(FontManager.primaryText())
                         .foregroundColor(Constants.Colors.primary)
@@ -340,7 +341,14 @@ struct SpotCard: View {
     }
 
     private var resolvedMediaWidth: CGFloat {
-        max(measuredContentWidth, 1)
+        let raw = max(measuredContentWidth, 1)
+        // Map preview hosts SpotCard in a vertical ScrollView; layout can propose an effectively
+        // unbounded width after expansion so geometry reads huge → media shells widen past the screen.
+        guard mediaPresentation == .mapDrawer else { return raw }
+        let mapHorizontalPadding = Constants.Layout.Spacing.large * 2
+        let cardHorizontalPadding: CGFloat = 24
+        let cap = SpotMediaLayoutMetrics.screenWidth - mapHorizontalPadding - cardHorizontalPadding
+        return min(raw, max(cap, 1))
     }
 
     private var resolvedMediaHeight: CGFloat {
@@ -549,12 +557,10 @@ struct SpotCard: View {
                         NotificationCenter.default.post(name: .showPaywall, object: nil)
                         return
                     }
-                    // For Pro users: Save OR Save to Collection (not both)
+
                     if authVM.isPro && !isSaved {
-                        // Show collection picker instead of just bookmarking
                         showCollectionPicker = true
                     } else {
-                        // Regular save/unsave
                         isSaved.toggle()
                         isLoadingSave = true
                         if isSaved {
@@ -594,31 +600,35 @@ struct SpotCard: View {
 
             Spacer()
 
-            if let firstVibe = currentSpot.displayVibeTags.first {
-                Button {
-                    FeedEventService.record(.vibeTap, spotId: currentSpot.id, metadata: ["vibe": firstVibe])
-                    if currentSpot.displayVibeTags.count > 1 {
-                        showVibeTagsSheet = true
+            let cardVibes = currentSpot.visibleVibeLabelsForCard()
+            if let firstVibe = cardVibes.first {
+                RotatingVibeTags(
+                    labels: cardVibes,
+                    onTap: {
+                        FeedEventService.record(.vibeTap, spotId: currentSpot.id, metadata: ["vibe": firstVibe])
+                        if cardVibes.count > 1 {
+                            showVibeTagsSheet = true
+                        }
                     }
-                } label: {
-                    Text(currentSpot.displayVibeTags.count > 1 ? "\(firstVibe) +\(currentSpot.displayVibeTags.count - 1)" : firstVibe)
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(Constants.Colors.accent)
-                        .cornerRadius(12)
-                        .measure(target: .vibeTag)
-                }
-                .buttonStyle(PlainButtonStyle())
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                .measure(target: .vibeTag)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .frame(width: resolvedMediaWidth, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.bottom, 10)
         .overlay(
             GeometryReader { geo in
                 let likeArea = CGRect(x: 16, y: 0, width: 80, height: geo.size.height)
-                Color.clear.preference(key: CoachFramesPrefKey.self, value: [.likeSave: geo.frame(in: .global).intersection(CGRect(origin: geo.frame(in: .global).origin, size: likeArea.size))])
+                Color.clear.preference(
+                    key: CoachFramesPrefKey.self,
+                    value: [
+                        .likeSave: geo.frame(in: .global)
+                            .intersection(CGRect(origin: geo.frame(in: .global).origin, size: likeArea.size))
+                    ]
+                )
             }
         )
     }
@@ -713,6 +723,13 @@ struct SpotCard: View {
                         Task {
                             do {
                                 try await authVM.blockUser(userId: targetUserId)
+                                await MainActor.run {
+                                    NotificationCenter.default.post(
+                                        name: .homeFeedLocallyRemove,
+                                        object: nil,
+                                        userInfo: [SpotHomeFeedNotification.authorUserIdKey: targetUserId]
+                                    )
+                                }
                                 SpotLogger.log(SpotCardLogs.userBlocked, details: ["targetUserId": targetUserId])
                             } catch {
                                 SpotLogger.log(SpotCardLogs.blockUserFailed, details: ["error": error.localizedDescription])

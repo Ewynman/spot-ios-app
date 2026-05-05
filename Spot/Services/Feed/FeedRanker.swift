@@ -25,10 +25,14 @@ final class FeedRanker {
     }
 
     func score(_ spot: Spot, ctx: Context) -> Double {
-        // vibe
+        // vibe — Dirichlet-style smoothing so a single liked tag cannot dominate
+        // the weighted sum for low-signal preference vectors.
         let total = max(1, ctx.userVibeStats.values.reduce(0, +))
         let vibeCount = ctx.userVibeStats[spot.vibeTag ?? ""] ?? 0
-        let vibe = Double(vibeCount) / Double(total)
+        let distinctTags = max(ctx.userVibeStats.count, 1)
+        let k = max(distinctTags, 4)
+        let alpha = 2.0
+        let vibe = (Double(vibeCount) + alpha) / (Double(total) + alpha * Double(k))
 
         // freshness exp decay
         let ageH = max(0.0, -(spot.createdAt ?? .distantPast).timeIntervalSinceNow / 3600.0)

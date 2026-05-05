@@ -266,6 +266,7 @@ struct ProfileView: View {
                                             .cornerRadius(20)
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .accessibilityIdentifier("profile.unfollowButton")
                                 } else if viewModel.isPrivateProfile {
                                     VStack(spacing: 8) {
                                         Button {
@@ -307,6 +308,7 @@ struct ProfileView: View {
                                             .cornerRadius(20)
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .accessibilityIdentifier("profile.followButton")
                                 }
                             }
                             .padding(.bottom, 8)
@@ -501,7 +503,8 @@ struct ProfileView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            Task { await viewModel.loadUser(userId: userId) }
+            let viewingOther = (userId != nil) && (userId != authVM.userId)
+            Task { await viewModel.loadUser(userId: userId, forceReload: viewingOther) }
             let isSelf = (userId == nil) || (userId == authVM.userId)
             if isSelf && viewModel.isPrivateProfile {
                 viewModel.startFollowRequestsListener(ownUserId: authVM.userId)

@@ -76,6 +76,15 @@ final class FeedRepository: ObservableObject {
         }
     }
 
+    /// Removes every in-memory spot whose `userId` matches (e.g. after blocking the author).
+    @MainActor
+    func locallyRemoveSpotsFromAuthor(userId: String) {
+        spots.removeAll { $0.userId == userId }
+        if spots.isEmpty {
+            loadState = .empty(reason: emptyStatus?.status ?? "caught_up")
+        }
+    }
+
     /// Inserts a freshly-posted spot at the top of the feed without a refresh.
     /// Intended only for the post-publish flow where the new row hasn't yet
     /// propagated to `get_home_feed_v1` results.
@@ -120,6 +129,7 @@ final class FeedRepository: ObservableObject {
 
         let location = currentUserLocation()
         do {
+            async let optionalFeedProfile = Self.loadOptionalFeedProfileSnapshot()
             let firstAttempt = try await FeedAPI.fetchHomeFeed(
                 limit: pageSize,
                 viewerLatitude: location?.coordinate.latitude,
@@ -165,7 +175,20 @@ final class FeedRepository: ObservableObject {
                 ])
             }
 
-            let hydrated = await hydrateRows(rows)
+            var hydrated = await hydrateRows(rows)
+            let feedProfileRow = await optionalFeedProfile
+            let diversity = FeedDiversity.diversifyHomeFeedPage(hydrated, feedProfileRow: feedProfileRow)
+            hydrated = diversity.spots
+            let m = diversity.metrics
+            SpotLogger.log(FeedRepositoryLogs.diversityPassApplied, details: [
+                "userSignalCount": m.userSignalCount,
+                "lowSignalMode": m.lowSignalMode,
+                "inputCount": m.inputCount,
+                "distinctTagsFirst10": m.distinctTagsInFirstWindow,
+                "maxSameTagFirst10": m.maxTagRepeatsInFirstWindow,
+                "maxSameCreatorFirst10": m.maxCreatorRepeatsInFirstWindow,
+                "reorderMoves": m.reorderMoves
+            ])
 
             if hydrated.isEmpty {
                 let resolvedStatus: HomeFeedStatus?
@@ -296,24 +319,36 @@ final class FeedRepository: ObservableObject {
     /// image URL is signed; full image arrays are loaded lazily on detail.
     private func hydrateRows(_ rows: [HomeFeedRow]) async -> [Spot] {
         guard !rows.isEmpty else { return [] }
+        let base: [Spot]
         if FeedFlags.hydrateOnlyPrimaryFeedImage {
             let urlMap = await FeedAPI.resolvePrimaryImageURLs(for: rows)
-            return rows.map { row in
+            base = rows.map { row in
                 row.toSpot(primaryURL: urlMap[row.spotId])
             }
+        } else {
+            var hydrated: [Spot] = []
+            hydrated.reserveCapacity(rows.count)
+            for row in rows {
+                let url = await FeedAPI.resolvePrimaryImageURL(
+                    storagePath: row.primaryStoragePath,
+                    publicUrl: row.primaryPublicUrl
+                )
+                hydrated.append(row.toSpot(primaryURL: url))
+            }
+            base = hydrated
         }
-        // Pre-flag-flip behavior: sign each primary inline.
-        var hydrated: [Spot] = []
-        hydrated.reserveCapacity(rows.count)
-        for row in rows {
-            let url = await FeedAPI.resolvePrimaryImageURL(
-                storagePath: row.primaryStoragePath,
-                publicUrl: row.primaryPublicUrl
-            )
-            hydrated.append(row.toSpot(primaryURL: url))
+        do {
+            return try await SpotSupabaseRepository.enrichSpotsForCardPresentation(base)
+        } catch {
+            SpotLogger.log(FeedRepositoryLogs.feedEnrichFailed, details: ["error": error.localizedDescription])
+            return base
         }
-        return hydrated
     }
 
     private func currentUserLocation() -> CLLocation? { LocationManager.shared.userLocation }
+
+    /// Snapshot for diversity tuning; failures are non-fatal (treated as unknown / low-signal-safe).
+    private static func loadOptionalFeedProfileSnapshot() async -> FeedProfileRow? {
+        try? await FeedAPI.getMyFeedProfile()
+    }
 }

@@ -10,8 +10,9 @@ import SwiftUI
 enum Constants {
 
     enum Colors {
-        static let background = Color(hex: "#F5F3EF")      // Main background color, button text color
-        static let buttonText = Color(hex: "#F5F3EF")      // Button text color
+        static let background = Color(hex: "#F5F3EF")      // Main background color
+        /// Cream label for on-primary (and other dark) fills—same hex as `background`, so never use as body text on cream.
+        static let buttonText = Color(hex: "#F5F3EF")
         static let primary = Color(hex: "#1D2C24")         // Button color, icon, and main text color
         static let textPrimary = Color(hex: "#1D2C24")     // Main text color (all text except button text)
         static let accent = Color(hex: "#DEE6D8")          // Accent color for vibe tags only
@@ -133,6 +134,19 @@ enum Constants {
     enum Limits {
         static let vibeTagMaxLength = 30
         static let vibeTagMinLength = 2
+    }
+
+    /// Composer / API alignment with server `publish_spot_with_approved_media_assets_v1` limits.
+    enum PostLimits {
+        static let maxFreePostImages = 1
+        static let maxProPostImages = 5
+        static let maxFreePostVibes = 1
+        static let maxProPostVibes = 5
+
+        static let freeMultipleImagesMessage = "Multiple images are available with Pro."
+        static let proTooManyImagesMessage = "You can add up to 5 images per post."
+        static let freeMultipleVibesMessage = "Multiple vibes are available with Pro."
+        static let proTooManyVibesMessage = "You can select up to 5 vibes."
     }
 
     enum HTTPErrorCode {

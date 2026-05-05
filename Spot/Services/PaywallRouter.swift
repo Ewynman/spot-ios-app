@@ -5,6 +5,12 @@ enum SpotMainTabNotification {
     static let userInfoTabIndexKey = "tabIndex"
 }
 
+/// `userInfo` keys for `Notification.Name.homeFeedLocallyRemove`.
+enum SpotHomeFeedNotification {
+    static let spotIdKey = "spotId"
+    static let authorUserIdKey = "authorUserId"
+}
+
 extension Notification.Name {
     static let showPaywall = Notification.Name("SpotShowPaywall")
     /// Posted when a spot is successfully posted (e.g. from Post tab) so Feed can refresh and show toast.
@@ -16,6 +22,8 @@ extension Notification.Name {
     static let spotStoreKitProEntitlementReady = Notification.Name("SpotStoreKitProEntitlementReady")
     /// Posted when the user taps the already-selected main tab so that tab can scroll to top / pop to root / reset local chrome.
     static let mainTabReselectSame = Notification.Name("SpotMainTabReselectSame")
+    /// Remove feed rows immediately after block/report (see `SpotHomeFeedNotification`).
+    static let homeFeedLocallyRemove = Notification.Name("SpotHomeFeedLocallyRemove")
 }
 
 enum PaywallRouter {

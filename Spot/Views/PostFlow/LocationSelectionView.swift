@@ -558,7 +558,7 @@ struct LocationMapView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .font(FontManager.buttonText())
-                    .foregroundColor(.white)
+                    .foregroundColor(Constants.Colors.buttonText)
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(Constants.Colors.primary)

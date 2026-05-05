@@ -22,6 +22,7 @@ The **home feed** is the default discovery surface after launch: a ranked, pagin
 
 - **Server-side candidate set and ranking** via `get_home_feed_v1` (authoritative for production feed).
 - **Client** signs primary images for display and manages `FeedLoadState` (initial load, load more, empty reasons, errors, refresh toasts).
+- **`FeedDiversity`** — after hydration, the first home page is lightly reordered using `user_feed_profiles` signal strength so a single liked vibe does not fill the entire window when other tags exist in the page (`Spot/Services/Feed/FeedDiversity.swift`).
 - **`FeedRanker`** — on-device scoring documented in tests / non-RPC experiments; not the sole source of truth for shipped feed unless product changes that.
 
 ### Signals (may influence ranking)

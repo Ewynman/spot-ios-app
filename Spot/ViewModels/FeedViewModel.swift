@@ -199,5 +199,12 @@ final class FeedViewModel: ObservableObject {
     @MainActor
     func locallyRemoveSpot(id: String) {
         repo.locallyRemoveSpot(id: id)
+        mapSpots.removeAll { $0.id == id }
+    }
+
+    @MainActor
+    func locallyRemoveSpotsFromAuthor(userId: String) {
+        repo.locallyRemoveSpotsFromAuthor(userId: userId)
+        mapSpots.removeAll { $0.userId == userId }
     }
 }

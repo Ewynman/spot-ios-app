@@ -44,6 +44,7 @@ struct MapSpotPreviewCard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .clipped()
         .background(
             Constants.Colors.background
                 .ignoresSafeArea(edges: .bottom)

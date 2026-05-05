@@ -36,8 +36,12 @@ class ProfileViewModel: ObservableObject {
 
     /// Load profile for the given user (nil = current user). Uses ProfileService.
     func loadUser(userId: String?, forceReload: Bool = false) async {
-        guard !isLoading else { return }
-        if !forceReload, hasLoaded, lastLoadedUserId == userId { return }
+        if forceReload {
+            loadTask?.cancel()
+        } else {
+            guard !isLoading else { return }
+            if hasLoaded, lastLoadedUserId == userId { return }
+        }
 
         isLoading = true
         error = nil
@@ -115,8 +119,15 @@ class ProfileViewModel: ObservableObject {
     func follow(targetUserId: String) {
         isFollowingUser = true
         UserSpotService.shared.follow(userId: targetUserId) { [weak self] result in
-            DispatchQueue.main.async {
-                if case .failure = result { self?.isFollowingUser = false }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .failure:
+                    self.isFollowingUser = false
+                case .success:
+                    SpotLogger.log(ProfileViewModelLogs.followStateRefreshAfterMutation, details: ["action": "follow"])
+                    await self.loadUser(userId: targetUserId, forceReload: true)
+                }
             }
         }
     }
@@ -124,8 +135,15 @@ class ProfileViewModel: ObservableObject {
     func unfollow(targetUserId: String) {
         isFollowingUser = false
         UserSpotService.shared.unfollow(userId: targetUserId) { [weak self] result in
-            DispatchQueue.main.async {
-                if case .failure = result { self?.isFollowingUser = true }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .failure:
+                    self.isFollowingUser = true
+                case .success:
+                    SpotLogger.log(ProfileViewModelLogs.followStateRefreshAfterMutation, details: ["action": "unfollow"])
+                    await self.loadUser(userId: targetUserId, forceReload: true)
+                }
             }
         }
     }
@@ -133,8 +151,15 @@ class ProfileViewModel: ObservableObject {
     func requestFollow(targetUserId: String) {
         hasRequestedFollow = true
         UserSpotService.shared.requestFollow(userId: targetUserId) { [weak self] result in
-            DispatchQueue.main.async {
-                if case .failure = result { self?.hasRequestedFollow = false }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .failure:
+                    self.hasRequestedFollow = false
+                case .success:
+                    SpotLogger.log(ProfileViewModelLogs.followStateRefreshAfterMutation, details: ["action": "requestFollow"])
+                    await self.loadUser(userId: targetUserId, forceReload: true)
+                }
             }
         }
     }
@@ -142,8 +167,15 @@ class ProfileViewModel: ObservableObject {
     func cancelFollowRequest(targetUserId: String) {
         hasRequestedFollow = false
         UserSpotService.shared.cancelFollowRequest(userId: targetUserId) { [weak self] result in
-            DispatchQueue.main.async {
-                if case .failure = result { self?.hasRequestedFollow = true }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .failure:
+                    self.hasRequestedFollow = true
+                case .success:
+                    SpotLogger.log(ProfileViewModelLogs.followStateRefreshAfterMutation, details: ["action": "cancelFollowRequest"])
+                    await self.loadUser(userId: targetUserId, forceReload: true)
+                }
             }
         }
     }

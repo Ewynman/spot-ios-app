@@ -101,6 +101,16 @@ class PostFlowViewModel: ObservableObject {
             return
         }
 
+        if let entitlementMessage = entitlementViolationMessage() {
+            showToastWith(message: entitlementMessage, isError: true)
+            AnalyticsService.shared.logEvent("post_entitlement_blocked", parameters: [
+                "isPro": authViewModel?.isPro ?? false,
+                "imageCount": selectedImages.count,
+                "vibeCount": selectedVibes.count,
+            ])
+            return
+        }
+
         guard let userId = currentUserId, !userId.isEmpty else {
             showToastWith(message: "You need to be signed in to post.", isError: true)
             return
@@ -108,6 +118,19 @@ class PostFlowViewModel: ObservableObject {
 
         persistDraftSnapshot()
         VibeTagUsageStore.recordUsage(tags: selectedVibes)
+
+        if let auth = authViewModel, auth.isPro, selectedImages.count > 1 {
+            AnalyticsService.shared.logEvent("pro_post_created_with_multiple_images", parameters: [
+                "imageCount": selectedImages.count,
+                "vibeCount": selectedVibes.count,
+            ])
+        }
+        if let auth = authViewModel, auth.isPro, selectedVibes.count > 1 {
+            AnalyticsService.shared.logEvent("pro_post_created_with_multiple_vibes", parameters: [
+                "imageCount": selectedImages.count,
+                "vibeCount": selectedVibes.count,
+            ])
+        }
 
         isEncodingPost = true
         let vibes = selectedVibes
@@ -274,6 +297,20 @@ class PostFlowViewModel: ObservableObject {
             activeDraftID = nil
         }
         refreshDrafts()
+    }
+
+    /// Client-side guard aligned with server publish RPC (non‑Pro bypass prevention).
+    private func entitlementViolationMessage() -> String? {
+        guard let auth = authViewModel else { return nil }
+        let maxImg = auth.isPro ? Constants.PostLimits.maxProPostImages : Constants.PostLimits.maxFreePostImages
+        let maxVib = auth.isPro ? Constants.PostLimits.maxProPostVibes : Constants.PostLimits.maxFreePostVibes
+        if selectedImages.count > maxImg {
+            return auth.isPro ? Constants.PostLimits.proTooManyImagesMessage : Constants.PostLimits.freeMultipleImagesMessage
+        }
+        if selectedVibes.count > maxVib {
+            return auth.isPro ? Constants.PostLimits.proTooManyVibesMessage : Constants.PostLimits.freeMultipleVibesMessage
+        }
+        return nil
     }
 
     private func resetComposerForDraftExit() {
