@@ -26,7 +26,7 @@ Associated Domains in `Spot/Spot.entitlements`:
 - `applinks:spotapp.online`
 - `applinks:www.spotapp.online`
 
-**Allowed hosts for parsing** also come from `Info.plist` → `SpotURLs` → `universalLinkDomains` (may include `localhost` and a DEBUG ngrok host for development—**do not** ship unintended hosts to production entitlements).
+**Allowed hosts for parsing:** `Info.plist` lists production hosts only; **Debug** builds also merge `URLConfiguration.debugOnlyUniversalLinkHosts` (localhost / tunnel—**not** in Release). Keep Associated Domains entitlements aligned with production (`applinks:spotapp.online`, etc.); dev tunnels are for device testing without adding new `applinks:` entries when using custom hosts only in code.
 
 ### Supported routes (code)
 

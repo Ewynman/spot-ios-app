@@ -4,6 +4,7 @@ import Supabase
 
 struct PostAuthSetupFlowView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @ObservedObject private var termsStore = PreAuthTermsAgreementStore.shared
 
     let onComplete: () -> Void
 
@@ -14,27 +15,46 @@ struct PostAuthSetupFlowView: View {
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var isSavingProfile: Bool = false
     @State private var errorMessage: String?
+    @State private var alreadyAcceptedActiveTerms: Bool = false
+
+    private let termsService: TermsAcceptanceServicing
+
+    init(termsService: TermsAcceptanceServicing = TermsAcceptanceService.shared, onComplete: @escaping () -> Void) {
+        self.termsService = termsService
+        self.onComplete = onComplete
+    }
+
+    private var isTermsAgreed: Bool {
+        alreadyAcceptedActiveTerms || termsStore.hasAgreed
+    }
+
+    private var canContinue: Bool {
+        isTermsAgreed && !isSavingProfile
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer().frame(height: 16)
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer().frame(height: 16)
 
-            profileStep
+                profileStep
 
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(FontManager.primaryText())
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(FontManager.primaryText())
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer(minLength: 24)
             }
-
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Constants.Colors.background.ignoresSafeArea())
         .task {
             await loadCurrentProfile()
+            await loadTermsAcceptanceState()
         }
         .onChange(of: photoPickerItem) { _, newItem in
             Task {
@@ -106,6 +126,25 @@ struct PostAuthSetupFlowView: View {
             SettingsTextField(title: "Username", text: $username)
                 .padding(.horizontal, 32)
 
+            // Apple Guideline 1.2: explicit Terms of Use + Privacy Policy
+            // agreement is required before account registration completes.
+            // We keep the Welcome-screen gate AND show the checkbox here so
+            // Sign in with Apple users (whose first registration step is this
+            // view) cannot bypass it.
+            TermsAgreementCheckboxView(
+                isAgreed: Binding(
+                    get: { isTermsAgreed },
+                    set: { newValue in
+                        termsStore.setAgreed(newValue)
+                    }
+                ),
+                termsURL: termsStore.termsURL,
+                privacyURL: termsStore.privacyURL,
+                onLinkTapped: nil
+            )
+            .padding(.horizontal, 32)
+            .accessibilityIdentifier("postAuth.termsCheckbox")
+
             Button {
                 Task { await saveProfileAndContinue() }
             } label: {
@@ -114,12 +153,14 @@ struct PostAuthSetupFlowView: View {
                     .foregroundColor(Constants.Colors.buttonText)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Constants.Colors.primary)
+                    .background(canContinue ? Constants.Colors.primary : Constants.Colors.primary.opacity(0.45))
                     .cornerRadius(20)
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(isSavingProfile)
+            .disabled(!canContinue)
+            .opacity(canContinue ? 1.0 : 0.85)
             .padding(.horizontal, 32)
+            .accessibilityIdentifier("postAuth.continueButton")
         }
     }
 
@@ -144,9 +185,30 @@ struct PostAuthSetupFlowView: View {
         }
     }
 
+    /// Loads the active terms version (so links resolve to the live URLs) and
+    /// determines whether the calling user has already accepted them. The
+    /// checkbox is pre-checked only when acceptance has already been recorded
+    /// for this user; otherwise reviewers see an unchecked state inside the
+    /// registration step.
+    @MainActor
+    private func loadTermsAcceptanceState() async {
+        await termsStore.loadActiveVersion()
+        do {
+            let accepted = try await termsService.hasAcceptedActiveTerms()
+            alreadyAcceptedActiveTerms = accepted
+        } catch {
+            alreadyAcceptedActiveTerms = false
+        }
+    }
+
     @MainActor
     private func saveProfileAndContinue() async {
         errorMessage = nil
+        guard isTermsAgreed else {
+            errorMessage = "Please agree to the Terms of Use and Privacy Policy to continue."
+            termsStore.logGated(action: "post_auth_setup_continue")
+            return
+        }
         let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Username is required."
@@ -217,6 +279,25 @@ struct PostAuthSetupFlowView: View {
                 )
             } catch {
                 // `users` row is already updated; continuing avoids blocking the user on auth-only failures.
+            }
+
+            // Record terms acceptance now that the registration step has
+            // completed. Failures fall back to the post-auth update gate
+            // surfaced by `RootView.refreshTermsAcceptanceRequirement()`, so
+            // the user is never silently un-recorded.
+            if !alreadyAcceptedActiveTerms {
+                do {
+                    try await termsService.recordAcceptance()
+                    alreadyAcceptedActiveTerms = true
+                    SpotLogger.log(TermsAcceptanceLogs.acceptanceRecorded, details: [
+                        "source": "post_auth_setup"
+                    ])
+                } catch {
+                    SpotLogger.log(TermsAcceptanceLogs.acceptanceRecordFailed, details: [
+                        "source": "post_auth_setup",
+                        "error": error.localizedDescription
+                    ])
+                }
             }
 
             onComplete()

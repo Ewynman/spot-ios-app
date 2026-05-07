@@ -30,7 +30,9 @@ Verified file paths: `Spot/Info.plist`, `Spot/Spot.entitlements`.
 
 ### Universal Links vs DEBUG
 
-`Info.plist` may list extra hosts (e.g. `localhost`, ngrok-style hosts) for development; **`DeepLinkRouter`** allows `https` only when `URLConfiguration.isAllowedUniversalLinkHost` returns true. `http://localhost` is also accepted in router for local testing.
+**Release / App Store:** `Info.plist` → `SpotURLs` → `universalLinkDomains` lists **production** hosts only (`spotapp.online`, `www.spotapp.online`).
+
+**Debug:** `URLConfiguration` appends `debugOnlyUniversalLinkHosts` in `URLConfiguration.swift` (e.g. `localhost`, a tunnel host) so local and tunnel testing work without shipping those in Release. **`DeepLinkRouter`** allows `https` only when `URLConfiguration.isAllowedUniversalLinkHost` returns true; `http://localhost` is also accepted in the router for local testing.
 
 ### Logging defaults
 

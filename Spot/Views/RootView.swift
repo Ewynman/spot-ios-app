@@ -16,6 +16,9 @@ struct RootView: View {
     @State private var showPostAuthSetup: Bool = false
     @State private var isResolvingPostAuthSetup: Bool = false
     @State private var hasResolvedPostAuthSetup: Bool = false
+    @State private var needsTermsUpdateAcceptance: Bool = false
+    @State private var pendingActiveTermsVersion: ActiveTermsVersion?
+    @State private var hasResolvedTermsAcceptance: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -51,6 +54,14 @@ struct RootView: View {
                             }
                             .environmentObject(authViewModel)
                             .environmentObject(permissionManager)
+                        }
+                    } else if authViewModel.isEmailVerified
+                                && hasResolvedTermsAcceptance
+                                && needsTermsUpdateAcceptance,
+                              let activeVersion = pendingActiveTermsVersion {
+                        TermsUpdateGateView(activeVersion: activeVersion) {
+                            needsTermsUpdateAcceptance = false
+                            pendingActiveTermsVersion = nil
                         }
                     } else {
                         ZStack {
@@ -211,18 +222,66 @@ struct RootView: View {
         }
         .task(id: "\(authViewModel.userId ?? "nil")-\(authViewModel.isAuthenticated)-\(authViewModel.isEmailVerified)") {
             hasResolvedPostAuthSetup = false
+            hasResolvedTermsAcceptance = false
             await refreshPostAuthSetupRequirement()
             await refreshStoreKitEntitlementIfNeeded()
+            await refreshTermsAcceptanceRequirement()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
                 await refreshPostAuthSetupRequirement()
                 await refreshStoreKitEntitlementIfNeeded()
+                await refreshTermsAcceptanceRequirement()
             }
         }
         .onChange(of: permissionManager.lifecycleRefreshTick) { _, _ in
             Task { await refreshPostAuthSetupRequirement() }
+        }
+    }
+
+    /// Loads the active Terms version + checks whether the signed-in user has
+    /// accepted it. Kept independent of profile/permission setup so a fresh
+    /// signup flow doesn't block on a network round-trip we can't satisfy yet.
+    @MainActor
+    private func refreshTermsAcceptanceRequirement() async {
+        guard authViewModel.isAuthenticated, authViewModel.isEmailVerified else {
+            hasResolvedTermsAcceptance = true
+            needsTermsUpdateAcceptance = false
+            pendingActiveTermsVersion = nil
+            return
+        }
+
+        do {
+            async let versionTask = TermsAcceptanceService.shared.loadActiveVersion()
+            async let acceptedTask = TermsAcceptanceService.shared.hasAcceptedActiveTerms()
+            let version = try await versionTask
+            var accepted = (try? await acceptedTask) ?? true
+
+            // If the user agreed via the pre-auth Welcome gate this launch,
+            // record the acceptance now and skip the post-auth update gate.
+            if !accepted && PreAuthTermsAgreementStore.shared.hasAgreed {
+                do {
+                    try await TermsAcceptanceService.shared.recordAcceptance()
+                    accepted = true
+                } catch {
+                    // Surface the gate so the user can retry interactively.
+                }
+            }
+
+            pendingActiveTermsVersion = version
+            needsTermsUpdateAcceptance = !accepted
+            hasResolvedTermsAcceptance = true
+
+            if accepted {
+                pendingActiveTermsVersion = nil
+            }
+        } catch {
+            // Fail-open so a transient network issue can't lock users out
+            // of the app entirely. The next foreground refresh will re-check.
+            needsTermsUpdateAcceptance = false
+            pendingActiveTermsVersion = nil
+            hasResolvedTermsAcceptance = true
         }
     }
 

@@ -24,6 +24,11 @@ struct ProfileView: View {
     @State private var showFollowRequestsNav: Bool = false
     @State private var showAlgorithmNav: Bool = false
     @State private var isMapExpanded: Bool = false
+    @State private var showOtherUserMenu: Bool = false
+    @State private var showProfileReportSheet: Bool = false
+    @State private var showBlockConfirm: Bool = false
+    @State private var blockInFlight: Bool = false
+    @State private var blockErrorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -119,6 +124,27 @@ struct ProfileView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .accessibilityIdentifier("profile.menuButton")
+                    } else if selectedSpot == nil,
+                              let viewedUserId = userId,
+                              viewedUserId != authVM.userId {
+                        // Report / Block menu for other users (Apple Guideline 1.2 entry point).
+                        Button {
+                            withAnimation { showOtherUserMenu.toggle() }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(Constants.Colors.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Constants.Colors.primary, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityIdentifier("profile.otherUserMenuButton")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -497,8 +523,84 @@ struct ProfileView: View {
                 .padding(.trailing, 16)
                 .padding(.top, 44)
             }
+
+            // Custom Report/Block menu when viewing another user's profile.
+            if showOtherUserMenu, let viewedUserId = userId, viewedUserId != authVM.userId {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation { showOtherUserMenu = false } }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Button {
+                        withAnimation { showOtherUserMenu = false }
+                        showProfileReportSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "flag")
+                            Text("Report User")
+                                .font(FontManager.primaryText())
+                        }
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(12)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("profile.reportUserAction")
+
+                    Divider()
+
+                    Button {
+                        withAnimation { showOtherUserMenu = false }
+                        showBlockConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "circle.slash")
+                            Text("Block User")
+                                .font(FontManager.primaryText())
+                        }
+                        .foregroundColor(Constants.Colors.primary)
+                        .padding(12)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("profile.blockUserAction")
+                }
+                .background(Color.white)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Constants.Colors.primary, lineWidth: 1)
+                )
+                .frame(width: UIScreen.main.bounds.width * 0.55)
+                .padding(.trailing, 16)
+                .padding(.top, 44)
+            }
         }
         .background(Constants.Colors.background.ignoresSafeArea())
+        .sheet(isPresented: $showProfileReportSheet) {
+            if let viewedUserId = userId,
+               let uuid = UUID(uuidString: viewedUserId) {
+                ProfileReportSheet(
+                    reportedUserId: uuid,
+                    reportedUsername: viewModel.username
+                )
+                .environmentObject(authVM)
+            }
+        }
+        .alert("Block this user?", isPresented: $showBlockConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Block User", role: .destructive) {
+                Task { await performBlockUser() }
+            }
+        } message: {
+            Text("You won't see their spots or profile content in your feed. This also notifies Spot's moderation systems for safety review.")
+        }
+        .alert("Couldn't block user", isPresented: Binding(
+            get: { blockErrorMessage != nil },
+            set: { if !$0 { blockErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { blockErrorMessage = nil }
+        } message: {
+            Text(blockErrorMessage ?? "")
+        }
         .accessibilityIdentifier("profile.screenRoot")
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -581,12 +683,44 @@ struct ProfileView: View {
             selectedSpot = nil
             selectedTab = "Spots"
             showMenu = false
+            showOtherUserMenu = false
             showSettingsNav = false
             showLikesNav = false
             showBookmarksNav = false
             showFollowRequestsNav = false
             showAlgorithmNav = false
             isMapExpanded = false
+        }
+    }
+
+    /// Performs the block action for the currently viewed profile and dismisses
+    /// back to the previous screen. Optimistically removes the blocked user's
+    /// content from the home feed.
+    @MainActor
+    private func performBlockUser() async {
+        guard let viewedUserId = userId,
+              viewedUserId != authVM.userId,
+              !blockInFlight else { return }
+        blockInFlight = true
+        defer { blockInFlight = false }
+        do {
+            try await authVM.blockUser(userId: viewedUserId)
+            NotificationCenter.default.post(
+                name: .homeFeedLocallyRemove,
+                object: nil,
+                userInfo: [SpotHomeFeedNotification.authorUserIdKey: viewedUserId]
+            )
+            SpotLogger.log(ModerationServiceLogs.userBlocked, details: [
+                "blockedUserId": viewedUserId,
+                "source": "profile_view_menu"
+            ])
+            dismiss()
+        } catch {
+            blockErrorMessage = "Check your connection and try again."
+            SpotLogger.log(ModerationServiceLogs.userBlockFailed, details: [
+                "blockedUserId": viewedUserId,
+                "error": error.localizedDescription
+            ])
         }
     }
 }

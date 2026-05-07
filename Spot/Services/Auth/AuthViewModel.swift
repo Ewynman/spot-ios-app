@@ -151,6 +151,7 @@ class AuthViewModel: ObservableObject {
         currentUserProfileImageURL = nil
         currentUserUsername = nil
         previousUserId = nil
+        PreAuthTermsAgreementStore.shared.reset()
     }
 
     /// Feed, deep links, and privacy cache — call after sign-out or account deletion.

@@ -16,9 +16,13 @@ struct URLConfigurationTests {
         #expect(config.isAllowedUniversalLinkHost("spotapp.online"))
     }
 
-    @Test func isAllowedUniversalLinkHostForLocalhost() {
+    @Test func isAllowedUniversalLinkHostForLocalhostMatchesBuildConfiguration() {
         let config = URLConfiguration.shared
+        #if DEBUG
         #expect(config.isAllowedUniversalLinkHost("localhost"))
+        #else
+        #expect(!config.isAllowedUniversalLinkHost("localhost"))
+        #endif
     }
 
     @Test func isAllowedUniversalLinkHostForUnknownHost() {

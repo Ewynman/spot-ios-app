@@ -1,133 +1,75 @@
 //
-//  ReportSheet.swift
+//  ProfileReportSheet.swift
 //  Spot
 //
-//  Created by Wynman, Edward on 8/14/25.
+//  Sheet for reporting another user (profile-level), separate from the
+//  spot-level `ReportSheet`. Uses `ModerationService.submitProfileReport`
+//  which writes to `public.reports` with `target_type = 'profile'` and
+//  records a `moderation_events` row via the underlying trigger.
 //
 
 import SwiftUI
-import Supabase
 
-enum ReportReason: String, CaseIterable {
-    case inappropriate = "inappropriate"
-    case harassment = "harassment"
-    case violence = "violence"
-    case spam = "spam"
-    case misinformation = "misinformation"
-    case privacy = "privacy"
-    case other = "other"
+struct ProfileReportSheet: View {
+    let reportedUserId: UUID
+    let reportedUsername: String?
 
-    var title: String {
-        switch self {
-        case .inappropriate:
-            return "Inappropriate / Nudity or Sexual Content"
-        case .harassment:
-            return "Harassment or Hate"
-        case .violence:
-            return "Violence / Dangerous Acts / Drugs"
-        case .spam:
-            return "Spam or Scams"
-        case .misinformation:
-            return "Misinformation / Illegal Activity"
-        case .privacy:
-            return "Privacy / Personal Data"
-        case .other:
-            return "Other"
-        }
-    }
-
-    /// Bridges the legacy spot-report reason to the canonical
-    /// `ModerationReportReason` accepted by `submit_content_report`.
-    fileprivate var moderationReason: ModerationReportReason {
-        switch self {
-        case .inappropriate: return .inappropriate
-        case .harassment: return .harassment
-        case .violence: return .violence
-        case .spam: return .spam
-        case .misinformation: return .misinformation
-        case .privacy: return .privacy
-        case .other: return .other
-        }
-    }
-}
-
-#Preview {
-    let sample = Spot(
-        id: "s1",
-        userId: "author1",
-        username: "author",
-        imageURL: "https://picsum.photos/seed/report/800/600",
-        vibeTag: "Scenic",
-        latitude: 47.6062,
-        longitude: -122.3321,
-        locationName: "Seattle",
-        createdAt: Date()
-    )
-    let auth = AuthViewModel()
-    auth.userId = "viewer1"
-    return ReportSheet(spot: sample)
-        .environmentObject(auth)
-}
-
-struct ReportSheet: View {
-    let spot: Spot
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var selectedReason: ReportReason?
+
+    @State private var selectedReason: ModerationReportReason?
     @State private var details: String = ""
     @State private var shouldBlockUser: Bool = false
     @State private var isSubmitting: Bool = false
-    @State private var showSuccessMessage: Bool = false
-    @State private var showSubmitError: Bool = false
+    @State private var showSuccess: Bool = false
+    @State private var showError: Bool = false
 
-    private let moderationService: ModerationServicing
+    private let service: ModerationServicing
 
-    init(spot: Spot, moderationService: ModerationServicing = ModerationService.shared) {
-        self.spot = spot
-        self.moderationService = moderationService
+    init(reportedUserId: UUID,
+         reportedUsername: String? = nil,
+         service: ModerationServicing = ModerationService.shared) {
+        self.reportedUserId = reportedUserId
+        self.reportedUsername = reportedUsername
+        self.service = service
     }
 
-    private let reasons: [ReportReason] = [
-        .inappropriate,
-        .harassment,
-        .violence,
-        .spam,
-        .misinformation,
-        .privacy,
-        .other
-    ]
+    private var reasons: [ModerationReportReason] {
+        [
+            .harassmentOrAbuse,
+            .hateSpeechOrDiscrimination,
+            .sexualOrNudeContent,
+            .violenceOrThreats,
+            .spamOrScam,
+            .illegalContent,
+            .privateInformation,
+            .other
+        ]
+    }
 
     private var canSubmit: Bool {
-        guard let reason = selectedReason else { return false }
+        guard let reason = selectedReason, !isSubmitting else { return false }
         if reason == .other && details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return false
         }
-        return !isSubmitting
-    }
-
-    private var isOwnSpot: Bool {
-        guard let currentUserId = authVM.userId, let ownerId = spot.userId else { return false }
-        return currentUserId == ownerId
+        return true
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if isOwnSpot {
-                        ownSpotMessage
-                    } else {
-                        reasonCard
-                        detailsCard
-                        blockCard
-                    }
+                    headerCard
+                    reasonCard
+                    detailsCard
+                    blockCard
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 100)
             }
             .background(Constants.Colors.background)
-            .navigationTitle("Report Spot")
+            .navigationTitle("Report User")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -138,19 +80,17 @@ struct ReportSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !isOwnSpot {
-                    submitBar
-                }
+                submitBar
             }
         }
         .tint(Constants.Colors.primary)
         .background(Constants.Colors.background)
-        .alert("Report Submitted", isPresented: $showSuccessMessage) {
+        .alert("Report Submitted", isPresented: $showSuccess) {
             Button("OK") { dismiss() }
         } message: {
-            Text("Thanks for helping keep our community safe.")
+            Text("Thanks — our moderation team will review this report within 24 hours.")
         }
-        .alert("Couldn't send report", isPresented: $showSubmitError) {
+        .alert("Couldn't send report", isPresented: $showError) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check your connection and try again.")
@@ -162,22 +102,34 @@ struct ReportSheet: View {
         }
     }
 
-    // MARK: - Sections
-
-    private var ownSpotMessage: some View {
-        Text("You cannot report your own spot.")
-            .font(FontManager.primaryText())
-            .foregroundColor(.orange)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(Color.white)
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let username = reportedUsername, !username.isEmpty {
+                Text("Reporting @\(username)")
+                    .font(FontManager.primaryText())
+                    .fontWeight(.semibold)
+                    .foregroundColor(Constants.Colors.primary)
+            } else {
+                Text("Reporting this user")
+                    .font(FontManager.primaryText())
+                    .fontWeight(.semibold)
+                    .foregroundColor(Constants.Colors.primary)
+            }
+            Text("Reports are confidential. Spot's moderation team will review and act within 24 hours when appropriate.")
+                .font(FontManager.primaryText())
+                .foregroundColor(.gray)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
     }
 
     private var reasonCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Reason for reporting")
+            Text("Why are you reporting this user?")
                 .font(FontManager.primaryText())
                 .fontWeight(.semibold)
                 .foregroundColor(Constants.Colors.primary)
@@ -186,8 +138,7 @@ struct ReportSheet: View {
                 ForEach(Array(reasons.enumerated()), id: \.element) { index, reason in
                     reasonRow(for: reason)
                     if index < reasons.count - 1 {
-                        Divider()
-                            .background(Color.gray.opacity(0.25))
+                        Divider().background(Color.gray.opacity(0.25))
                     }
                 }
             }
@@ -198,12 +149,12 @@ struct ReportSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
     }
 
-    private func reasonRow(for reason: ReportReason) -> some View {
+    private func reasonRow(for reason: ModerationReportReason) -> some View {
         Button {
             selectedReason = reason
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Text(reason.title)
+                Text(displayLabel(for: reason))
                     .font(FontManager.primaryText())
                     .multilineTextAlignment(.leading)
                     .foregroundColor(Constants.Colors.primary)
@@ -219,6 +170,7 @@ struct ReportSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(isSubmitting)
+        .accessibilityIdentifier("profileReport.reason.\(reason.rawValue)")
     }
 
     private var detailsCard: some View {
@@ -289,7 +241,7 @@ struct ReportSheet: View {
             Button {
                 Task { await submitReport() }
             } label: {
-                Text(isSubmitting ? "Submitting…" : "Submit")
+                Text(isSubmitting ? "Submitting…" : "Submit Report")
                     .font(FontManager.buttonText())
                     .foregroundColor(Constants.Colors.buttonText)
                     .frame(maxWidth: .infinity)
@@ -301,65 +253,68 @@ struct ReportSheet: View {
             .disabled(!canSubmit)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .accessibilityIdentifier("profileReport.submitButton")
         }
         .background(Constants.Colors.background)
     }
 
     @MainActor
     private func submitReport() async {
-        guard let reason = selectedReason,
-              let ownerId = spot.userId,
-              let spotId = spot.id else {
-            SpotLogger.log(ReportSheetLogs.submissionMissingRequiredData)
-            return
-        }
-
+        guard let reason = selectedReason else { return }
         isSubmitting = true
-
         do {
-            guard let ownerUUID = UUID(uuidString: ownerId),
-                  let spotUUID = UUID(uuidString: spotId) else {
-                throw NSError(domain: "ReportSheet", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid report IDs"])
-            }
-
-            // Route through `submit_content_report` RPC so a `moderation_events`
-            // row + correct priority are created server-side. This is the path
-            // that satisfies App Review Guideline 1.2.
-            _ = try await moderationService.submitSpotReport(
-                spotId: spotUUID,
-                ownerId: ownerUUID,
-                reason: reason.moderationReason,
+            _ = try await service.submitProfileReport(
+                reportedUserId: reportedUserId,
+                reason: reason,
                 details: details.trimmingCharacters(in: .whitespacesAndNewlines),
                 blockRequested: shouldBlockUser
             )
 
             if shouldBlockUser {
-                try await authVM.blockUser(userId: ownerId)
-                SpotLogger.log(ReportSheetLogs.userBlockedDuringReport, details: ["ownerId": ownerId])
-            }
-
-            if shouldBlockUser {
+                try await authVM.blockUser(userId: reportedUserId.uuidString)
                 NotificationCenter.default.post(
                     name: .homeFeedLocallyRemove,
                     object: nil,
-                    userInfo: [SpotHomeFeedNotification.authorUserIdKey: ownerId]
-                )
-            } else {
-                NotificationCenter.default.post(
-                    name: .homeFeedLocallyRemove,
-                    object: nil,
-                    userInfo: [SpotHomeFeedNotification.spotIdKey: spotId]
+                    userInfo: [SpotHomeFeedNotification.authorUserIdKey: reportedUserId.uuidString]
                 )
             }
 
-            SpotLogger.log(ReportSheetLogs.reportSubmitted, details: ["spotId": spotId, "reason": reason.rawValue, "blocked": shouldBlockUser])
             isSubmitting = false
-            showSuccessMessage = true
-
+            showSuccess = true
         } catch {
-            SpotLogger.log(ReportSheetLogs.submitFailed, details: ["error": error.localizedDescription])
             isSubmitting = false
-            showSubmitError = true
+            showError = true
         }
     }
+
+    private func displayLabel(for reason: ModerationReportReason) -> String {
+        switch reason {
+        case .harassmentOrAbuse: return "Harassment or abuse"
+        case .hateSpeechOrDiscrimination: return "Hate speech or discrimination"
+        case .sexualOrNudeContent: return "Sexual or nude content"
+        case .violenceOrThreats: return "Violence or threats"
+        case .spamOrScam: return "Spam or scam"
+        case .illegalContent: return "Illegal content"
+        case .privateInformation: return "Private information"
+        case .other: return "Other"
+        // Legacy spot reasons - fall through to readable strings, even though
+        // the profile sheet doesn't surface them directly.
+        case .inappropriate: return "Inappropriate / nudity"
+        case .harassment: return "Harassment or hate"
+        case .violence: return "Violence / dangerous acts"
+        case .spam: return "Spam or scams"
+        case .misinformation: return "Misinformation"
+        case .privacy: return "Privacy / personal data"
+        }
+    }
+}
+
+#Preview {
+    let auth = AuthViewModel()
+    auth.userId = UUID().uuidString
+    return ProfileReportSheet(
+        reportedUserId: UUID(),
+        reportedUsername: "exampleuser"
+    )
+    .environmentObject(auth)
 }

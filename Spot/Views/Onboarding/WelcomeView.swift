@@ -193,6 +193,7 @@ struct WelcomeView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var permissionManager = PermissionManager.shared
+    @ObservedObject private var termsStore = PreAuthTermsAgreementStore.shared
     @State private var navigateToLocation = false
     @State private var navigateToNotifications = false
     @State private var navigateToPhoto = false
@@ -225,6 +226,13 @@ struct WelcomeView: View {
 
                         WelcomeAuthActionsView(
                             appleErrorMessage: appleErrorMessage,
+                            isTermsAccepted: termsStore.hasAgreed,
+                            termsURL: termsStore.termsURL,
+                            privacyURL: termsStore.privacyURL,
+                            termsAgreementBinding: Binding(
+                                get: { termsStore.hasAgreed },
+                                set: { termsStore.setAgreed($0) }
+                            ),
                             onAppleRequest: {
                                 appleErrorMessage = nil
                                 SpotLogger.log(WelcomeViewLogs.appleSignInTapped)
@@ -239,11 +247,21 @@ struct WelcomeView: View {
                             },
                             onGetStarted: {
                                 appleErrorMessage = nil
+                                guard termsStore.hasAgreed else {
+                                    termsStore.logGated(action: "get_started")
+                                    appleErrorMessage = "Please agree to Spot's Terms of Use and Privacy Policy to continue."
+                                    return
+                                }
                                 SpotLogger.log(WelcomeViewLogs.getStartedTapped)
                                 startOnboardingFlow(destination: .signup)
                             },
                             onLogin: {
                                 appleErrorMessage = nil
+                                guard termsStore.hasAgreed else {
+                                    termsStore.logGated(action: "log_in")
+                                    appleErrorMessage = "Please agree to Spot's Terms of Use and Privacy Policy to continue."
+                                    return
+                                }
                                 SpotLogger.log(WelcomeViewLogs.loginTapped)
                                 navigateToLogin = true
                             }
@@ -287,6 +305,7 @@ struct WelcomeView: View {
                         headerVisible = true
                     }
                 }
+                Task { await termsStore.loadActiveVersion() }
             }
         }
     }
@@ -406,6 +425,10 @@ private struct SpotWelcomeHeaderView: View {
 
 private struct WelcomeAuthActionsView: View {
     let appleErrorMessage: String?
+    let isTermsAccepted: Bool
+    let termsURL: URL
+    let privacyURL: URL
+    let termsAgreementBinding: Binding<Bool>
     let onAppleRequest: () -> Void
     let onAppleSuccess: () -> Void
     let onAppleError: (String) -> Void
@@ -414,6 +437,13 @@ private struct WelcomeAuthActionsView: View {
 
     var body: some View {
         VStack(spacing: 14) {
+            TermsAgreementCheckboxView(
+                isAgreed: termsAgreementBinding,
+                termsURL: termsURL,
+                privacyURL: privacyURL,
+                onLinkTapped: nil
+            )
+
             ThemedAppleSignInButton(
                 onRequest: onAppleRequest,
                 onSuccess: onAppleSuccess,
@@ -423,6 +453,8 @@ private struct WelcomeAuthActionsView: View {
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Sign in with Apple")
             .accessibilityIdentifier("auth.signInWithAppleButton")
+            .disabled(!isTermsAccepted)
+            .opacity(isTermsAccepted ? 1.0 : 0.45)
 
             AuthDividerView()
 
@@ -438,6 +470,8 @@ private struct WelcomeAuthActionsView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Get Started")
             .accessibilityIdentifier("onboarding.getStartedButton")
+            .disabled(!isTermsAccepted)
+            .opacity(isTermsAccepted ? 1.0 : 0.45)
 
             HStack(spacing: 8) {
                 Text("Already have an account?")
@@ -460,6 +494,8 @@ private struct WelcomeAuthActionsView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Log in")
                 .accessibilityIdentifier("auth.loginButton")
+                .disabled(!isTermsAccepted)
+                .opacity(isTermsAccepted ? 1.0 : 0.45)
             }
             .padding(.top, 2)
 
@@ -917,4 +953,10 @@ private extension View {
         .frame(height: 300)
         .padding()
         .background(Constants.Colors.background)
+}
+
+#Preview("Terms Gate Disabled") {
+    PreAuthTermsAgreementStore.shared.setAgreed(false)
+    return WelcomeView()
+        .environmentObject(AuthViewModel())
 }

@@ -49,6 +49,7 @@ Reflects the repository as of the documentation refresh. Implementation details 
 | [engineering/production-readiness-audit-2026-05.md](engineering/production-readiness-audit-2026-05.md) | Pre-launch audit: leaks, feed variety, follows |
 | [engineering/storage-and-media.md](engineering/storage-and-media.md) | Buckets, uploads |
 | [engineering/image-moderation.md](engineering/image-moderation.md) | Moderation pipeline |
+| [engineering/ugc-moderation.md](engineering/ugc-moderation.md) | UGC moderation, reporting, blocking, Terms (Guideline 1.2) |
 | [engineering/universal-links.md](engineering/universal-links.md) | Deep links and Universal Links |
 | [engineering/testing.md](engineering/testing.md) | Schemes, unit vs UI tests |
 | [engineering/release-process.md](engineering/release-process.md) | Pre-release and App Store |

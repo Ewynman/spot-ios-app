@@ -27,8 +27,6 @@
 		<array>
 			<string>spotapp.online</string>
 			<string>www.spotapp.online</string>
-			<string>localhost</string>
-			<string>454ab5d34eb4.ngrok-free.app</string>
 		</array>
 	</dict>
 	<key>Supabase</key>
