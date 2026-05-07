@@ -26,7 +26,7 @@ struct PaywallView: View {
         if subscriptionManager.isRestoring {
             return "Restoring…"
         }
-        return priceLine.isEmpty ? "Go Pro" : "Go Pro - \(priceLine)"
+        return priceLine.isEmpty ? "Subscribe to Spot Pro" : "Subscribe to Spot Pro • \(priceLine)"
     }
 
     private var productLoadMessage: String? {
@@ -36,109 +36,145 @@ struct PaywallView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                Text("Go Pro")
-                    .font(FontManager.sectionHeader())
-                    .foregroundColor(Constants.Colors.primary)
+            ZStack {
+                Constants.Colors.background
+                    .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Spot Pro")
-                        .font(FontManager.primaryText())
-                        .fontWeight(.semibold)
+                VStack(spacing: 16) {
+                    Text("Go Pro")
+                        .font(FontManager.sectionHeader())
                         .foregroundColor(Constants.Colors.primary)
+                        .padding(.top, 12)
 
-                    Text(priceLine.isEmpty ? "Loading…" : priceLine)
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Text("Spot Pro")
+                                .font(FontManager.primaryText())
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.primary)
 
-                    if let productLoadMessage {
-                        Text(productLoadMessage)
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+
+                            Text("Yearly auto-renewable subscription")
+                                .font(FontManager.primaryText())
+                                .fontWeight(.semibold)
+                                .foregroundColor(Constants.Colors.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                        }
+
+                        Text(priceLine.isEmpty ? "Loading…" : priceLine)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+
+                        if let productLoadMessage {
+                            Text(productLoadMessage)
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+
+                        Divider()
+
+                        Text("Includes Pro features while your subscription is active:")
+                            .font(FontManager.primaryText())
+                            .fontWeight(.semibold)
+                            .foregroundColor(Constants.Colors.primary)
+
+                        Group {
+                            FeatureRow(title: "Custom vibe tags")
+                            FeatureRow(title: "Up to 5 images per spot")
+                            FeatureRow(title: "Edit spots after posting")
+                            FeatureRow(title: "Unlimited bookmarks")
+                            FeatureRow(title: "Collections for bookmarks")
+                            FeatureRow(title: "Advanced search filters")
+                            FeatureRow(title: "Supporter badge")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Constants.Colors.background)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Constants.Colors.primary, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 16)
+
+                    Spacer()
+
+                    VStack(spacing: 10) {
+                        Text("Subscription automatically renews unless canceled at least 24 hours before the end of the current period.")
                             .font(.caption)
                             .foregroundColor(.gray)
-                    }
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
 
-                    Divider()
-                    Group {
-                        FeatureRow(title: "Custom vibe tags")
-                        FeatureRow(title: "Up to 5 images per spot")
-                        FeatureRow(title: "Edit spots after posting")
-                        FeatureRow(title: "Unlimited bookmarks")
-                        FeatureRow(title: "Collections for bookmarks")
-                        FeatureRow(title: "Advanced search filters")
-                        FeatureRow(title: "Supporter badge")
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(Color.white)
-                .cornerRadius(12)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
-                .padding(.horizontal, 16)
-
-                Spacer()
-
-                Button(action: subscribe) {
-                    Text(primaryButtonTitle)
-                        .font(FontManager.buttonText())
-                        .foregroundColor(Constants.Colors.buttonText)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Constants.Colors.primary)
-                        .cornerRadius(20)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(isPurchaseDisabled)
-                .padding(.bottom, 4)
-
-                Button(action: restorePurchases) {
-                    Text(subscriptionManager.isRestoring ? "Restoring…" : "Restore purchases")
-                }
-                .font(FontManager.primaryText())
-                .foregroundColor(Constants.Colors.primary)
-                .disabled(isStoreBusy)
-                .padding(.bottom, 8)
-
-                VStack(spacing: 6) {
-                    Text("Subscription automatically renews unless canceled at least 24 hours before the end of the current period.")
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-
-                    HStack(spacing: 10) {
-                        Button("Terms") {
-                            openURL("https://spotapp.online/terms")
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .font(.caption)
-                        .foregroundColor(Constants.Colors.primary)
-
-                        Text("•")
+                        HStack(spacing: 10) {
+                            Button("Terms of Use (EULA)") {
+                                openURL("https://spotapp.online/terms")
+                            }
+                            .buttonStyle(.plain)
                             .font(.caption)
-                            .foregroundColor(.gray)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Constants.Colors.primary)
 
-                        Button("Privacy") {
-                            openURL("https://spotapp.online/privacy")
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+
+                            Button("Privacy Policy") {
+                                openURL("https://spotapp.online/privacy")
+                            }
+                            .buttonStyle(.plain)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Constants.Colors.primary)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .font(.caption)
-                        .foregroundColor(Constants.Colors.primary)
+
+                        Button(action: subscribe) {
+                            Text(primaryButtonTitle)
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Constants.Colors.primary)
+                                .cornerRadius(20)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isPurchaseDisabled)
+                        .opacity(isPurchaseDisabled ? 0.6 : 1)
+                        .padding(.top, 8)
+
+                        Button(action: restorePurchases) {
+                            Text(subscriptionManager.isRestoring ? "Restoring…" : "Restore purchases")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isStoreBusy)
+                        .padding(.top, 2)
                     }
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
                 }
             }
-            .padding(.top, 16)
-            .background(Constants.Colors.background.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Constants.Colors.primary)
+                            .frame(width: 44, height: 44)
+                            .background(Constants.Colors.background)
+                            .clipShape(Circle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.plain)
                 }
             }
+            .toolbarBackground(Constants.Colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .task { await loadStorePrice() }
             .alert("Purchase", isPresented: Binding(
                 get: { purchaseError != nil },
@@ -326,7 +362,7 @@ private struct PaywallPreviewCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.white)
+        .background(Constants.Colors.background)
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Constants.Colors.primary, lineWidth: 1))
     }
