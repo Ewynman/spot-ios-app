@@ -14,8 +14,14 @@ enum SpotUITestAppConfiguration {
     }
 
     /// Synthetic signed-in shell for tab / posting smoke tests (no Supabase session; DEBUG only).
-    static func applyLoggedInSyntheticSession(to app: XCUIApplication) {
+    static func applyLoggedInSyntheticSession(
+        to app: XCUIApplication,
+        accountDeletionReauth: String? = nil
+    ) {
         applyDefaultLaunchConfiguration(to: app)
         app.launchEnvironment["SPOT_AUTH_STATE"] = "loggedIn"
+        if let accountDeletionReauth {
+            app.launchEnvironment["SPOT_ACCOUNT_DELETION_REAUTH"] = accountDeletionReauth
+        }
     }
 }

@@ -10,6 +10,12 @@ struct PaywallView: View {
 
     @State private var priceLine = ""
     @State private var purchaseError: String?
+    /// `true` while the initial StoreKit `Product.products(for:)` request is
+    /// in flight. Combined with `productLoadFailed` we can render a
+    /// retryable error state instead of an indefinite "Loading…" string —
+    /// Apple App Review (Guideline 2.1(b)) explicitly flagged the previous
+    /// stuck-on-loading paywall.
+    @State private var isLoadingProduct: Bool = false
 
     private var isStoreBusy: Bool {
         subscriptionManager.isPurchasing || subscriptionManager.isRestoring
@@ -17,6 +23,10 @@ struct PaywallView: View {
 
     private var isPurchaseDisabled: Bool {
         isStoreBusy || !subscriptionManager.hasProduct
+    }
+
+    private var productLoadFailed: Bool {
+        !isLoadingProduct && !subscriptionManager.hasProduct
     }
 
     private var primaryButtonTitle: String {
@@ -29,9 +39,24 @@ struct PaywallView: View {
         return priceLine.isEmpty ? "Subscribe to Spot Pro" : "Subscribe to Spot Pro • \(priceLine)"
     }
 
+    /// Status line shown under the plan name. Three exclusive states:
+    ///   1. loading  → "Loading subscription details…"
+    ///   2. error    → user-facing copy from `SubscriptionManager`
+    ///   3. loaded   → localized price (`priceLine`)
+    /// We never sit indefinitely on (1).
+    private var priceOrStatusLine: String {
+        if isLoadingProduct {
+            return "Loading subscription details…"
+        }
+        if !priceLine.isEmpty {
+            return priceLine
+        }
+        return ""
+    }
+
     private var productLoadMessage: String? {
-        guard subscriptionManager.productLoadError != nil, !subscriptionManager.hasProduct else { return nil }
-        return SubscriptionManager.userFacingProductLoadError
+        guard productLoadFailed else { return nil }
+        return "We couldn’t load Spot Pro right now.\nPlease check your connection and try again."
     }
 
     var body: some View {
@@ -65,14 +90,37 @@ struct PaywallView: View {
                                 .minimumScaleFactor(0.85)
                         }
 
-                        Text(priceLine.isEmpty ? "Loading…" : priceLine)
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
+                        if !priceOrStatusLine.isEmpty {
+                            Text(priceOrStatusLine)
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .accessibilityIdentifier("paywall.priceLine")
+                        }
 
                         if let productLoadMessage {
-                            Text(productLoadMessage)
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(productLoadMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Button(action: { Task { await retryProductLoad() } }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 13, weight: .semibold))
+                                        Text("Try Again")
+                                            .font(FontManager.primaryText())
+                                            .fontWeight(.semibold)
+                                    }
+                                    .foregroundColor(Constants.Colors.buttonText)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(20)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .accessibilityIdentifier("paywall.tryAgainButton")
+                            }
                         }
 
                         Divider()
@@ -113,8 +161,9 @@ struct PaywallView: View {
 
                         HStack(spacing: 10) {
                             Button("Terms of Use (EULA)") {
-                                openURL("https://spotapp.online/terms")
+                                openURL(Constants.Legal.termsURL)
                             }
+                            .accessibilityIdentifier("paywall.termsLink")
                             .buttonStyle(.plain)
                             .font(.caption)
                             .fontWeight(.semibold)
@@ -125,8 +174,9 @@ struct PaywallView: View {
                                 .foregroundColor(.gray)
 
                             Button("Privacy Policy") {
-                                openURL("https://spotapp.online/privacy")
+                                openURL(Constants.Legal.privacyURL)
                             }
+                            .accessibilityIdentifier("paywall.privacyLink")
                             .buttonStyle(.plain)
                             .font(.caption)
                             .fontWeight(.semibold)
@@ -189,10 +239,21 @@ struct PaywallView: View {
 
     @MainActor
     private func loadStorePrice() async {
+        isLoadingProduct = true
         await subscriptionManager.ensureProductLoaded()
+        defer { isLoadingProduct = false }
         guard subscriptionManager.hasProduct else { return }
         guard let product = try? await subscriptionManager.loadProduct() else { return }
         priceLine = SubscriptionPriceLineFormatter.priceLine(for: product)
+    }
+
+    @MainActor
+    private func retryProductLoad() async {
+        // Clear any prior error/price state so the UI re-enters the
+        // "loading" branch instead of flashing the previous failure copy.
+        priceLine = ""
+        subscriptionManager.resetProductLoadStateForRetry()
+        await loadStorePrice()
     }
 
     private func subscribe() {
@@ -267,8 +328,7 @@ struct PaywallView: View {
         return UUID(uuidString: userId)
     }
 
-    private func openURL(_ string: String) {
-        guard let url = URL(string: string) else { return }
+    private func openURL(_ url: URL) {
         UIApplication.shared.open(url)
     }
 }

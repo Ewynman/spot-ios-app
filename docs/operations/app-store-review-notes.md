@@ -48,7 +48,22 @@ Images for Spots and profile photos additionally go through Azure Content Safety
 
 ### Privacy / support links
 
-**TODO: verify** URLs shown in App Store Connect match live privacy policy and support pages.
+| Surface | URL / contact |
+| --- | --- |
+| Privacy Policy | `https://spotapp.online/privacy` |
+| Terms of Use (EULA) | `https://spotapp.online/terms` |
+| In-app support | Settings → Contact Support → `support@spotapp.online` |
+
+Confirm App Store Connect metadata uses the same URLs and support email before each submission.
+
+### Account deletion (Guideline 5.1.1(v))
+
+Settings → Account settings → **Delete Account**:
+
+- Email/password accounts: confirmation toggle + account password.
+- Apple Sign In–only accounts: confirmation toggle + **Sign in with Apple** re-auth (no password setup required).
+
+Server RPC: `delete_my_account` (see `supabase/migrations/`).
 
 ## Related docs
 

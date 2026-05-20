@@ -10,10 +10,14 @@ class LocationManager: NSObject, ObservableObject {
     @Published var userLocation: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
 
-    // Miami Beach coordinates as default
+    /// Continental-US default centre used when CoreLocation cannot provide a
+    /// real fix (permission denied/restricted, Location Services disabled,
+    /// or simulator without a configured location). Apple App Review
+    /// requires the map to remain functional with an obvious U.S. fallback
+    /// when location is unavailable; see `MapDefaults.continentalUSRegion`.
     static let defaultLocation = CLLocation(
-        latitude: 25.7907,
-        longitude: -80.1300
+        latitude: MapDefaults.continentalUSCenter.latitude,
+        longitude: MapDefaults.continentalUSCenter.longitude
     )
 
     /// Most-recent good fix, persisted across app sessions. Used by the
@@ -112,24 +116,46 @@ class LocationManager: NSObject, ObservableObject {
 
     // Get region centered on user's location with specified radius in meters
     func getUserRegion(radiusInMeters: Double = 5000) -> MKCoordinateRegion {
-        let location = userLocation ?? Self.defaultLocation
-        let region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: radiusInMeters,
-            longitudinalMeters: radiusInMeters
-        )
-        return region
+        if let location = userLocation {
+            return MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: radiusInMeters,
+                longitudinalMeters: radiusInMeters
+            )
+        }
+        // No real fix → wide continental US fallback so the map is never
+        // pinned to a single city the user has no relationship with.
+        return MapDefaults.continentalUSRegion
+    }
+
+    /// Deterministic helper used by map view-models and tests to resolve the
+    /// initial map region without any side effects. Returns a tight
+    /// neighborhood region when the user is authorized AND has a location
+    /// fix; otherwise returns the continental-US fallback so the map opens
+    /// without blocking on permission state.
+    static func initialRegion(
+        locationStatus: CLAuthorizationStatus,
+        lastKnownLocation: CLLocation?,
+        neighborhoodRadiusMeters: Double = Constants.MapDesign.initialNeighborhoodRadiusMeters
+    ) -> MKCoordinateRegion {
+        let isAuthorized = locationStatus == .authorizedWhenInUse || locationStatus == .authorizedAlways
+        if isAuthorized, let coordinate = lastKnownLocation?.coordinate {
+            return MKCoordinateRegion(
+                center: coordinate,
+                latitudinalMeters: neighborhoodRadiusMeters,
+                longitudinalMeters: neighborhoodRadiusMeters
+            )
+        }
+        return MapDefaults.continentalUSRegion
     }
 
     // Get region that encompasses all spots
     func getRegionForSpots(_ spots: [Spot], defaultRadius: Double = 5000) -> MKCoordinateRegion {
         guard !spots.isEmpty else {
-            // Default to Miami Beach if no spots
-            return MKCoordinateRegion(
-                center: Self.defaultLocation.coordinate,
-                latitudinalMeters: defaultRadius,
-                longitudinalMeters: defaultRadius
-            )
+            // No spots to fit → fall back to the continental US overview
+            // instead of a single city, matching the App Review-mandated
+            // location-denied behaviour.
+            return MapDefaults.continentalUSRegion
         }
 
         let validCoordinates = spots.compactMap { spot -> CLLocationCoordinate2D? in
@@ -138,11 +164,7 @@ class LocationManager: NSObject, ObservableObject {
         }
 
         guard !validCoordinates.isEmpty else {
-            return MKCoordinateRegion(
-                center: Self.defaultLocation.coordinate,
-                latitudinalMeters: defaultRadius,
-                longitudinalMeters: defaultRadius
-            )
+            return MapDefaults.continentalUSRegion
         }
 
         // Calculate the bounding box

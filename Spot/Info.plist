@@ -15,8 +15,6 @@
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
-	<key>NSUserNotificationsUsageDescription</key>
-	<string>Spot sends you alerts about new spots nearby</string>
 	<key>SpotURLs</key>
 	<dict>
 		<key>customScheme</key>

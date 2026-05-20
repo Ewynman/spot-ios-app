@@ -8,18 +8,33 @@
 import SwiftUI
 import AuthenticationServices
 
+enum ThemedAppleSignInButtonMode {
+    case signIn
+    case accountDeletionReauth
+}
+
 struct ThemedAppleSignInButton: View {
     @EnvironmentObject var authVM: AuthViewModel
     @State private var isInFlight = false
 
+    var mode: ThemedAppleSignInButtonMode = .signIn
     var onRequest: (() -> Void)? = nil
     var onSuccess: (() -> Void)? = nil
     var onError: ((String) -> Void)? = nil
+    /// When `mode` is `.accountDeletionReauth`, called with the Apple identity token instead of signing in.
+    var onAppleIDToken: ((String) -> Void)? = nil
     var height: CGFloat = 56
+
+    private var buttonLabel: SignInWithAppleButton.Label {
+        switch mode {
+        case .signIn: return .signIn
+        case .accountDeletionReauth: return .continue
+        }
+    }
 
     var body: some View {
         SignInWithAppleButton(
-            .signIn,
+            buttonLabel,
             onRequest: { request in
                 guard !isInFlight else { return }
                 isInFlight = true
@@ -39,6 +54,9 @@ struct ThemedAppleSignInButton: View {
         )
         .opacity(isInFlight ? 0.72 : 1)
         .allowsHitTesting(!isInFlight)
+        .accessibilityIdentifier(mode == .accountDeletionReauth
+                                 ? "settings.deleteAccountAppleButton"
+                                 : "auth.signInWithAppleButton")
     }
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
@@ -62,16 +80,24 @@ struct ThemedAppleSignInButton: View {
             }
 
             Task {
-                do {
-                    try await authVM.signInWithApple(idToken: idToken, fullName: credential.fullName)
+                switch mode {
+                case .accountDeletionReauth:
                     await MainActor.run {
                         isInFlight = false
-                        onSuccess?()
+                        onAppleIDToken?(idToken)
                     }
-                } catch {
-                    await MainActor.run {
-                        isInFlight = false
-                        onError?(error.localizedDescription)
+                case .signIn:
+                    do {
+                        try await authVM.signInWithApple(idToken: idToken, fullName: credential.fullName)
+                        await MainActor.run {
+                            isInFlight = false
+                            onSuccess?()
+                        }
+                    } catch {
+                        await MainActor.run {
+                            isInFlight = false
+                            onError?(error.localizedDescription)
+                        }
                     }
                 }
             }

@@ -28,6 +28,13 @@ struct MapView: View {
     @StateObject private var mapVM = MapViewModel()
     @StateObject private var locationManager = LocationManager.shared
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var permissionManager: PermissionManager
+
+    /// True while the contextual Location pre-prompt sheet is presented.
+    /// Shown only when the user explicitly asks to use their location
+    /// (recenter button), not on tab open — matches Apple’s expectation
+    /// that permission education tracks the user’s feature intent.
+    @State private var showLocationPrePrompt: Bool = false
 
     @State private var selectedSpot: Spot?
     @State private var selectedSpotCoordinate: CLLocationCoordinate2D?
@@ -112,7 +119,7 @@ struct MapView: View {
                         filterState: filterPillBinding,
                         availableVibeTags: Constants.VibeTags.defaultTags,
                         onOpenVibePicker: { showVibePicker = true },
-                        canRecenter: locationManager.userLocation != nil,
+                        canRecenter: shouldShowRecenterControl,
                         onRecenter: recenterOnUser,
                         bottomReservedHeight: selectedSpot == nil
                             ? 0
@@ -143,6 +150,18 @@ struct MapView: View {
                         onClose: { showVibePicker = false }
                     )
                     .presentationDetents([.medium, .large])
+                }
+                .sheet(isPresented: $showLocationPrePrompt) {
+                    LocationPermissionView(
+                        authDestination: .signup,
+                        showsBackButton: false,
+                        onComplete: {
+                            showLocationPrePrompt = false
+                            locationManager.requestCurrentLocationForMapTab()
+                        }
+                    )
+                    .environmentObject(permissionManager)
+                    .interactiveDismissDisabled(false)
                 }
             }
             .navigationDestination(for: Route.self) { route in
@@ -292,7 +311,8 @@ struct MapView: View {
         MemoryDebugLogger.snapshot("map_appear")
         // Re-arm the one-shot auto-center every time the map tab appears.
         hasCenteredOnUser = false
-        mapBottomNavDidAppearAndRequestLocationBreakpoint()
+        permissionManager.updatePermissionStatuses()
+        bootstrapLocationIfAlreadyAuthorized()
         if authVM.userId != nil {
             authVM.refreshUserFlags()
         }
@@ -303,41 +323,60 @@ struct MapView: View {
         // the persisted last-known-good fix at LocationManager init,
         // which keeps the map useful on cold starts and on simulators
         // without a configured location.
-        if let fix = locationManager.userLocation {
+        if let fix = locationManager.userLocation,
+           locationManager.authorizationStatus == .authorizedWhenInUse ||
+           locationManager.authorizationStatus == .authorizedAlways {
             centerOnUser(coordinate: fix.coordinate, animated: false, source: "appear_fix")
             return
         }
 
-        // No fix yet. Do NOT call `getUserRegion()` here because that
-        // returns the Miami fallback and immediately fetches the wrong
-        // viewport. Wait for `onUserLocationReceived` to center/fetch as
-        // soon as CoreLocation delivers the physical device coordinate.
-        if locationManager.authorizationStatus == .denied || locationManager.authorizationStatus == .restricted {
-            let fallback = LocationManager.shared.getUserRegion(
-                radiusInMeters: Constants.MapDesign.initialRadiusMeters
-            )
-            mapVM.loadForRegion(fallback)
-            cameraIntent = .region(fallback, animated: false)
-            return
-        }
-
+        // Apple App Review (Guideline 5.1.5): the map MUST open and remain
+        // browsable when location is denied/restricted/disabled or simply
+        // unavailable. Never sit in `cameraIntent = .none` waiting for a fix
+        // that may never come — paint the continental-US overview now so the
+        // user can pan, zoom, and search immediately. If a real fix arrives
+        // later, `onUserLocationReceived` re-centers (one-shot guarded by
+        // `hasCenteredOnUser`).
+        let fallback = MapDefaults.continentalUSRegion
+        mapVM.loadForRegion(fallback)
+        cameraIntent = .region(fallback, animated: false)
         SpotLogger.log(MapViewLogs.waitingForUserLocation, details: [
-            "auth": authStatusLabel(locationManager.authorizationStatus)
+            "auth": authStatusLabel(locationManager.authorizationStatus),
+            "fallback": "continentalUS"
         ])
-        cameraIntent = .none
     }
 
-    /// BREAKPOINT HERE:
-    /// This method is called from `MapView.onAppear`, which is the Map
-    /// tab's effective bottom-nav tap entry point. Step into
-    /// `LocationManager.requestCurrentLocationForMapTab()` to verify the
-    /// CoreLocation one-shot request on a physical device.
-    private func mapBottomNavDidAppearAndRequestLocationBreakpoint() {
+    /// Recenter is offered whenever location could apply: user already has
+    /// a fix, permission is still undecided (tap → pre-prompt), or we are
+    /// authorized but still waiting on CoreLocation. Hidden when access is
+    /// denied/restricted and we have no cached coordinate to recenter on.
+    private var shouldShowRecenterControl: Bool {
+        switch locationManager.authorizationStatus {
+        case .denied, .restricted:
+            return locationManager.userLocation != nil
+        case .notDetermined:
+            return true
+        case .authorizedAlways, .authorizedWhenInUse:
+            return true
+        @unknown default:
+            return locationManager.userLocation != nil
+        }
+    }
+
+    /// If the user already granted When-In-Use (or Always), start a location
+    /// request on tab open so cached fixes and updates still flow. We never
+    /// show the pre-prompt or call `requestWhenInUseAuthorization()` here.
+    private func bootstrapLocationIfAlreadyAuthorized() {
         SpotLogger.log(MapViewLogs.mapTabLocationRequestStarted, details: [
             "auth": authStatusLabel(locationManager.authorizationStatus),
             "hasUserLocation": locationManager.userLocation != nil
         ])
-        locationManager.requestCurrentLocationForMapTab()
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.requestCurrentLocationForMapTab()
+        default:
+            break
+        }
     }
 
     private func onDisappear() {
@@ -602,17 +641,33 @@ struct MapView: View {
 
     private func recenterOnUser() {
         SpotLogger.log(MapViewLogs.recenterTapped)
-        guard let loc = locationManager.userLocation else {
-            SpotLogger.log(MapViewLogs.userLocationUnavailable)
+        permissionManager.updatePermissionStatuses()
+
+        switch locationManager.authorizationStatus {
+        case .notDetermined:
+            showLocationPrePrompt = true
             return
+        case .denied, .restricted:
+            guard let loc = locationManager.userLocation else {
+                SpotLogger.log(MapViewLogs.userLocationUnavailable)
+                return
+            }
+            if selectedSpot != nil {
+                dismissSelectedSpot(reason: .mapMoved, animated: false)
+            }
+            centerOnUser(coordinate: loc.coordinate, animated: true, source: "recenter_button")
+        case .authorizedAlways, .authorizedWhenInUse:
+            if let loc = locationManager.userLocation {
+                if selectedSpot != nil {
+                    dismissSelectedSpot(reason: .mapMoved, animated: false)
+                }
+                centerOnUser(coordinate: loc.coordinate, animated: true, source: "recenter_button")
+            } else {
+                locationManager.requestCurrentLocationForMapTab()
+            }
+        @unknown default:
+            SpotLogger.log(MapViewLogs.userLocationUnavailable)
         }
-        if selectedSpot != nil {
-            dismissSelectedSpot(reason: .mapMoved, animated: false)
-        }
-        // The recenter button is an explicit user request — re-arm the
-        // initial-center latch so any pending location publisher events
-        // can't fight the explicit gesture.
-        centerOnUser(coordinate: loc.coordinate, animated: true, source: "recenter_button")
     }
 
     private func performInitialFitIfNeeded() {
@@ -656,13 +711,12 @@ struct MapView: View {
 // MARK: - Preview
 
 #Preview("MapView – discovery") {
-    let auth = AuthViewModel()
-    auth.isPro = false
-    return MapView(spots: [
+    MapView(spots: [
         Spot(id: "1", userId: "u1", username: "eddie",
              imageURL: "https://picsum.photos/seed/3/800/600", vibeTag: "Park",
              latitude: 40.7128, longitude: -74.0060,
              locationName: "NYC", createdAt: Date())
     ])
-    .environmentObject(auth)
+    .environmentObject(AuthViewModel())
+    .environmentObject(PermissionManager.shared)
 }

@@ -18,15 +18,6 @@ struct URLConfiguration {
         "454ab5d34eb4.ngrok-free.app"
     ]
     #endif
-    #if RELEASE
-    private static let releaseOnlyUniversalLinkHosts: [String] = [
-        "spotapp.online",
-        "www.spotapp.online",
-        "454ab5d34eb4.ngrok-free.app"
-    ]
-    #else
-    private static let releaseOnlyUniversalLinkHosts: [String] = []
-    #endif
 
     private init() {
         guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),

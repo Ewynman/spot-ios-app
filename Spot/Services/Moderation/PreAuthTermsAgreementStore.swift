@@ -34,8 +34,8 @@ final class PreAuthTermsAgreementStore: ObservableObject {
     /// fails so the gate stays usable offline.
     @Published private(set) var activeVersion: ActiveTermsVersion?
 
-    static let fallbackTermsURL = URL(string: "https://spotapp.online/terms")!
-    static let fallbackPrivacyURL = URL(string: "https://spotapp.online/privacy")!
+    static let fallbackTermsURL = Constants.Legal.termsURL
+    static let fallbackPrivacyURL = Constants.Legal.privacyURL
 
     private let service: TermsAcceptanceServicing
 

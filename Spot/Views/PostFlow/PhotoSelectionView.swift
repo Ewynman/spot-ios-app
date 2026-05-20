@@ -5,6 +5,11 @@ import ImageIO
 
 private let postImageMaxPixelSize: CGFloat = 1600
 
+private enum GalleryPickMode: Equatable {
+    case add
+    case replace
+}
+
 struct PhotoSelectionView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var permissionManager: PermissionManager
@@ -13,12 +18,25 @@ struct PhotoSelectionView: View {
     let onOpenDrafts: () -> Void
     /// Called when a non‑Pro user selects multiple photos at once (only the first is kept).
     var onFreeTierGalleryOverflow: (() -> Void)?
-    @State private var photoPickerItems: [PhotosPickerItem] = []
-    @State private var replacePickerItem: PhotosPickerItem?
+    /// Programmatic gallery picker — shown only after the user taps
+    /// Choose from Gallery / Replace and, when needed, completes the
+    /// contextual `PhotoPermissionView` pre-prompt (`notDetermined`).
+    @State private var galleryPickerItems: [PhotosPickerItem] = []
+    @State private var showGalleryPicker = false
+    @State private var galleryPickMode: GalleryPickMode = .add
+    @State private var showPhotoLibraryPrePrompt = false
     @State private var showCamera = false
     @State private var showPhotoSettingsAlert = false
     @State private var showCameraSettingsAlert = false
     @State private var selectedPhotoIndex: Int = 0
+    /// True while the contextual Camera pre-prompt sheet is presented.
+    /// Apple App Review requires the custom `CameraPermissionView` to
+    /// appear BEFORE the native iOS dialog the first time the user taps
+    /// Take a Photo. Tapping Continue on the pre-prompt fires the
+    /// native dialog; swiping the sheet down is treated as a soft skip
+    /// and the composer simply stays on the photo step (the user can
+    /// still pick from gallery).
+    @State private var showCameraPrePrompt = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -99,7 +117,7 @@ struct PhotoSelectionView: View {
                             .font(.caption)
                             .foregroundColor(.gray)
                         Spacer()
-                        PhotosPicker(selection: $replacePickerItem, matching: .images) {
+                        Button(action: openGalleryReplaceIfPermitted) {
                             Label("Replace", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -159,8 +177,9 @@ struct PhotoSelectionView: View {
 
             // Additional actions
             VStack(spacing: 20) {
-                // Gallery button for first add when grid is empty or for additional adds
-                PhotosPicker(selection: $photoPickerItems, maxSelectionCount: max(1, maxPhotoCount - selectedPhotos.count), matching: .images) {
+                // Gallery — contextual pre-prompt before the system Photos UI
+                // when status is `.notDetermined` (same pattern as Take Photo).
+                Button(action: openGalleryAddIfPermitted) {
                     HStack(spacing: 12) {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 24))
@@ -183,7 +202,7 @@ struct PhotoSelectionView: View {
                 .disabled(photoSelectionDisabled || selectedPhotos.count >= maxPhotoCount)
 
                 if photoSelectionDisabled {
-                    Button("Enable Photo Access in Settings") {
+                    Button("Open iOS Settings") {
                         showPhotoSettingsAlert = true
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -237,79 +256,190 @@ struct PhotoSelectionView: View {
         .onAppear {
             permissionManager.updatePermissionStatuses()
         }
-        .task(id: photoPickerItems) {
-            guard !photoPickerItems.isEmpty else { return }
-            var newImages: [UIImage] = []
-            let maxCount = maxPhotoCount
-            let pickerCount = photoPickerItems.count
-            for item in photoPickerItems.prefix(maxCount) {
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
-                    newImages.append(uiImage)
-                }
-            }
-            photoPickerItems = []
-            if !newImages.isEmpty {
-                SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
-                // Append up to the max allowed count
-                let available = max(0, maxPhotoCount - selectedPhotos.count)
-                if available > 0 {
-                    selectedPhotos.append(contentsOf: newImages.prefix(available).map { PostComposerPhoto(image: $0) })
-                    selectedPhotoIndex = max(0, selectedPhotos.count - 1)
-                    if !authVM.isPro, maxPhotoCount == 1, pickerCount > 1 {
-                        onFreeTierGalleryOverflow?()
-                        AnalyticsService.shared.logEvent("post_multiple_images_upsell_shown", parameters: [:])
+        .photosPicker(
+            isPresented: $showGalleryPicker,
+            selection: $galleryPickerItems,
+            maxSelectionCount: galleryPickerMaxSelectionCount,
+            matching: .images
+        )
+        .task(id: galleryPickerItems) {
+            guard !galleryPickerItems.isEmpty else { return }
+            let mode = galleryPickMode
+            let items = galleryPickerItems
+            galleryPickerItems = []
+            showGalleryPicker = false
+
+            switch mode {
+            case .add:
+                var newImages: [UIImage] = []
+                let maxCount = maxPhotoCount
+                let pickerCount = items.count
+                for item in items.prefix(maxCount) {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
+                        newImages.append(uiImage)
                     }
                 }
-            } else {
-                SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
-            }
-        }
-        .task(id: replacePickerItem) {
-            guard let replacePickerItem else { return }
-            defer { self.replacePickerItem = nil }
-            guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedPhotos.count else { return }
-            if let data = try? await replacePickerItem.loadTransferable(type: Data.self),
-               let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
-                let id = selectedPhotos[selectedPhotoIndex].id
-                selectedPhotos[selectedPhotoIndex] = PostComposerPhoto(id: id, image: uiImage)
+                if !newImages.isEmpty {
+                    SpotLogger.log(PhotoSelectionViewLogs.photosSelectedFromGallery, details: ["count": newImages.count])
+                    let available = max(0, maxPhotoCount - selectedPhotos.count)
+                    if available > 0 {
+                        selectedPhotos.append(contentsOf: newImages.prefix(available).map { PostComposerPhoto(image: $0) })
+                        selectedPhotoIndex = max(0, selectedPhotos.count - 1)
+                        if !authVM.isPro, maxPhotoCount == 1, pickerCount > 1 {
+                            onFreeTierGalleryOverflow?()
+                            AnalyticsService.shared.logEvent("post_multiple_images_upsell_shown", parameters: [:])
+                        }
+                    }
+                } else {
+                    SpotLogger.log(PhotoSelectionViewLogs.loadPhotosFailed)
+                }
+            case .replace:
+                guard let item = items.first else { return }
+                guard selectedPhotoIndex >= 0, selectedPhotoIndex < selectedPhotos.count else { return }
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let uiImage = downsampledPostImage(from: data, maxPixelSize: postImageMaxPixelSize) {
+                    let id = selectedPhotos[selectedPhotoIndex].id
+                    selectedPhotos[selectedPhotoIndex] = PostComposerPhoto(id: id, image: uiImage)
+                }
             }
         }
         .sheet(isPresented: $showCamera) {
             CameraView(selectedPhotos: $selectedPhotos, maxCount: maxPhotoCount)
         }
-        .alert("Photo Access Needed", isPresented: $showPhotoSettingsAlert) {
-            Button("Open Settings") { permissionManager.openPhotoSettings() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Please allow photo library access in Settings to choose from gallery.")
+        .sheet(isPresented: $showCameraPrePrompt) {
+            CameraPermissionView(
+                authDestination: .signup,
+                showsBackButton: false,
+                onComplete: {
+                    showCameraPrePrompt = false
+                    permissionManager.updatePermissionStatuses()
+                    switch permissionManager.cameraStatus {
+                    case .authorized:
+                        showCamera = true
+                    case .denied, .restricted:
+                        showCameraSettingsAlert = true
+                    default:
+                        break
+                    }
+                }
+            )
+            .environmentObject(permissionManager)
         }
-        .alert("Camera Access Needed", isPresented: $showCameraSettingsAlert) {
-            Button("Open Settings") { permissionManager.openCameraSettings() }
+        .sheet(isPresented: $showPhotoLibraryPrePrompt) {
+            PhotoPermissionView(
+                authDestination: .signup,
+                showsBackButton: false,
+                onComplete: {
+                    finishPhotoLibraryPrePromptAndOpenPickerIfAllowed()
+                }
+            )
+            .environmentObject(permissionManager)
+        }
+        .alert("Photo Library Access Is Off", isPresented: $showPhotoSettingsAlert) {
+            Button("Open iOS Settings") { permissionManager.openPhotoSettings() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Please allow camera access in Settings to take a photo.")
+            Text("Photo library access is off. You can update access in iOS Settings or continue without adding photos.")
+        }
+        .alert("Camera Access Is Off", isPresented: $showCameraSettingsAlert) {
+            Button("Open iOS Settings") { permissionManager.openCameraSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Camera access is off. You can update access in iOS Settings or choose a photo from your library.")
         }
     }
 }
 
 #Preview {
-    StatefulPhotosWrapper { binding in
-        let auth = AuthViewModel()
-        auth.isPro = true
-        return PhotoSelectionView(selectedPhotos: binding, draftCount: 2, onOpenDrafts: {}, onFreeTierGalleryOverflow: nil)
-            .environmentObject(auth)
+    PhotoSelectionPreviewHost()
+}
+
+private struct PhotoSelectionPreviewHost: View {
+    @State private var photos: [PostComposerPhoto] = []
+    @StateObject private var authVM: AuthViewModel
+
+    init() {
+        let vm = AuthViewModel()
+        vm.isPro = true
+        _authVM = StateObject(wrappedValue: vm)
+    }
+
+    var body: some View {
+        PhotoSelectionView(selectedPhotos: $photos, draftCount: 2, onOpenDrafts: {}, onFreeTierGalleryOverflow: nil)
+            .environmentObject(authVM)
+            .environmentObject(PermissionManager.shared)
     }
 }
 
-private struct StatefulPhotosWrapper<Content: View>: View {
-    @State var photos: [PostComposerPhoto] = []
-    let content: (Binding<[PostComposerPhoto]>) -> Content
-    var body: some View { content($photos) }
-}
-
-// MARK: - Helpers
 private extension PhotoSelectionView {
+    var galleryPickerMaxSelectionCount: Int {
+        switch galleryPickMode {
+        case .add:
+            return max(1, maxPhotoCount - selectedPhotos.count)
+        case .replace:
+            return 1
+        }
+    }
+
+    /// **Choose from Gallery** — show `PhotoPermissionView` when status is
+    /// still `.notDetermined`, then the system picker.
+    func openGalleryAddIfPermitted() {
+        guard selectedPhotos.count < maxPhotoCount else { return }
+        permissionManager.updatePermissionStatuses()
+        if photoSelectionDisabled {
+            showPhotoSettingsAlert = true
+            return
+        }
+        switch permissionManager.photoStatus {
+        case .authorized, .limited:
+            galleryPickMode = .add
+            showGalleryPicker = true
+        case .notDetermined:
+            galleryPickMode = .add
+            showPhotoLibraryPrePrompt = true
+        case .denied, .restricted:
+            showPhotoSettingsAlert = true
+        @unknown default:
+            showPhotoSettingsAlert = true
+        }
+    }
+
+    /// **Replace** — same contextual gate as add.
+    func openGalleryReplaceIfPermitted() {
+        guard !selectedPhotos.isEmpty else { return }
+        permissionManager.updatePermissionStatuses()
+        if photoSelectionDisabled {
+            showPhotoSettingsAlert = true
+            return
+        }
+        switch permissionManager.photoStatus {
+        case .authorized, .limited:
+            galleryPickMode = .replace
+            showGalleryPicker = true
+        case .notDetermined:
+            galleryPickMode = .replace
+            showPhotoLibraryPrePrompt = true
+        case .denied, .restricted:
+            showPhotoSettingsAlert = true
+        @unknown default:
+            showPhotoSettingsAlert = true
+        }
+    }
+
+    func finishPhotoLibraryPrePromptAndOpenPickerIfAllowed() {
+        showPhotoLibraryPrePrompt = false
+        permissionManager.updatePermissionStatuses()
+        switch permissionManager.photoStatus {
+        case .authorized, .limited:
+            showGalleryPicker = true
+        case .denied, .restricted:
+            showPhotoSettingsAlert = true
+        default:
+            break
+        }
+    }
+
     /// Stable-height carousel matching feed clamps; cover = first photo.
     func postingPreviewCarouselHeight(width: CGFloat) -> CGFloat {
         guard let cover = selectedPhotos.first else {
@@ -356,21 +486,20 @@ private extension PhotoSelectionView {
         selectedPhotoIndex = max(0, min(selectedPhotoIndex, selectedPhotos.count - 1))
     }
 
+    /// User tapped Take a Photo. On the first tap (when camera authorization
+    /// is `.notDetermined`) we present the contextual `CameraPermissionView`
+    /// pre-prompt — the native iOS dialog only fires after the user taps
+    /// Continue inside that screen. This matches Apple App Review's request
+    /// for a contextual, in-app explanation before the system prompt is
+    /// shown, and leaves the rest of the composer fully usable if the user
+    /// dismisses the pre-prompt without making a decision.
     func openCameraIfPermitted() {
         permissionManager.updatePermissionStatuses()
         switch permissionManager.cameraStatus {
         case .authorized:
             showCamera = true
         case .notDetermined:
-            permissionManager.requestCameraPermission()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                permissionManager.updatePermissionStatuses()
-                if permissionManager.cameraStatus == .authorized {
-                    showCamera = true
-                } else if permissionManager.cameraStatus == .denied || permissionManager.cameraStatus == .restricted {
-                    showCameraSettingsAlert = true
-                }
-            }
+            showCameraPrePrompt = true
         case .denied, .restricted:
             showCameraSettingsAlert = true
         @unknown default:

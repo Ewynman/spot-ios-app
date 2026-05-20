@@ -484,7 +484,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 55JK72KR4W;
 				ENABLE_PREVIEWS = YES;
@@ -492,9 +492,11 @@
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Spot needs camera access so you can capture new spot photos.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and add your spot to the map";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot needs access to your photos so you can post spots from your gallery.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses the camera only when you choose to take a photo for your profile or a spot. You can decline and continue using the app.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and center the map when you choose location-based features. You can still use Spot without sharing your location.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Spot accesses your photo library when you choose photos to upload for your profile or a spot.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot uses your photo library only when you choose photos for your profile or a spot. You can decline and continue using the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -529,7 +531,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 55JK72KR4W;
 				ENABLE_PREVIEWS = YES;
@@ -537,9 +539,11 @@
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Spot needs camera access so you can capture new spot photos.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and add your spot to the map";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot needs access to your photos so you can post spots from your gallery.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses the camera only when you choose to take a photo for your profile or a spot. You can decline and continue using the app.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and center the map when you choose location-based features. You can still use Spot without sharing your location.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Spot accesses your photo library when you choose photos to upload for your profile or a spot.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Spot uses your photo library only when you choose photos for your profile or a spot. You can decline and continue using the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

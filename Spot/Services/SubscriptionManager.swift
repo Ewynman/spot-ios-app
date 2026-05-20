@@ -75,6 +75,16 @@ final class SubscriptionManager: ObservableObject {
         }
     }
 
+    /// Resets cached product-load state so the next `ensureProductLoaded()`
+    /// call performs a fresh `Product.products(for:)` request. Used by the
+    /// paywall "Try Again" button to recover from a transient StoreKit
+    /// failure without rebuilding the entire view.
+    func resetProductLoadStateForRetry() {
+        cachedProduct = nil
+        hasProduct = false
+        productLoadError = nil
+    }
+
     enum PurchaseProResult: Sendable {
         case purchased(expirationDate: Date?)
         case pending

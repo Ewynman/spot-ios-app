@@ -16,6 +16,10 @@ struct PostAuthSetupFlowView: View {
     @State private var isSavingProfile: Bool = false
     @State private var errorMessage: String?
     @State private var alreadyAcceptedActiveTerms: Bool = false
+    /// True once `loadCurrentProfile` has read the existing username row
+    /// from Supabase. We wait for this before committing to PFP-only mode
+    /// so a brief async loading window can't flash the wrong UI.
+    @State private var profileLoadCompleted: Bool = false
 
     private let termsService: TermsAcceptanceServicing
 
@@ -30,6 +34,21 @@ struct PostAuthSetupFlowView: View {
 
     private var canContinue: Bool {
         isTermsAgreed && !isSavingProfile
+    }
+    
+    private var isPfpOnlyMode: Bool {
+        profileLoadCompleted
+            && !originalUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var stepTitle: String {
+        isPfpOnlyMode ? "Add a profile picture" : "Choose a username"
+    }
+
+    private var stepSubtitle: String {
+        isPfpOnlyMode
+            ? "Pick a photo for your profile so people can recognize you."
+            : "Pick a username so other people can find you. You can add a profile photo later — it's optional."
     }
 
     var body: some View {
@@ -68,63 +87,83 @@ struct PostAuthSetupFlowView: View {
 
     private var profileStep: some View {
         VStack(spacing: 16) {
-            Text("Complete Your Profile")
+            Text(stepTitle)
                 .font(FontManager.sectionHeader())
                 .foregroundColor(Constants.Colors.primary)
-            Text("Confirm your username and add a profile photo to continue.")
+            Text(stepSubtitle)
                 .font(FontManager.primaryText())
                 .foregroundColor(Constants.Colors.primary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
 
-            PhotosPicker(selection: $photoPickerItem, matching: .images) {
-                ZStack {
-                    if let image = selectedProfileImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 104, height: 104)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                    } else if let existingProfileImageURL, let url = URL(string: existingProfileImageURL) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 104, height: 104)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                            default:
-                                Circle()
-                                    .fill(Constants.Colors.background)
-                                    .frame(width: 104, height: 104)
-                                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 38))
-                                            .foregroundColor(Constants.Colors.primary)
-                                    )
+            // PRD §9 / §7.2: profile photo is collected in the Optional
+            // Setup flow that runs immediately after this screen. We keep
+            // the photo picker visible only in the legacy PFP-only mode
+            // (which should no longer be routed here in practice — the
+            // Optional Setup flow now owns the photo step). For the
+            // username-collection case we render a plain person silhouette
+            // so the screen stays focused on the username decision.
+            if isPfpOnlyMode {
+                PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                    ZStack {
+                        if let image = selectedProfileImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 104, height: 104)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                        } else if let existingProfileImageURL, let url = URL(string: existingProfileImageURL) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 104, height: 104)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                default:
+                                    Circle()
+                                        .fill(Constants.Colors.background)
+                                        .frame(width: 104, height: 104)
+                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                        .overlay(
+                                            Image(systemName: "person.fill")
+                                                .font(.system(size: 38))
+                                                .foregroundColor(Constants.Colors.primary)
+                                        )
+                                }
                             }
+                        } else {
+                            Circle()
+                                .fill(Constants.Colors.background)
+                                .frame(width: 104, height: 104)
+                                .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                                .overlay(
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 38))
+                                        .foregroundColor(Constants.Colors.primary)
+                                )
                         }
-                    } else {
-                        Circle()
-                            .fill(Constants.Colors.background)
-                            .frame(width: 104, height: 104)
-                            .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 38))
-                                    .foregroundColor(Constants.Colors.primary)
-                            )
                     }
                 }
-            }
-            .buttonStyle(PlainButtonStyle())
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                Circle()
+                    .fill(Constants.Colors.background)
+                    .frame(width: 104, height: 104)
+                    .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 38))
+                            .foregroundColor(Constants.Colors.primary)
+                    )
+                    .accessibilityHidden(true)
 
-            SettingsTextField(title: "Username", text: $username)
-                .padding(.horizontal, 32)
+                SettingsTextField(title: "Username", text: $username)
+                    .padding(.horizontal, 32)
+            }
 
             // Apple Guideline 1.2: explicit Terms of Use + Privacy Policy
             // agreement is required before account registration completes.
@@ -165,23 +204,28 @@ struct PostAuthSetupFlowView: View {
     }
 
     private func loadCurrentProfile() async {
-        guard let uidString = authVM.userId, let uid = UUID(uuidString: uidString) else { return }
+        guard let uidString = authVM.userId, let uid = UUID(uuidString: uidString) else {
+            await MainActor.run { profileLoadCompleted = true }
+            return
+        }
         struct Row: Decodable {
             let username: String
             let profile_image_url: String?
         }
-        if let row: Row = try? await supabase
+        let row: Row? = try? await supabase
             .from("users")
             .select("username,profile_image_url")
             .eq("id", value: uid)
             .single()
             .execute()
-            .value {
-            await MainActor.run {
+            .value
+        await MainActor.run {
+            if let row {
                 username = row.username
                 originalUsername = row.username
                 existingProfileImageURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
+            profileLoadCompleted = true
         }
     }
 
@@ -214,10 +258,9 @@ struct PostAuthSetupFlowView: View {
             errorMessage = "Username is required."
             return
         }
-        guard selectedProfileImage != nil || !(existingProfileImageURL?.isEmpty ?? true) else {
-            errorMessage = "Profile picture is required."
-            return
-        }
+        // Profile photo is OPTIONAL per PRD §7.3 / §9. The Optional Setup
+        // flow that runs after this screen offers a dedicated profile-photo
+        // step where the user can take/choose one or skip entirely.
         guard let uidString = authVM.userId, let uid = UUID(uuidString: uidString) else {
             errorMessage = "No authenticated user."
             return

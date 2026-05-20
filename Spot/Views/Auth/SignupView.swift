@@ -7,7 +7,6 @@
 
 import SwiftUI
 import UIKit
-import PhotosUI
 import Supabase
 
 struct SignupView: View {
@@ -17,8 +16,6 @@ struct SignupView: View {
     @State private var confirmPassword = ""
     @State private var agreedToTerms = false
     @State private var isPrivate = false
-    @State private var selectedProfileImage: UIImage?
-    @State private var photoPickerItem: PhotosPickerItem?
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -50,46 +47,6 @@ struct SignupView: View {
                         .font(FontManager.sectionHeader())
                         .foregroundColor(Constants.Colors.primary)
                         .padding(.top, 40)
-
-                    // Profile Picture Picker
-                    VStack(spacing: 12) {
-                        Text("Add Profile Picture")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
-
-                        PhotosPicker(selection: $photoPickerItem, matching: .images) {
-                            ZStack {
-                                if let image = selectedProfileImage {
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 100, height: 100)
-                                        .clipShape(Circle())
-                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                } else {
-                                    Circle()
-                                        .fill(Constants.Colors.background)
-                                        .frame(width: 100, height: 100)
-                                        .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 2))
-                                        .overlay(
-                                            Image(systemName: "person.fill")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(Constants.Colors.primary)
-                                        )
-                                }
-                            }
-                        }
-                        .onChange(of: photoPickerItem) { _, newItem in
-                            Task {
-                                if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                   let uiImage = UIImage(data: data) {
-                                    selectedProfileImage = uiImage
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .padding(.horizontal, 32)
 
                     VStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
@@ -156,7 +113,7 @@ struct SignupView: View {
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
 
-                        Button(action: { if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) } }) {
+                        Button(action: { UIApplication.shared.open(Constants.Legal.termsURL) }) {
                             Text("Terms & Conditions")
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
@@ -169,7 +126,7 @@ struct SignupView: View {
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
 
-                        Button(action: { if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) } }) {
+                        Button(action: { UIApplication.shared.open(Constants.Legal.privacyURL) }) {
                             Text("Privacy Policy")
                                 .font(FontManager.primaryText())
                                 .fontWeight(.semibold)
@@ -225,15 +182,12 @@ struct SignupView: View {
                             return
                         }
 
-                        guard selectedProfileImage != nil else {
-                            showToast("Please add a profile picture.", isError: true)
-                            return
-                        }
-
                         isLoading = true
                         errorMessage = nil
 
-                        // Validate username uniqueness, then upload & sign up
+                        // Profile picture is collected after the post-auth
+                        // permission steps in `PostAuthSetupFlowView`, so signup
+                        // here just captures the credentials and metadata.
                         validateAndSignUp()
                     }) {
                         Text(isLoading ? "Signing Up..." : "Sign Up")
@@ -299,8 +253,6 @@ struct SignupView: View {
     }
 
     private func signUpWithSupabase() {
-        guard selectedProfileImage != nil else { return }
-
         isLoading = true
         errorMessage = nil
 
@@ -326,7 +278,7 @@ struct SignupView: View {
                 }
 
                 await MainActor.run {
-                    authVM.beginEmailVerificationPending(email: cleanEmail, avatar: selectedProfileImage)
+                    authVM.beginEmailVerificationPending(email: cleanEmail, avatar: nil)
                     self.isLoading = false
                     self.errorMessage = nil
                     self.showToast("Check your email for the verification code.", isError: false)

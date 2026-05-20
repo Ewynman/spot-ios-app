@@ -194,10 +194,6 @@ struct WelcomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var permissionManager = PermissionManager.shared
     @ObservedObject private var termsStore = PreAuthTermsAgreementStore.shared
-    @State private var navigateToLocation = false
-    @State private var navigateToNotifications = false
-    @State private var navigateToPhoto = false
-    @State private var navigateToCamera = false
     @State private var navigateToSignup = false
     @State private var navigateToLogin = false
     @State private var authDestination: AuthDestination = .signup
@@ -272,22 +268,6 @@ struct WelcomeView: View {
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
-            .navigationDestination(isPresented: $navigateToLocation) {
-                LocationPermissionView(authDestination: authDestination == .login ? .login : .signup)
-                    .environmentObject(permissionManager)
-            }
-            .navigationDestination(isPresented: $navigateToNotifications) {
-                NotificationPermissionView(authDestination: authDestination == .login ? .login : .signup)
-                    .environmentObject(permissionManager)
-            }
-            .navigationDestination(isPresented: $navigateToPhoto) {
-                PhotoPermissionView(authDestination: authDestination == .login ? .login : .signup)
-                    .environmentObject(permissionManager)
-            }
-            .navigationDestination(isPresented: $navigateToCamera) {
-                CameraPermissionView(authDestination: authDestination == .login ? .login : .signup)
-                    .environmentObject(permissionManager)
-            }
             .navigationDestination(isPresented: $navigateToSignup) {
                 SignupView()
             }
@@ -320,28 +300,13 @@ struct WelcomeView: View {
     }
 
     private func startOnboardingFlow(destination: AuthDestination) {
+        // Apple App Review (Guidelines 5.1.1 / 5.1.5 / 4.5.4): permissions
+        // must NOT be asked as a coercive pre-auth gauntlet. We jump straight
+        // to the chosen auth flow. Each permission is later requested only
+        // when the user taps the related feature for the first time.
         authDestination = destination
         permissionManager.updatePermissionStatuses()
-        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse || permissionManager.locationStatus == .authorizedAlways
-        let notificationsGranted = permissionManager.notificationStatus == .authorized
-        let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
-        let cameraGranted = permissionManager.cameraStatus == .authorized
-
-        if locationGranted && notificationsGranted && photoGranted && cameraGranted {
-            routeToDestination(destination)
-        } else if locationGranted && notificationsGranted && photoGranted {
-            navigateToCamera = true
-            logNavigation(destination: destination, route: "camera_permission")
-        } else if locationGranted && notificationsGranted {
-            navigateToPhoto = true
-            logNavigation(destination: destination, route: "photo_permission")
-        } else if locationGranted {
-            navigateToNotifications = true
-            logNavigation(destination: destination, route: "notification_permission")
-        } else {
-            navigateToLocation = true
-            logNavigation(destination: destination, route: "location_permission")
-        }
+        routeToDestination(destination)
     }
 
     private func routeToDestination(_ destination: AuthDestination) {

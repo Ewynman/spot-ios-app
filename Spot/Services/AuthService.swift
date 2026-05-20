@@ -257,30 +257,61 @@ class AuthService {
                         }
                     }
                 }
-                SpotLogger.log(AuthServiceLogs.deleteAccountReauthenticated)
-
-                let session = try await supabase.auth.session
-                let userId = session.user.id
-                await purgeStorageForAccountDeletion(userId: userId)
-
-                struct EmptyParams: Encodable {}
-                SpotLogger.log(AuthServiceLogs.deleteAccountCallingRPC)
-                try await runWithTimeout(seconds: 20) {
-                    _ = try await supabase.rpc("delete_my_account", params: EmptyParams()).execute()
-                }
-                SpotLogger.log(AuthServiceLogs.deleteAccountRPCFinished)
-
-                do {
-                    try await supabase.auth.signOut()
-                } catch {
-                    SpotLogger.log(AuthServiceLogs.deleteAccountSignOutAfterRPCFailed, details: [
-                        "error": error.localizedDescription
-                    ])
-                }
+                try await performAccountDeletionAfterReauth(reauthMethod: "password")
                 await MainActor.run { completion(.success(())) }
             } catch {
                 await MainActor.run { completion(.failure(error)) }
             }
+        }
+    }
+
+    func deleteAccount(appleIDToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        Task {
+            do {
+                try await reauthenticate(withAppleIDToken: appleIDToken)
+                try await performAccountDeletionAfterReauth(reauthMethod: "apple")
+                await MainActor.run { completion(.success(())) }
+            } catch {
+                await MainActor.run { completion(.failure(error)) }
+            }
+        }
+    }
+
+    private func reauthenticate(withAppleIDToken idToken: String) async throws {
+        let userBefore = try await supabase.auth.user()
+        _ = try await supabase.auth.signInWithIdToken(
+            credentials: .init(provider: .apple, idToken: idToken)
+        )
+        let userAfter = try await supabase.auth.user()
+        guard userAfter.id == userBefore.id else {
+            throw NSError(
+                domain: "AuthService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "This Apple ID does not match your Spot account."]
+            )
+        }
+    }
+
+    private func performAccountDeletionAfterReauth(reauthMethod: String) async throws {
+        SpotLogger.log(AuthServiceLogs.deleteAccountReauthenticated, details: ["method": reauthMethod])
+
+        let session = try await supabase.auth.session
+        let userId = session.user.id
+        await purgeStorageForAccountDeletion(userId: userId)
+
+        struct EmptyParams: Encodable {}
+        SpotLogger.log(AuthServiceLogs.deleteAccountCallingRPC)
+        try await runWithTimeout(seconds: 20) {
+            _ = try await supabase.rpc("delete_my_account", params: EmptyParams()).execute()
+        }
+        SpotLogger.log(AuthServiceLogs.deleteAccountRPCFinished)
+
+        do {
+            try await supabase.auth.signOut()
+        } catch {
+            SpotLogger.log(AuthServiceLogs.deleteAccountSignOutAfterRPCFailed, details: [
+                "error": error.localizedDescription
+            ])
         }
     }
 

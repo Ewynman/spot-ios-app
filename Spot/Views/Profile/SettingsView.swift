@@ -5,7 +5,9 @@ import ImageIO
 
 struct SettingsView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @ObservedObject private var permissionManager = PermissionManager.shared
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var username: String = ""
     @State private var name: String = ""
@@ -78,12 +80,15 @@ struct SettingsView: View {
                                     onSave: saveAccountChanges,
                                     onUploadPhoto: uploadProfilePhoto,
                                     onLogout: { authVM.signOut() },
-                                    onDelete: deleteAccount
+                                    onDeleteWithPassword: deleteAccountWithPassword,
+                                    onDeleteWithAppleToken: deleteAccountWithApple,
+                                    onDeleteAppleError: { showToast(message: $0, isError: true) }
                                 )
                             } label: {
                                 settingsRow(title: "Account settings", icon: "person.crop.circle")
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("settings.accountSettingsEntry")
                         }
                     }
 
@@ -125,6 +130,46 @@ struct SettingsView: View {
                                 settingsRow(title: "Subscription & Pro", icon: "star")
                             }
                             .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Permissions")
+                            NavigationLink {
+                                PermissionsSettingsView(permissionManager: permissionManager)
+                            } label: {
+                                settingsRow(
+                                    title: "Permissions",
+                                    icon: "hand.raised",
+                                    subtitle: "Location, notifications, camera, photos",
+                                    showsTrailingWarning: permissionManager.anyPermissionNeedsAttention
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("settings.permissionsRow")
+                            .accessibilityLabel(
+                                permissionManager.anyPermissionNeedsAttention
+                                ? "Permissions. Some optional permissions are off."
+                                : "Permissions"
+                            )
+                        }
+                    }
+
+                    settingsSection {
+                        VStack(spacing: 12) {
+                            sectionHeader("Support")
+                            NavigationLink {
+                                SupportSettingsDetailView()
+                            } label: {
+                                settingsRow(
+                                    title: "Contact Support",
+                                    icon: "envelope.fill",
+                                    subtitle: Constants.Legal.supportEmail
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("settings.contactSupportRow")
                         }
                     }
 
@@ -193,6 +238,13 @@ struct SettingsView: View {
         }
         .task(id: authVM.userId) {
             await load()
+        }
+        .onAppear {
+            permissionManager.updatePermissionStatuses()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            permissionManager.updatePermissionStatuses()
         }
     }
 
@@ -526,28 +578,53 @@ struct SettingsView: View {
         }
     }
 
-    private func deleteAccount() {
+    private func deleteAccountWithPassword() {
         guard !isSaving else { return }
         SpotLogger.log(SettingsViewLogs.deleteAccountTapped, details: [
             "confirmDelete": confirmDelete,
+            "reauth": "password",
             "hasPassword": !deletePassword.isEmpty
         ])
         guard confirmDelete, !deletePassword.isEmpty else {
             SpotLogger.log(SettingsViewLogs.deleteAccountBlockedMissingConfirmation)
-            showToast(message: "Turn on the confirmation switch and enter your password to delete your account.", isError: true)
+            showToast(
+                message: "Turn on the confirmation switch and enter your password to delete your account.",
+                isError: true
+            )
             return
         }
         isSaving = true
         authVM.deleteAccount(password: deletePassword) { result in
-            DispatchQueue.main.async {
-                isSaving = false
-                switch result {
-                case .success:
-                    showToast(message: "Account deleted", isError: false)
-                    dismiss()
-                case .failure(let error):
-                    showToast(message: error.localizedDescription, isError: true)
-                }
+            handleDeleteAccountResult(result)
+        }
+    }
+
+    private func deleteAccountWithApple(_ appleIDToken: String) {
+        guard !isSaving else { return }
+        SpotLogger.log(SettingsViewLogs.deleteAccountTapped, details: [
+            "confirmDelete": confirmDelete,
+            "reauth": "apple"
+        ])
+        guard confirmDelete else {
+            SpotLogger.log(SettingsViewLogs.deleteAccountBlockedMissingConfirmation)
+            showToast(message: "Turn on the confirmation switch before deleting your account.", isError: true)
+            return
+        }
+        isSaving = true
+        authVM.deleteAccount(appleIDToken: appleIDToken) { result in
+            handleDeleteAccountResult(result)
+        }
+    }
+
+    private func handleDeleteAccountResult(_ result: Result<Void, Error>) {
+        DispatchQueue.main.async {
+            isSaving = false
+            switch result {
+            case .success:
+                showToast(message: "Account deleted", isError: false)
+                dismiss()
+            case .failure(let error):
+                showToast(message: error.localizedDescription, isError: true)
             }
         }
     }
@@ -659,6 +736,7 @@ struct SettingsView: View {
 }
 
 private struct AccountSettingsDetailView: View {
+    @EnvironmentObject private var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
     @Binding var username: String
     @Binding var name: String
@@ -674,7 +752,9 @@ private struct AccountSettingsDetailView: View {
     let onSave: () -> Void
     let onUploadPhoto: (UIImage) -> Void
     let onLogout: () -> Void
-    let onDelete: () -> Void
+    let onDeleteWithPassword: () -> Void
+    let onDeleteWithAppleToken: (String) -> Void
+    let onDeleteAppleError: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -749,17 +829,37 @@ private struct AccountSettingsDetailView: View {
                                     .foregroundColor(Constants.Colors.primary)
                             }
                             .tint(Constants.Colors.primary)
+                            .accessibilityIdentifier("settings.deleteAccountConfirmToggle")
 
-                            SettingsSecureField(title: "Password to confirm", text: $deletePassword)
-                            Text("Uses your account password (same as sign-in). Apple-only accounts need a password set under Security before delete.")
-                                .font(.system(size: 12))
-                                .foregroundColor(.gray)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Button(action: onDelete) {
-                                settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true, showsTrailingChevron: false)
+                            if authVM.accountDeletionReauthMethod == .signInWithApple {
+                                Text("Confirm with Sign in with Apple, then we’ll permanently delete your account and data.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.gray)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                ThemedAppleSignInButton(
+                                    mode: .accountDeletionReauth,
+                                    onError: onDeleteAppleError,
+                                    onAppleIDToken: onDeleteWithAppleToken
+                                )
+                                .disabled(!confirmDelete || isSaving)
+                            } else {
+                                SettingsSecureField(
+                                    title: "Password to confirm",
+                                    text: $deletePassword,
+                                    accessibilityIdentifier: "settings.deleteAccountPasswordField"
+                                )
+                                Text("Uses your account password (same as sign-in).")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.gray)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Button(action: onDeleteWithPassword) {
+                                    settingsRow(title: "Delete Account", icon: "trash.fill", isDestructive: true, showsTrailingChevron: false)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(isSaving)
+                                .accessibilityIdentifier("settings.deleteAccountButton")
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .disabled(isSaving)
                         }
                     }
                 }
@@ -768,6 +868,8 @@ private struct AccountSettingsDetailView: View {
         }
         .background(Color(hex: "F5F3EF").ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
+        .accessibilityIdentifier("settings.accountSettingsScreen")
+        .task { await authVM.refreshAccountDeletionReauthMethod() }
     }
 
     private var profileImage: some View {
@@ -783,6 +885,47 @@ private struct AccountSettingsDetailView: View {
         .frame(width: 44, height: 44)
         .clipShape(Circle())
         .overlay(Circle().stroke(Constants.Colors.primary, lineWidth: 1))
+    }
+}
+
+private struct SupportSettingsDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsTopBar(title: "Support", dismiss: dismiss)
+            ScrollView {
+                VStack(spacing: 24) {
+                    settingsSection {
+                        VStack(alignment: .leading, spacing: 12) {
+                            sectionHeader("Contact")
+                            Text("Questions about your account, safety reports, subscriptions, or App Review? Email us and we’ll respond as soon as we can.")
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Button {
+                                openSupportEmail()
+                            } label: {
+                                settingsRow(title: Constants.Legal.supportEmail, icon: "envelope.fill")
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("settings.supportEmailButton")
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(hex: "F5F3EF").ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private func openSupportEmail() {
+        let subject = "Spot Support"
+        let encoded = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? subject
+        guard let url = URL(string: "mailto:\(Constants.Legal.supportEmail)?subject=\(encoded)") else { return }
+        UIApplication.shared.open(url)
     }
 }
 
@@ -969,14 +1112,14 @@ private struct LegalSettingsDetailView: View {
                         VStack(spacing: 12) {
                             sectionHeader("Legal")
                             Button {
-                                if let url = URL(string: "https://spotapp.online/terms") { UIApplication.shared.open(url) }
+                                UIApplication.shared.open(Constants.Legal.termsURL)
                             } label: {
                                 settingsRow(title: "Terms & Conditions", icon: "doc.text.fill")
                             }
                             .buttonStyle(PlainButtonStyle())
 
                             Button {
-                                if let url = URL(string: "https://spotapp.online/privacy") { UIApplication.shared.open(url) }
+                                UIApplication.shared.open(Constants.Legal.privacyURL)
                             } label: {
                                 settingsRow(title: "Privacy Policy", icon: "lock.shield.fill")
                             }
@@ -1039,7 +1182,8 @@ private func settingsRow(
     icon: String,
     subtitle: String? = nil,
     isDestructive: Bool = false,
-    showsTrailingChevron: Bool = true
+    showsTrailingChevron: Bool = true,
+    showsTrailingWarning: Bool = false
 ) -> some View {
     HStack(spacing: 12) {
         Image(systemName: icon)
@@ -1059,6 +1203,14 @@ private func settingsRow(
         }
 
         Spacer()
+
+        if showsTrailingWarning {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.orange)
+                .accessibilityLabel("Some optional permissions are off")
+                .accessibilityIdentifier("settings.permissionsWarningIndicator")
+        }
 
         if showsTrailingChevron {
             Image(systemName: "chevron.right")
@@ -1101,6 +1253,7 @@ struct SettingsTextField: View {
 struct SettingsSecureField: View {
     let title: String
     @Binding var text: String
+    var accessibilityIdentifier: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1117,6 +1270,7 @@ struct SettingsSecureField: View {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(Constants.Colors.primary, lineWidth: 1)
                 )
+                .accessibilityIdentifier(accessibilityIdentifier ?? title)
         }
     }
 }

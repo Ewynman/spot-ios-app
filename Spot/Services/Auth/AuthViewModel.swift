@@ -36,6 +36,13 @@ class AuthViewModel: ObservableObject {
     private var supabaseAuthTask: Task<Void, Never>?
 
     init() {
+        #if DEBUG
+        if SpotLaunchConfiguration.uiTestAuthBootstrap == .loggedIn {
+            Task { @MainActor in
+                self.configureUITestSyntheticAuthIfNeeded()
+            }
+        }
+        #endif
         listenToSupabaseAuthState()
     }
 
@@ -72,6 +79,9 @@ class AuthViewModel: ObservableObject {
         awaitingEmailVerification = false
         isPro = SpotLaunchConfiguration.uiTestUserIsPro
         proUntil = nil
+        if let reauth = SpotLaunchConfiguration.uiTestAccountDeletionReauth {
+            accountDeletionReauthMethod = reauth
+        }
         #endif
     }
 
@@ -680,10 +690,39 @@ class AuthViewModel: ObservableObject {
     }
 
     // MARK: - Account Deletion
+
+    @Published private(set) var accountDeletionReauthMethod: AccountDeletionReauthMethod = .password
+
+    func refreshAccountDeletionReauthMethod() async {
+        #if DEBUG
+        if let override = SpotLaunchConfiguration.uiTestAccountDeletionReauth {
+            accountDeletionReauthMethod = override
+            return
+        }
+        #endif
+        guard let session = try? await supabase.auth.session else { return }
+        accountDeletionReauthMethod = AccountDeletionAuthPolicy.preferredReauthMethod(session: session)
+    }
+
     func deleteAccount(password: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        runAccountDeletion(completion: completion) { done in
+            AuthService.shared.deleteAccount(password: password, completion: done)
+        }
+    }
+
+    func deleteAccount(appleIDToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        runAccountDeletion(completion: completion) { done in
+            AuthService.shared.deleteAccount(appleIDToken: appleIDToken, completion: done)
+        }
+    }
+
+    private func runAccountDeletion(
+        completion: @escaping (Result<Void, Error>) -> Void,
+        _ delete: @escaping (@escaping (Result<Void, Error>) -> Void) -> Void
+    ) {
         Task { @MainActor in
             self.accountDeletionInProgress = true
-            AuthService.shared.deleteAccount(password: password) { result in
+            delete { result in
                 Task { @MainActor in
                     defer { self.accountDeletionInProgress = false }
                     switch result {

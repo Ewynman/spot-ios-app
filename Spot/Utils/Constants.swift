@@ -70,6 +70,26 @@ enum Constants {
         static let logAllDebugCategories = "logAllDebugCategories"
     }
 
+    enum Legal {
+        static let termsURLString = "https://spotapp.online/terms"
+        static let privacyURLString = "https://spotapp.online/privacy"
+        static let supportEmail = "support@spotapp.online"
+
+        static var termsURL: URL {
+            guard let url = URL(string: termsURLString) else {
+                preconditionFailure("Invalid terms URL")
+            }
+            return url
+        }
+
+        static var privacyURL: URL {
+            guard let url = URL(string: privacyURLString) else {
+                preconditionFailure("Invalid privacy URL")
+            }
+            return url
+        }
+    }
+
     enum Analytics {
         static let authReinstall = "AuthReinstall"
         static let permissionsRequested = "Perms.Requested"

@@ -49,4 +49,20 @@ enum SpotLaunchConfiguration {
         false
         #endif
     }
+
+    /// Overrides account-deletion re-auth UI: `password` (default) or `apple`.
+    static var uiTestAccountDeletionReauth: AccountDeletionReauthMethod? {
+        #if DEBUG
+        guard isUITestMode,
+              let raw = ProcessInfo.processInfo.environment["SPOT_ACCOUNT_DELETION_REAUTH"]
+        else { return nil }
+        switch raw.lowercased() {
+        case "apple": return .signInWithApple
+        case "password": return .password
+        default: return nil
+        }
+        #else
+        nil
+        #endif
+    }
 }

@@ -52,6 +52,29 @@ class PermissionManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - App-friendly snapshots (Settings → Permissions)
+
+    /// App-friendly status for a single permission, mapping the underlying
+    /// system enum into `SpotPermissionStatus`. Intentionally read-only —
+    /// requesting the permission must go through the explicit
+    /// `request<Type>Permission()` methods so we never auto-prompt from
+    /// Settings.
+    func status(for type: SpotPermissionType) -> SpotPermissionStatus {
+        switch type {
+        case .location: return SpotPermissionStatus.map(locationStatus)
+        case .notifications: return SpotPermissionStatus.map(notificationStatus)
+        case .camera: return SpotPermissionStatus.map(cameraStatus)
+        case .photos: return SpotPermissionStatus.map(photoStatus)
+        }
+    }
+
+    /// Returns true when at least one of the four optional permissions is
+    /// in a state that needs user attention (denied/restricted/unavailable).
+    /// Powers the `!` warning indicator on the Settings → Permissions row.
+    var anyPermissionNeedsAttention: Bool {
+        SpotPermissionType.allCases.contains { status(for: $0).needsAttention }
+    }
+
     private func startWatchingAppLifecycle() {
         activeObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
@@ -68,12 +91,12 @@ class PermissionManager: NSObject, ObservableObject {
 
     // MARK: - Post-Login Permission Requests
 
-    /// Request permissions after successful login if not determined
+    /// Deprecated bulk-request entry point. Each permission is now requested
+    /// from its own dedicated onboarding step (or contextual prompt) so the
+    /// user always sees the matching pre-prompt before the native dialog.
+    /// Kept as a no-op for source compatibility with older call sites.
     func requestPermissionsIfNeeded() {
-        requestLocationPermissionIfNeeded()
-        requestNotificationPermissionIfNeeded()
-        requestPhotoPermissionIfNeeded()
-        requestCameraPermissionIfNeeded()
+        // Intentionally empty.
     }
 
     // MARK: - Explicit Requests (for onboarding buttons)
@@ -152,70 +175,6 @@ class PermissionManager: NSObject, ObservableObject {
                 self.cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
                 UserDefaults.standard.set(true, forKey: Constants.UserDefaultsKeys.cameraPermissionRequested)
             }
-        }
-    }
-
-    private func requestLocationPermissionIfNeeded() {
-        let userDefaults = UserDefaults.standard
-        let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
-
-        if !hasRequested && locationStatus == .notDetermined {
-            SpotLogger.log(PermissionManagerLogs.locationPermissionRequesting)
-            Task { @MainActor in
-                AnalyticsService.shared.trackPermissionRequest(type: "location", action: "auto")
-            }
-            locationManager.requestWhenInUseAuthorization()
-            userDefaults.set(true, forKey: Constants.UserDefaultsKeys.locationPermissionRequested)
-        }
-    }
-
-    private func requestNotificationPermissionIfNeeded() {
-        let userDefaults = UserDefaults.standard
-        let hasRequested = userDefaults.bool(forKey: Constants.UserDefaultsKeys.notificationsRequested)
-
-        if !hasRequested && notificationStatus == .notDetermined {
-            SpotLogger.log(PermissionManagerLogs.pushPermissionRequesting)
-            Task { @MainActor in
-                AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto")
-            }
-
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                DispatchQueue.main.async {
-                    if granted {
-                        SpotLogger.log(PermissionManagerLogs.pushPermissionGranted)
-                        Task { @MainActor in
-                            AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto", result: "granted")
-                        }
-                    } else {
-                        SpotLogger.log(PermissionManagerLogs.pushPermissionDenied)
-                        Task { @MainActor in
-                            AnalyticsService.shared.trackPermissionRequest(type: "push", action: "auto", result: "denied")
-                        }
-                        self.showNotificationBanner = true
-                    }
-                    self.updatePermissionStatuses()
-                }
-            }
-
-            userDefaults.set(true, forKey: Constants.UserDefaultsKeys.notificationsRequested)
-        }
-    }
-
-    private func requestPhotoPermissionIfNeeded() {
-        let hasRequested = UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.photoPermissionRequested)
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        photoStatus = status
-        if !hasRequested && status == .notDetermined {
-            requestPhotoPermission()
-        }
-    }
-
-    private func requestCameraPermissionIfNeeded() {
-        let hasRequested = UserDefaults.standard.bool(forKey: Constants.UserDefaultsKeys.cameraPermissionRequested)
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        cameraStatus = status
-        if !hasRequested && status == .notDetermined {
-            requestCameraPermission()
         }
     }
 

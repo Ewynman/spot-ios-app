@@ -10,14 +10,15 @@ Support, review, engineering.
 
 ## Current status
 
-**TODO: verify** exact URLs and screens (`Settings`, legal links, contact email) in `Spot/Views/Settings` and App Store metadata.
+In-app surfaces are implemented under **Profile → Settings**.
 
 ## Details
 
-Spot should expose:
+Spot exposes:
 
-- A path for **user support** (email, form, or in-app).
-- **Privacy policy** and **terms** where required for App Store and subscriptions.
+- **Contact support** — Settings → **Contact Support** → `mailto:support@spotapp.online` (`Constants.Legal.supportEmail`).
+- **Privacy policy** — `https://spotapp.online/privacy` (signup, paywall, Settings → Legal).
+- **Terms of Use** — `https://spotapp.online/terms` (signup, paywall, Settings → Legal).
 
 Safety workflows (block users, report content) live under profile/settings flows—implementation details in respective Swift files.
 

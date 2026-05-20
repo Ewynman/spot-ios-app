@@ -29,32 +29,27 @@ struct RootView: View {
                 ConfirmEmailView()
             } else if authViewModel.isAuthenticated {
                 Group {
+                    // Onboarding ordering for verified users:
+                    //   1. Apple Sign In username gate (only when the user
+                    //      authenticated via Apple but has not yet picked a
+                    //      username). Email signups already collected one
+                    //      during signup so they skip this entirely.
+                    //   2. Terms-of-service update gate.
+                    //   3. Standard tab shell — permission pre-prompts are
+                    //      surfaced contextually by the feature that needs
+                    //      them (Map tab → Location, Take Photo → Camera,
+                    //      Settings → Permissions → Notifications). The
+                    //      app never blocks on a permission decision.
+                    //
+                    // App Review (Guidelines 5.1.1 / 5.1.5 / 4.5.4):
+                    // permissions never block account creation, never
+                    // block onboarding, and never block the main app.
                     if authViewModel.isEmailVerified && hasResolvedPostAuthSetup && showPostAuthSetup {
-                        if permissionManager.locationStatus != .authorizedWhenInUse &&
-                            permissionManager.locationStatus != .authorizedAlways {
-                            LocationPermissionView(authDestination: .postAuthSetup)
-                                .environmentObject(permissionManager)
-                                .environmentObject(authViewModel)
-                        } else if permissionManager.notificationStatus != .authorized {
-                            NotificationPermissionView(authDestination: .postAuthSetup)
-                                .environmentObject(permissionManager)
-                                .environmentObject(authViewModel)
-                        } else if permissionManager.photoStatus != .authorized &&
-                                    permissionManager.photoStatus != .limited {
-                            PhotoPermissionView(authDestination: .postAuthSetup)
-                                .environmentObject(permissionManager)
-                                .environmentObject(authViewModel)
-                        } else if permissionManager.cameraStatus != .authorized {
-                            CameraPermissionView(authDestination: .postAuthSetup)
-                                .environmentObject(permissionManager)
-                                .environmentObject(authViewModel)
-                        } else {
-                            PostAuthSetupFlowView {
-                                showPostAuthSetup = false
-                            }
-                            .environmentObject(authViewModel)
-                            .environmentObject(permissionManager)
+                        PostAuthSetupFlowView {
+                            showPostAuthSetup = false
                         }
+                        .environmentObject(authViewModel)
+                        .environmentObject(permissionManager)
                     } else if authViewModel.isEmailVerified
                                 && hasResolvedTermsAcceptance
                                 && needsTermsUpdateAcceptance,
@@ -252,6 +247,16 @@ struct RootView: View {
             return
         }
 
+        #if DEBUG
+        if SpotLaunchConfiguration.isUITestMode,
+           SpotLaunchConfiguration.uiTestAuthBootstrap == .loggedIn {
+            hasResolvedTermsAcceptance = true
+            needsTermsUpdateAcceptance = false
+            pendingActiveTermsVersion = nil
+            return
+        }
+        #endif
+
         do {
             async let versionTask = TermsAcceptanceService.shared.loadActiveVersion()
             async let acceptedTask = TermsAcceptanceService.shared.hasAcceptedActiveTerms()
@@ -322,12 +327,19 @@ struct RootView: View {
             return
         }
 
+        #if DEBUG
+        if SpotLaunchConfiguration.isUITestMode,
+           SpotLaunchConfiguration.uiTestAuthBootstrap == .loggedIn {
+            showPostAuthSetup = false
+            hasResolvedPostAuthSetup = true
+            return
+        }
+        #endif
+
+        // Permission state is no longer a gate (Apple App Review 5.1.1 /
+        // 5.1.5 / 4.5.4) — we still refresh it so Settings can show fresh
+        // status, but we never block the tab shell on it.
         permissionManager.updatePermissionStatuses()
-        let locationGranted = permissionManager.locationStatus == .authorizedWhenInUse ||
-            permissionManager.locationStatus == .authorizedAlways
-        let notificationsGranted = permissionManager.notificationStatus == .authorized
-        let photoGranted = permissionManager.photoStatus == .authorized || permissionManager.photoStatus == .limited
-        let cameraGranted = permissionManager.cameraStatus == .authorized
 
         let session = try? await supabase.auth.session
         let allowProfileCompletionGate = session.map { AuthProfileSetupGate.shouldShowUsernamePhotoPostAuthSetup(session: $0) } ?? false
@@ -351,8 +363,11 @@ struct RootView: View {
             let usernameOk = !((persistedUsername?.isEmpty ?? true) && (metadataUsername?.isEmpty ?? true))
             let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
             let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
-            let photoOk = !((persistedPhotoURL?.isEmpty ?? true) && (metadataPhotoURL?.isEmpty ?? true))
 
+            // Best-effort metadata sync: if the auth provider gave us an
+            // avatar URL but the row hasn't picked it up yet, persist it
+            // so the profile already shows a photo even before the user
+            // visits the optional setup flow.
             if (persistedPhotoURL?.isEmpty ?? true), let metadataPhotoURL, !metadataPhotoURL.isEmpty {
                 struct AvatarPatch: Encodable { let profile_image_url: String }
                 _ = try? await supabase
@@ -361,14 +376,13 @@ struct RootView: View {
                     .eq("id", value: uid)
                     .execute()
             }
-            let profileIncomplete = !(usernameOk && photoOk)
-            needsProfileSetup = allowProfileCompletionGate && profileIncomplete
+            needsProfileSetup = allowProfileCompletionGate && !usernameOk
         } catch {
             // Avoid blocking existing users in setup if profile check temporarily fails.
             needsProfileSetup = false
         }
 
-        var shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || needsProfileSetup)
+        var shouldShow = needsProfileSetup
 
         // Guard against transient auth/user-row sync delays right after signup/login:
         // re-check once before presenting profile setup so users with completed profiles
@@ -386,12 +400,7 @@ struct RootView: View {
                 let persistedUsername = row.username?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let metadataUsername = await bestEffortAuthMetadataUsername()
                 let usernameOk = !((persistedUsername?.isEmpty ?? true) && (metadataUsername?.isEmpty ?? true))
-                let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
-                let photoOk = !((persistedPhotoURL?.isEmpty ?? true) && (metadataPhotoURL?.isEmpty ?? true))
-                let profileIncomplete = !(usernameOk && photoOk)
-                let needsProfileAfterRetry = allowProfileCompletionGate && profileIncomplete
-                shouldShow = (!locationGranted || !notificationsGranted || !photoGranted || !cameraGranted || needsProfileAfterRetry)
+                shouldShow = allowProfileCompletionGate && !usernameOk
             } catch {
                 // Keep the earlier decision on retry errors.
             }
@@ -413,6 +422,7 @@ struct RootView: View {
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty })
     }
+
 
     private func bestEffortAuthMetadataUsername() async -> String? {
         guard let session = try? await supabase.auth.session else { return nil }
