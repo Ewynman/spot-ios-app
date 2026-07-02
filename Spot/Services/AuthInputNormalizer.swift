@@ -49,4 +49,19 @@ enum AuthErrorClassifier {
     static func isEmailInUse(error: Error) -> Bool {
         isEmailInUse(error.localizedDescription)
     }
+
+    /// Detects the "email already registered" case for a Supabase email
+    /// sign-up response. With email-enumeration protection enabled, Supabase
+    /// does not throw for an existing email: it returns HTTP 200 with no
+    /// session and an empty `identities` array (and sends no confirmation
+    /// email). Callers must treat this as an existing account instead of
+    /// routing the user to the email-verification screen.
+    ///
+    /// - Parameters:
+    ///   - hasSession: Whether the sign-up response contained a session.
+    ///   - identityCount: Number of identities on the returned user
+    ///     (pass `0` when `identities` is `nil`).
+    static func isExistingAccountSignup(hasSession: Bool, identityCount: Int) -> Bool {
+        !hasSession && identityCount == 0
+    }
 }

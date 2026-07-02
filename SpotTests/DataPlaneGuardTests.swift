@@ -38,7 +38,7 @@ struct DataPlaneGuardTests {
     ]
 
     @Test func spotSources_doNotContainLegacyFirebaseDataPlane() throws {
-        let swiftFiles = try enumerateSwiftFiles(under: Self.spotSourcesRoot)
+        let swiftFiles = try Self.enumerateSwiftFiles(under: Self.spotSourcesRoot)
         #expect(!swiftFiles.isEmpty, "Expected Swift sources under Spot/")
 
         var violations: [String] = []
@@ -58,10 +58,10 @@ struct DataPlaneGuardTests {
             if contents.contains("import Firebase"),
                !Self.firebaseObservabilityAllowlist.contains(filename) {
                 let firebaseImports = contents
-                    .components(separatedBy: .newlines)
+                    .components(separatedBy: CharacterSet.newlines)
                     .filter { $0.contains("import Firebase") }
                 for line in firebaseImports {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    let trimmed = line.trimmingCharacters(in: CharacterSet.whitespaces)
                     let allowed = trimmed == "import FirebaseCore"
                         || trimmed == "import FirebaseAnalytics"
                         || trimmed == "import FirebaseCrashlytics"
@@ -80,7 +80,7 @@ struct DataPlaneGuardTests {
 
             See docs/engineering/data-plane.md
             """
-            Issue.record(message)
+            Issue.record(Comment(rawValue: message))
         }
     }
 
