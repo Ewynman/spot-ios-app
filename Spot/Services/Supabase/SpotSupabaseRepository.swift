@@ -235,6 +235,16 @@ enum SpotSupabaseRepository {
         guard !vibeTags.isEmpty else {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
         }
+        
+        // Validate coordinates
+        if let coordError = InputValidation.validateCoordinates(latitude: latitude, longitude: longitude) {
+            throw NSError(domain: "SpotSupabaseRepository", code: 400, userInfo: [NSLocalizedDescriptionKey: coordError])
+        }
+        
+        // Validate location name
+        if let locationError = InputValidation.validateLocationName(locationName) {
+            throw NSError(domain: "SpotSupabaseRepository", code: 400, userInfo: [NSLocalizedDescriptionKey: locationError])
+        }
         let trimmedPlace = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         var vibeIds: [UUID] = []
         vibeIds.reserveCapacity(vibeTags.count)
@@ -904,6 +914,16 @@ enum SpotSupabaseRepository {
 
         guard !vibeTags.isEmpty else {
             throw NSError(domain: "SpotSupabaseRepository", code: 0, userInfo: [NSLocalizedDescriptionKey: "At least one vibe is required"])
+        }
+        
+        // Validate coordinates
+        if let coordError = InputValidation.validateCoordinates(latitude: latitude, longitude: longitude) {
+            throw NSError(domain: "SpotSupabaseRepository", code: 400, userInfo: [NSLocalizedDescriptionKey: coordError])
+        }
+        
+        // Validate location name
+        if let locationError = InputValidation.validateLocationName(locationName) {
+            throw NSError(domain: "SpotSupabaseRepository", code: 400, userInfo: [NSLocalizedDescriptionKey: locationError])
         }
         var vibeIds: [UUID] = []
         vibeIds.reserveCapacity(vibeTags.count)

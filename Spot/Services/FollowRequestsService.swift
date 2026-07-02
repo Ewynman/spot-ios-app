@@ -32,7 +32,7 @@ final class FollowRequestsService {
     }
 
     func countPending(targetUserId: String) async throws -> Int {
-        guard let target = UUID(uuidString: targetUserId) else { return 0 }
+        guard let target = InputValidation.parseUUID(targetUserId, context: "FollowRequestsService.countPending") else { return 0 }
         struct IdRow: Decodable { let id: UUID }
         let rows: [IdRow] = try await supabase
             .from("follow_requests")
@@ -45,7 +45,7 @@ final class FollowRequestsService {
     }
 
     func fetchPage(for targetUid: String, start: Int, pageSize: Int) async throws -> Page {
-        guard let target = UUID(uuidString: targetUid) else {
+        guard let target = InputValidation.parseUUID(targetUid, context: "FollowRequestsService.fetchPage") else {
             return Page(items: [], nextStart: nil)
         }
 
@@ -87,8 +87,8 @@ final class FollowRequestsService {
     }
 
     func accept(requesterUid: String, targetUid: String) async throws {
-        guard let requester = UUID(uuidString: requesterUid),
-              let target = UUID(uuidString: targetUid)
+        guard let requester = InputValidation.parseUUID(requesterUid, context: "FollowRequestsService.accept.requester"),
+              let target = InputValidation.parseUUID(targetUid, context: "FollowRequestsService.accept.target")
         else {
             throw NSError(domain: "FollowRequestsService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])
         }
@@ -129,8 +129,8 @@ final class FollowRequestsService {
     }
 
     func deny(requesterUid: String, targetUid: String) async throws {
-        guard let requester = UUID(uuidString: requesterUid),
-              let target = UUID(uuidString: targetUid)
+        guard let requester = InputValidation.parseUUID(requesterUid, context: "FollowRequestsService.deny.requester"),
+              let target = InputValidation.parseUUID(targetUid, context: "FollowRequestsService.deny.target")
         else {
             throw NSError(domain: "FollowRequestsService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])
         }
