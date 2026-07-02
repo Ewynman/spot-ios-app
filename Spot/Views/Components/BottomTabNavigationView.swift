@@ -67,6 +67,8 @@ struct BottomTabNavigationView: View {
     @State private var coachFrames: [CoachTarget: CGRect] = [:]
     /// Pre-permission sheet for the first-run map tour step (`.userLocation`).
     @State private var showTourLocationPrePrompt = false
+    /// Notification permission sheet shown after onboarding tour completes.
+    @State private var showNotificationPermissionPrompt = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -180,6 +182,16 @@ struct BottomTabNavigationView: View {
             )
             .environmentObject(permissionManager)
         }
+        .sheet(isPresented: $showNotificationPermissionPrompt) {
+            NotificationPermissionView(
+                authDestination: .signup,
+                showsBackButton: false,
+                onComplete: {
+                    showNotificationPermissionPrompt = false
+                }
+            )
+            .environmentObject(permissionManager)
+        }
         .accessibilityIdentifier("main.tabShell")
     }
 
@@ -237,9 +249,22 @@ struct BottomTabNavigationView: View {
         case .finale:
             selectedTab = 0
             firstRunOnboarding.finish()
+            // After onboarding finishes, request notification permissions
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                requestNotificationPermissionsAfterOnboarding()
+            }
         default:
             firstRunOnboarding.next()
         }
+    }
+
+    /// Request notification permissions after the user completes onboarding.
+    /// Only prompts if notifications are not yet determined.
+    private func requestNotificationPermissionsAfterOnboarding() {
+        permissionManager.updatePermissionStatuses()
+        guard permissionManager.notificationStatus == .notDetermined else { return }
+        showNotificationPermissionPrompt = true
     }
 
     private func handleOnboardingBack() {

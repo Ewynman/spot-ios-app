@@ -12,6 +12,7 @@ enum AppDelegateLogs: SpotLog {
     case customSchemeUrlOnLaunch
     case locationUpdateFailed
     case memoryWarning
+    case notificationActionReceived
 
     var tag: String { "AppDelegate" }
     var level: LogLevel {
@@ -20,6 +21,7 @@ enum AppDelegateLogs: SpotLog {
         case .customSchemeUrlOnLaunch: return .info
         case .locationUpdateFailed: return .error
         case .memoryWarning: return .info
+        case .notificationActionReceived: return .info
         }
     }
     var message: String {
@@ -28,6 +30,7 @@ enum AppDelegateLogs: SpotLog {
         case .customSchemeUrlOnLaunch: return "Received custom scheme URL on app launch"
         case .locationUpdateFailed: return "Location update failed"
         case .memoryWarning: return "Received memory warning; cleared in-memory caches"
+        case .notificationActionReceived: return "User tapped notification action"
         }
     }
 }

@@ -118,6 +118,14 @@ final class FollowRequestsService {
             .execute()
 
         await AuthorPrivacyCache.shared.invalidate(authorId: requesterUid)
+        
+        // Notify the requester that their follow request was accepted
+        // Note: This is a client-side local notification. In production, this
+        // should be handled by a backend push notification service triggered
+        // by the database follow event.
+        Task { @MainActor in
+            await notifyFollowRequestAcceptedByCurrentUser(acceptedUserId: requesterUid)
+        }
     }
 
     func deny(requesterUid: String, targetUid: String) async throws {
@@ -136,5 +144,34 @@ final class FollowRequestsService {
             .eq("target_user_id", value: target)
             .eq("status", value: "pending")
             .execute()
+    }
+    
+    // MARK: - Notification Helpers
+    
+    /// Sends a notification to the requester that their follow request was accepted.
+    /// This is a local client-side notification for demonstration. In production,
+    /// this should be replaced with a backend push notification triggered by
+    /// database events (e.g., Supabase Edge Function or database trigger).
+    private func notifyFollowRequestAcceptedByCurrentUser(acceptedUserId: String) async {
+        // Fetch the username of the current user (the acceptor)
+        guard let currentUserId = try? await supabase.auth.session.user.id else { return }
+        
+        struct UserRow: Decodable {
+            let username: String
+        }
+        
+        guard let userRow: UserRow = try? await supabase
+            .from("users")
+            .select("username")
+            .eq("id", value: currentUserId)
+            .single()
+            .execute()
+            .value
+        else { return }
+        
+        await NotificationService.shared.notifyFollowRequestAccepted(
+            by: userRow.username,
+            acceptorUid: currentUserId.uuidString
+        )
     }
 }
