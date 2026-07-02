@@ -24,6 +24,7 @@ enum MapViewLogs: SpotLog {
     case visibleSpotsTrimmed
     case mapDrawerDismissed
     case mapSpotSwitchAnimated
+    case memorySnapshot
 
     var tag: String { "MapView" }
     var level: LogLevel {
@@ -42,6 +43,7 @@ enum MapViewLogs: SpotLog {
         case .visibleSpotsTrimmed: return .debug
         case .mapDrawerDismissed: return .debug
         case .mapSpotSwitchAnimated: return .debug
+        case .memorySnapshot: return .debug
         }
     }
     var message: String {
@@ -60,6 +62,7 @@ enum MapViewLogs: SpotLog {
         case .visibleSpotsTrimmed: return "Map visibleSpots trimmed to viewport cap"
         case .mapDrawerDismissed: return "Map drawer dismissed"
         case .mapSpotSwitchAnimated: return "Map drawer spot switch (animated)"
+        case .memorySnapshot: return "Memory snapshot (DEBUG only)"
         }
     }
 }
