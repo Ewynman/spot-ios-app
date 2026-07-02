@@ -20,61 +20,91 @@ struct LocationSelectionView: View {
     @State private var pendingCustomName: String = ""
     @State private var showBlockedAlert = false
     @State private var blockedReason: String = ""
+    @State private var searchFieldFocused = false
     private let canonicalPlaces: [CanonicalPlace] = CanonicalPlace.load()
 
     private let locationManager = CLLocationManager()
 
     var body: some View {
-        VStack(spacing: 24) {
-            // Header
-            VStack(spacing: 8) {
-                Text("Select Your Spot's Location")
+        VStack(spacing: 0) {
+            // Header with search integrated
+            VStack(spacing: 16) {
+                Text("Where's your Spot?")
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
+                    .padding(.top, 24)
 
-                Text("Search for a place or select from nearby locations")
-                    .font(FontManager.primaryText())
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 32)
-
-            // Search Bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.gray)
-
-                TextField("Search for a place...", text: $searchText)
-                    .font(FontManager.primaryText())
-                    .foregroundColor(Constants.Colors.primary)
-                    .onChange(of: searchText) { _, newValue in
-                        searchPlaces(query: newValue)
-                    }
-            }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Constants.Colors.primary, lineWidth: 1)
-            )
-            .padding(.horizontal, 32)
-
-            // Content based on search
-            if !searchText.isEmpty {
-                // Search Results
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Search Results")
+                // Enhanced Search Bar
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(searchFieldFocused ? Constants.Colors.primary : .gray)
+                    
+                    TextField("Search places...", text: $searchText)
                         .font(FontManager.primaryText())
-                        .fontWeight(.semibold)
                         .foregroundColor(Constants.Colors.primary)
-                        .padding(.horizontal, 32)
+                        .onChange(of: searchText) { _, newValue in
+                            searchPlaces(query: newValue)
+                        }
+                        .onSubmit {
+                            searchFieldFocused = false
+                        }
+                    
+                    if !searchText.isEmpty {
+                        Button(action: {
+                            searchText = ""
+                            searchResults = []
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.gray)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Constants.Colors.accent.opacity(0.3))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(searchFieldFocused ? Constants.Colors.primary : Color.clear, lineWidth: 2)
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+            .background(Constants.Colors.background)
 
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            // Only show custom option if there are no results at all
-                            if searchResults.count <= 2 {
-                                UseTypedAsCustomRow(title: searchText) {
+            // Content based on search with improved UI
+            ScrollView {
+                VStack(spacing: 0) {
+                    if !searchText.isEmpty {
+                        // Search Results Section
+                        if isSearching {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .scaleEffect(1.2)
+                                    Text("Searching...")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                            }
+                            .frame(height: 120)
+                        } else if searchResults.isEmpty {
+                            VStack(spacing: 20) {
+                                Image(systemName: "mappin.slash")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.gray.opacity(0.5))
+                                    .padding(.top, 40)
+                                
+                                Text("No places found")
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(.gray)
+                                
+                                // Custom place option
+                                Button(action: {
                                     let loc = LocationData(
                                         coordinate: region.center,
                                         placeName: searchText,
@@ -83,114 +113,226 @@ struct LocationSelectionView: View {
                                     )
                                     self.selectedLocation = loc
                                     self.showingMap = true
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "plus.circle.fill")
+                                        Text("Use '\(searchText)' as custom place")
+                                            .fontWeight(.medium)
+                                    }
+                                    .font(FontManager.primaryText())
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .background(Constants.Colors.primary)
+                                    .cornerRadius(12)
                                 }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.bottom, 20)
                             }
-                            ForEach(searchResults, id: \.self) { item in
-                                LocationResultRow(item: item) { location in
-                                    selectedLocation = location
-                                    showingMap = true
+                        } else {
+                            VStack(spacing: 2) {
+                                // Section header
+                                HStack {
+                                    Text("Results")
+                                        .font(FontManager.primaryText())
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(Constants.Colors.primary)
+                                    Spacer()
+                                    Text("\(searchResults.count)")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
                                 }
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 200)
-                }
-            } else {
-                // Nearby Places
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Nearby Places")
-                        .font(FontManager.primaryText())
-                        .fontWeight(.semibold)
-                        .foregroundColor(Constants.Colors.primary)
-                        .padding(.horizontal, 32)
-
-                    if isLoadingNearby {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .scaleEffect(1.0)
-                            Spacer()
-                        }
-                        .frame(height: 100)
-                    } else if nearbyPlaces.isEmpty {
-                        Text("No nearby places found")
-                            .font(FontManager.primaryText())
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 40)
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(nearbyPlaces, id: \.self) { item in
-                                    NearbyPlaceRow(item: item) { location in
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(Constants.Colors.background)
+                                
+                                ForEach(searchResults, id: \.self) { item in
+                                    ImprovedLocationRow(item: item) { location in
                                         selectedLocation = location
                                         showingMap = true
+                                    }
+                                    Divider()
+                                        .padding(.leading, 60)
+                                }
+                                
+                                // Custom place option at bottom of results
+                                if searchResults.count > 0 && searchResults.count < 5 {
+                                    Button(action: {
+                                        let loc = LocationData(
+                                            coordinate: region.center,
+                                            placeName: searchText,
+                                            address: nil,
+                                            isCustomName: true
+                                        )
+                                        self.selectedLocation = loc
+                                        self.showingMap = true
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24))
+                                                .foregroundColor(Constants.Colors.primary)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Use '\(searchText)' as custom place")
+                                                    .font(FontManager.primaryText())
+                                                    .foregroundColor(Constants.Colors.primary)
+                                                Text("For unique or moving locations")
+                                                    .font(.caption)
+                                                    .foregroundColor(.gray)
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 16)
+                                        .background(Constants.Colors.accent.opacity(0.2))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                        }
+                    } else {
+                        // Nearby Places Section
+                        VStack(spacing: 2) {
+                            HStack {
+                                Image(systemName: "location.circle.fill")
+                                    .foregroundColor(Constants.Colors.primary)
+                                Text("Nearby Places")
+                                    .font(FontManager.primaryText())
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Constants.Colors.primary)
+                                Spacer()
+                                if !isLoadingNearby {
+                                    Text("\(nearbyPlaces.count)")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(Constants.Colors.background)
+                            
+                            if isLoadingNearby {
+                                HStack {
+                                    Spacer()
+                                    VStack(spacing: 12) {
+                                        ProgressView()
+                                            .scaleEffect(1.2)
+                                        Text("Finding nearby places...")
+                                            .font(FontManager.primaryText())
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                }
+                                .frame(height: 120)
+                            } else if nearbyPlaces.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "map")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(.gray.opacity(0.5))
+                                        .padding(.top, 40)
+                                    Text("No nearby places found")
+                                        .font(FontManager.primaryText())
+                                        .foregroundColor(.gray)
+                                    Text("Try searching for a specific place")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                        .padding(.bottom, 40)
+                                }
+                            } else {
+                                ForEach(nearbyPlaces, id: \.self) { item in
+                                    ImprovedLocationRow(item: item) { location in
+                                        selectedLocation = location
+                                        showingMap = true
+                                    }
+                                    if item != nearbyPlaces.last {
+                                        Divider()
+                                            .padding(.leading, 60)
                                     }
                                 }
                             }
                         }
-                        .frame(maxHeight: 300)
                     }
                 }
             }
 
-            // Selected Location Preview
+            // Selected Location Preview Card
             if let location = selectedLocation {
-                VStack(spacing: 12) {
-                    HStack {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(Constants.Colors.primary)
+                VStack(spacing: 0) {
+                    Divider()
+                    
+                    VStack(spacing: 16) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.green)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(location.placeName)
-                                .font(FontManager.primaryText())
-                                .fontWeight(.semibold)
-                                .foregroundColor(Constants.Colors.primary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(location.placeName)
+                                    .font(FontManager.primaryText())
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Constants.Colors.primary)
+                                    .lineLimit(1)
 
-                            if let address = location.address {
-                                Text(address)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                                if let address = location.address {
+                                    Text(address)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                        .lineLimit(2)
+                                }
                             }
-                            Button("Set custom name") {
-                                promptCustomName()
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .font(.caption)
-                            .foregroundColor(Constants.Colors.primary)
+
+                            Spacer()
                         }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 8) {
-                            Button("Adjust Pin") {
+                        
+                        HStack(spacing: 12) {
+                            Button(action: {
                                 showingMap = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "map")
+                                    Text("Adjust")
+                                }
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Constants.Colors.accent.opacity(0.3))
+                                .cornerRadius(10)
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Constants.Colors.primary)
-
-                            Button("Change") {
+                            
+                            Button(action: {
+                                promptCustomName()
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pencil")
+                                    Text("Rename")
+                                }
+                                .font(FontManager.primaryText())
+                                .foregroundColor(Constants.Colors.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Constants.Colors.accent.opacity(0.3))
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Button(action: {
                                 selectedLocation = nil
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.gray)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.gray.opacity(0.1))
+                                    .clipShape(Circle())
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .font(FontManager.primaryText())
-                            .foregroundColor(Constants.Colors.primary)
                         }
                     }
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Constants.Colors.primary, lineWidth: 1)
-                    )
-                    .padding(.horizontal, 32)
+                    .padding(20)
+                    .background(Constants.Colors.background)
                 }
             }
-
-            Spacer()
         }
         .onAppear {
             setupLocationManager()
@@ -264,9 +406,11 @@ struct LocationSelectionView: View {
     private func searchPlaces(query: String) {
         guard !query.isEmpty else {
             searchResults = []
+            isSearching = false
             return
         }
 
+        isSearching = true
         SpotLogger.log(LocationSelectionViewLogs.searchingPlaces, details: ["query": query])
 
         func runSearch(with span: MKCoordinateSpan, completion: @escaping ([MKMapItem]) -> Void) {
@@ -291,12 +435,14 @@ struct LocationSelectionView: View {
                 if !first.isEmpty {
                     SpotLogger.log(LocationSelectionViewLogs.foundLocalSearchResults, details: ["count": first.count, "query": query])
                     self.searchResults = first
+                    self.isSearching = false
                 } else {
                     SpotLogger.log(LocationSelectionViewLogs.noLocalResultsRetryingGlobal)
                     runSearch(with: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)) { global in
                         DispatchQueue.main.async {
                             SpotLogger.log(LocationSelectionViewLogs.foundGlobalSearchResults, details: ["count": global.count, "query": query])
                             self.searchResults = global
+                            self.isSearching = false
                         }
                     }
                 }
@@ -372,63 +518,21 @@ struct CanonicalPlace: Decodable {
     }
 }
 
-// MARK: - Location Result Row
-struct LocationResultRow: View {
+// MARK: - Improved Location Row
+struct ImprovedLocationRow: View {
     let item: MKMapItem
     let onSelect: (LocationData) -> Void
-
-    var body: some View {
-        Button(action: {
-            let city = item.placemark.locality
-            let state = item.placemark.administrativeArea
-            let country = item.placemark.country
-            let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
-            let locationData = LocationData(
-                coordinate: item.placemark.coordinate,
-                placeName: item.name ?? (city ?? state ?? country ?? "Unknown Location"),
-                address: parts.isEmpty ? nil : parts,
-                isCustomName: false
-            )
-            SpotLogger.log(LocationSelectionViewLogs.userSelectedLocation, details: ["placeName": locationData.placeName])
-            onSelect(locationData)
-        }) {
-            HStack(spacing: 12) {
-                Image("green_marker")
-                    .resizable()
-                    .frame(width: 20, height: 20)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name ?? "Unknown Location")
-                        .font(FontManager.primaryText())
-                        .foregroundColor(Constants.Colors.primary)
-                    let city = item.placemark.locality
-                    let state = item.placemark.administrativeArea
-                    let country = item.placemark.country
-                    let parts = [city, state, country].compactMap { $0 }.joined(separator: ", ")
-                    if !parts.isEmpty {
-                        Text(parts)
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-            }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 12)
+    
+    private var distanceText: String? {
+        guard let distance = item.placemark.location?.distance(from: CLLocation(latitude: 0, longitude: 0)) else {
+            return nil
         }
-        .buttonStyle(PlainButtonStyle())
+        if distance < 1000 {
+            return "\(Int(distance))m"
+        } else {
+            return String(format: "%.1fkm", distance / 1000)
+        }
     }
-}
-
-// MARK: - Nearby Place Row
-struct NearbyPlaceRow: View {
-    let item: MKMapItem
-    let onSelect: (LocationData) -> Void
 
     var body: some View {
         Button(action: {
@@ -442,18 +546,33 @@ struct NearbyPlaceRow: View {
                 address: parts.isEmpty ? nil : parts,
                 isCustomName: false
             )
+            
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            
             SpotLogger.log(LocationSelectionViewLogs.userSelectedLocation, details: ["placeName": locationData.placeName])
             onSelect(locationData)
         }) {
-            HStack(spacing: 12) {
-                Image("green_marker")
-                    .resizable()
-                    .frame(width: 20, height: 20)
+            HStack(spacing: 14) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Constants.Colors.accent.opacity(0.4))
+                        .frame(width: 44, height: 44)
+                    
+                    Image("green_marker")
+                        .resizable()
+                        .frame(width: 22, height: 22)
+                }
 
-                VStack(alignment: .leading, spacing: 2) {
+                // Info
+                VStack(alignment: .leading, spacing: 4) {
                     Text(item.name ?? "Unknown Location")
                         .font(FontManager.primaryText())
+                        .fontWeight(.medium)
                         .foregroundColor(Constants.Colors.primary)
+                        .lineLimit(1)
+                    
                     let city = item.placemark.locality
                     let state = item.placemark.administrativeArea
                     let country = item.placemark.country
@@ -462,17 +581,20 @@ struct NearbyPlaceRow: View {
                         Text(parts)
                             .font(.caption)
                             .foregroundColor(.gray)
+                            .lineLimit(1)
                     }
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.gray.opacity(0.5))
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.01))
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -489,19 +611,35 @@ struct LocationMapView: View {
     @State private var geocodeWorkItem: DispatchWorkItem?
     private let geocoder = CLGeocoder()
     @State private var isGeocoding = false
-    private let geocodeDebouncer = Debouncer(interval: 0.85)
+    private let geocodeDebouncer = Debouncer(interval: 0.5)
+    @State private var markerScale: CGFloat = 1.0
+    @State private var initialLocation: LocationData
+    @State private var hasUserMoved = false
 
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
         self.onConfirm = onConfirm
+        let optimalSpan = Self.calculateOptimalSpan(for: location)
         let region = MKCoordinateRegion(
             center: location.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            span: optimalSpan
         )
         _position = State(initialValue: .region(region))
         _draggedLocation = State(initialValue: location)
         _currentLocationName = State(initialValue: location.placeName)
+        _initialLocation = State(initialValue: location)
     }
+    
+    private static func calculateOptimalSpan(for location: LocationData) -> MKCoordinateSpan {
+        if location.isCustomName {
+            return MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+        } else if location.address?.contains(",") == true {
+            return MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+        } else {
+            return MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        }
+    }
+    
 
     var body: some View {
         NavigationStack {
@@ -513,6 +651,13 @@ struct LocationMapView: View {
                 // Debounced center updates while the map moves continuously
                 .onMapCameraChange(frequency: .continuous) { context in
                     let center = context.region.center
+                    hasUserMoved = true
+                    
+                    // Animate marker on drag
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        markerScale = 0.9
+                    }
+                    
                     // Move selection immediately (for UI), then reverse-geocode after debounce
                     draggedLocation = LocationData(
                         coordinate: center,
@@ -520,60 +665,107 @@ struct LocationMapView: View {
                         address: draggedLocation.address,
                         isCustomName: draggedLocation.isCustomName
                     )
-                    geocodeDebouncer.schedule { self.updateDraggedLocation(to: center) }
+                    geocodeDebouncer.schedule { 
+                        self.updateDraggedLocation(to: center)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                            markerScale = 1.0
+                        }
+                    }
                 }
                 .preferredColorScheme(.light)
                 // Center marker overlay (keeps marker fixed; map moves under it)
                 .overlay(alignment: .center) {
-                    Image("green_marker")
-                        .resizable()
-                        .frame(width: 40, height: 40)
-                        .offset(y: -20)
-                        .allowsHitTesting(false)
+                    ZStack {
+                        // Shadow for depth
+                        Circle()
+                            .fill(Color.black.opacity(0.2))
+                            .frame(width: 8, height: 8)
+                            .offset(y: 20)
+                            .blur(radius: 4)
+                        
+                        // Pin marker
+                        Image("green_marker")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .scaleEffect(markerScale)
+                            .offset(y: -20)
+                            .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    }
+                    .allowsHitTesting(false)
                 }
 
                 // Top “current name” chip
                 VStack {
-                    HStack {
-                        Image(systemName: "mappin.circle.fill")
-                            .foregroundColor(Constants.Colors.primary)
+                    HStack(spacing: 8) {
+                        if isGeocoding {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(Constants.Colors.primary)
+                        } else {
+                            Image(systemName: "mappin.circle.fill")
+                                .foregroundColor(Constants.Colors.primary)
+                        }
                         Text(currentLocationName)
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
                             .lineLimit(1)
                         Spacer()
+                        
+                        if hasUserMoved {
+                            Button(action: resetToInitial) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 12))
+                                    Text("Reset")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundColor(Constants.Colors.primary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.9))
-                    .cornerRadius(8)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.95))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
 
                     Spacer()
 
-                    // Confirm
-                    Button("Confirm Location") {
+                    // Confirm button with haptic feedback
+                    Button(action: {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
                         Task { await confirmWithUpsert() }
+                    }) {
+                        HStack {
+                            if isGeocoding {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            }
+                            Text(isGeocoding ? "Locating..." : "Confirm Location")
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Constants.Colors.primary)
+                        .cornerRadius(20)
+                        .shadow(color: Constants.Colors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                     .buttonStyle(PlainButtonStyle())
-                    .font(FontManager.buttonText())
-                    .foregroundColor(Constants.Colors.buttonText)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Constants.Colors.primary)
-                    .cornerRadius(20)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 32)
-                    // Always allow confirm; we'll upsert name later if geocode still running
 
                 }
-                // Handy built-in controls
+                // Map controls
                 .overlay(alignment: .topTrailing) {
                     VStack(spacing: 8) {
                         MapUserLocationButton()
                         MapCompass()
-                        MapPitchToggle()
                         MapScaleView()
                     }
                     .padding()
@@ -596,40 +788,41 @@ struct LocationMapView: View {
 
     // MARK: - Reverse geocode the new center (debounced)
     private func updateDraggedLocation(to newCenter: CLLocationCoordinate2D) {
-        geocodeWorkItem?.cancel(); geocoder.cancelGeocode()
+        geocodeWorkItem?.cancel()
+        geocoder.cancelGeocode()
         isGeocoding = true
-        let work = DispatchWorkItem { [newCenter] in
-            let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
-            self.geocoder.reverseGeocodeLocation(loc) { placemarks, error in
-                DispatchQueue.main.async {
-                    defer { self.isGeocoding = false }
-                    if let ns = error as NSError? {
-                        // Ignore cancellation and transient errors
-                        if ns.code == CLError.Code.network.rawValue || ns.code == CLError.Code.geocodeFoundNoResult.rawValue { }
+        
+        let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
+        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                defer { self.isGeocoding = false }
+                if let ns = error as NSError? {
+                    if ns.code != CLError.Code.network.rawValue && 
+                       ns.code != CLError.Code.geocodeFoundNoResult.rawValue &&
+                       ns.code != CLError.Code.geocodeCanceled.rawValue {
                         SpotLogger.log(LocationSelectionViewLogs.reverseGeocodeFailed, details: ["error": ns.localizedDescription])
-                        return
                     }
-                    guard let placemark = placemarks?.first else { return }
-                    let name = placemark.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let city = placemark.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let state = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let country = placemark.country?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
-                    let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
-                    let prettyName = (name?.isEmpty == false ? name! : (cityState.isEmpty ? self.draggedLocation.placeName : cityState))
-                    self.draggedLocation = LocationData(
-                        coordinate: newCenter,
-                        placeName: self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName,
-                        address: address.isEmpty ? nil : address,
-                        isCustomName: self.draggedLocation.isCustomName
-                    )
-                    self.currentLocationName = prettyName
+                    return
                 }
+                guard let placemark = placemarks?.first else { return }
+                let name = placemark.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let city = placemark.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let state = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let country = placemark.country?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
+                let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
+                let prettyName = (name?.isEmpty == false ? name! : (cityState.isEmpty ? self.draggedLocation.placeName : cityState))
+                
+                self.draggedLocation = LocationData(
+                    coordinate: newCenter,
+                    placeName: self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName,
+                    address: address.isEmpty ? nil : address,
+                    isCustomName: self.draggedLocation.isCustomName
+                )
+                self.currentLocationName = self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName
             }
         }
-        geocodeWorkItem = work
-        // Debounced reverse geocode after user pauses
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: work)
     }
 
     // MARK: - Upsert custom place before returning
@@ -645,6 +838,24 @@ struct LocationMapView: View {
             }
         }
         onConfirm(selected)
+    }
+    
+    // MARK: - Reset to initial location
+    private func resetToInitial() {
+        withAnimation {
+            let optimalSpan = Self.calculateOptimalSpan(for: initialLocation)
+            let region = MKCoordinateRegion(
+                center: initialLocation.coordinate,
+                span: optimalSpan
+            )
+            position = .region(region)
+            draggedLocation = initialLocation
+            currentLocationName = initialLocation.placeName
+            hasUserMoved = false
+        }
+        
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
     }
 }
 
