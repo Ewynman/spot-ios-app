@@ -153,11 +153,32 @@ struct PaywallView: View {
                     Spacer()
 
                     VStack(spacing: 10) {
-                        Text("Subscription automatically renews unless canceled at least 24 hours before the end of the current period.")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
+                        VStack(spacing: 8) {
+                            Text("• Payment will be charged to your iTunes Account at confirmation of purchase")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("• Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("• Your account will be charged for renewal within 24 hours prior to the end of the current period")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("• Subscriptions may be managed and auto-renewal may be turned off by going to your Account Settings after purchase")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 20)
 
                         HStack(spacing: 10) {
                             Button("Terms of Use (EULA)") {
@@ -197,13 +218,30 @@ struct PaywallView: View {
                         .opacity(isPurchaseDisabled ? 0.6 : 1)
                         .padding(.top, 8)
 
-                        Button(action: restorePurchases) {
-                            Text(subscriptionManager.isRestoring ? "Restoring…" : "Restore purchases")
-                                .font(FontManager.primaryText())
-                                .foregroundColor(Constants.Colors.primary)
+                        HStack(spacing: 16) {
+                            Button(action: restorePurchases) {
+                                Text(subscriptionManager.isRestoring ? "Restoring…" : "Restore Purchases")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isStoreBusy)
+                            .accessibilityIdentifier("paywall.restorePurchasesButton")
+                            
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            
+                            Button(action: openManageSubscriptions) {
+                                Text("Manage")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Constants.Colors.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("paywall.manageButton")
                         }
-                        .buttonStyle(.plain)
-                        .disabled(isStoreBusy)
                         .padding(.top, 2)
                     }
                     .padding(.horizontal, 16)
@@ -330,6 +368,16 @@ struct PaywallView: View {
 
     private func openURL(_ url: URL) {
         UIApplication.shared.open(url)
+    }
+    
+    private func openManageSubscriptions() {
+        Task {
+            do {
+                try await subscriptionManager.manageSubscriptions()
+            } catch {
+                SpotLogger.log(PaywallViewLogs.manageSubscriptionsFailed, details: ["error": error.localizedDescription])
+            }
+        }
     }
 }
 

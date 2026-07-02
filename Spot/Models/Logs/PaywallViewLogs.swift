@@ -14,6 +14,7 @@ enum PaywallViewLogs: SpotLog {
     case purchaseFailed
     case restoreStarted
     case restoreFailed
+    case manageSubscriptionsFailed
 
     var tag: String { "PaywallView" }
     var level: LogLevel {
@@ -24,6 +25,7 @@ enum PaywallViewLogs: SpotLog {
         case .purchaseFailed: return .error
         case .restoreStarted: return .info
         case .restoreFailed: return .error
+        case .manageSubscriptionsFailed: return .error
         }
     }
     var message: String {
@@ -34,6 +36,7 @@ enum PaywallViewLogs: SpotLog {
         case .purchaseFailed: return "Purchase failed"
         case .restoreStarted: return "User started App Store restore"
         case .restoreFailed: return "Restore failed"
+        case .manageSubscriptionsFailed: return "Manage subscriptions failed"
         }
     }
 }

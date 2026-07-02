@@ -54,6 +54,6 @@ struct SpotUnavailableView: View {
 
 #Preview {
     SpotUnavailableView {
-        print("Dismiss tapped")
+        // Preview dismiss action
     }
 }
