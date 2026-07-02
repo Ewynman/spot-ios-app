@@ -37,8 +37,8 @@ enum TokenServiceLogs: SpotLog {
         case .clearedStoredTokens: return "Cleared stored tokens"
         case .noAuthenticatedUser: return "No authenticated user"
         case .failedToGetIdToken: return "Failed to get ID token"
-        case .noTokenReceived: return "No token received from Firebase"
-        case .gotFreshToken: return "Got fresh token from Firebase"
+        case .noTokenReceived: return "No token received from Supabase Auth"
+        case .gotFreshToken: return "Got fresh token from Supabase Auth"
         case .failedToSaveToKeychain: return "Failed to save to keychain"
         }
     }

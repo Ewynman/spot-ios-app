@@ -126,7 +126,7 @@ class ImageService {
         }
 
         // For now, return nil to indicate conversion needed
-        // In production, you'd implement Firebase Storage download URL conversion
+        // Legacy gs:// URLs are not used by the Supabase signed-URL pipeline.
         SpotLogger.log(ImageServiceLogs.gsUrlConversionNeeded, details: ["gsUrl": gsUrl])
         return nil
     }

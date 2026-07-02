@@ -18,8 +18,7 @@ enum RemoteImagePhase {
     case failure(RemoteImageFailure)
 }
 
-/// A lightweight async image loader that exposes HTTP status code (via `HTTPURLResponse`) on failures.
-/// This is useful for debugging Firebase Storage URL issues where `AsyncImage` does not provide the status code.
+/// Async image loader that exposes HTTP status on failures (useful for debugging signed Supabase Storage URLs).
 struct RemoteImage<Content: View>: View {
     private let url: URL
     private let scale: CGFloat

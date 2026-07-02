@@ -67,11 +67,11 @@ See [docs/engineering/testing.md](docs/engineering/testing.md) for philosophy an
 - **Index:** [docs/README.md](docs/README.md) — product, engineering, diagrams, operations, and suggested reading paths.
 - **Architecture:** [docs/engineering/architecture.md](docs/engineering/architecture.md)
 - **Local setup:** [docs/engineering/local-setup.md](docs/engineering/local-setup.md)
-- **RLS / security:** [docs/engineering/database-and-rls.md](docs/engineering/database-and-rls.md), [docs/engineering/networking-and-auth.md](docs/engineering/networking-and-auth.md)
+- **RLS / security:** [docs/engineering/database-and-rls.md](docs/engineering/database-and-rls.md), [docs/engineering/data-plane.md](docs/engineering/data-plane.md), [docs/engineering/networking-and-auth.md](docs/engineering/networking-and-auth.md)
 
 ## Security and safety
 
-Authentication and **Row Level Security (RLS)** on Supabase are authoritative for data access. **Image moderation** is required for Spot and profile media. See the engineering docs above and [docs/engineering/image-moderation.md](docs/engineering/image-moderation.md). Operational response: [docs/operations/incident-response.md](docs/operations/incident-response.md).
+Authentication and **Row Level Security (RLS)** on Supabase are authoritative for data access. **Image moderation** is required for Spot and profile media. The app **does not** use Firebase Firestore or Firebase Storage for user or spot data ([docs/engineering/data-plane.md](docs/engineering/data-plane.md)). See [docs/engineering/image-moderation.md](docs/engineering/image-moderation.md). Operational response: [docs/operations/incident-response.md](docs/operations/incident-response.md).
 
 ## Universal Links
 

@@ -20,6 +20,7 @@ Team policy for this repository.
 - **User flow** change (auth, onboarding, post, map, paywall).
 - **Database schema** or RPC behavior change.
 - **RLS** or storage policy change.
+- **Data plane** change (must stay Supabase-only; update [data-plane.md](../engineering/data-plane.md) if allowlists change).
 - **Subscription** behavior, product IDs, or paywall entry points change.
 - **Universal Link** routes, domains, or AASA format change.
 - **Environment variable** or Info.plist config keys change.
@@ -32,6 +33,7 @@ Team policy for this repository.
 - [ ] Mermaid diagrams updated if the flow changed (`docs/diagrams/`).
 - [ ] `docs/README.md` index updated if adding a new top-level page.
 - [ ] Root `README.md` updated if quick start or schemes changed.
+- [ ] No reintroduction of Firebase Firestore/Storage auth data plane (see [data-plane.md](../engineering/data-plane.md); `DataPlaneGuardTests` must pass).
 
 ### How to add diagrams
 

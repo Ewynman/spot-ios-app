@@ -18,6 +18,8 @@ Client: `Spot/Supabase/Supabase.swift`, `SpotSupabaseRepository`. Schema evoluti
 
 Supabase is the **primary backend**: authentication, relational data for users/spots/social graph, storage for images, and RPCs such as **`get_home_feed_v1`** and **`publish_spot_with_approved_media_assets_v1`**.
 
+**Policy:** Firebase must not be used for the application data plane. See [data-plane.md](data-plane.md).
+
 ### Auth
 
 Supabase Auth issues JWTs consumed by the Swift client; `public.users` and related tables tie profiles to `auth.users`.
@@ -51,6 +53,7 @@ Cursor may use Supabase MCP for migrations in some workflows; production changes
 
 ## Related docs
 
+- [data-plane.md](data-plane.md)
 - [database-and-rls.md](database-and-rls.md)
 - [storage-and-media.md](storage-and-media.md)
 - [image-moderation.md](image-moderation.md)

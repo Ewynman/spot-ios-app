@@ -10,7 +10,7 @@ Engineers and Cursor agents onboarding to the repo.
 
 ## Current status
 
-Matches SwiftUI + services layout under `Spot/` and Supabase as the primary data plane; Firebase used for analytics/crash/app-check (see `AppDelegate` / project rules).
+Matches SwiftUI + services layout under `Spot/` and **Supabase as the sole application data plane**; Firebase limited to analytics/crash/app-check (see `docs/engineering/data-plane.md` and `AppDelegate`).
 
 ## Details
 
@@ -50,6 +50,16 @@ View → ViewModel → Service/Repository → Supabase client → Postgres/Stora
 ### Auth flow
 
 `AuthService` + Supabase Auth session; `SpotAuthBridge` exposes current user id for gates (e.g. deep links). See [networking-and-auth.md](networking-and-auth.md).
+
+### Posting (canonical modules)
+
+| Module | Role |
+| --- | --- |
+| `PostFlowViewModel` | Composer state; builds `SpotPublishDraft` |
+| `SpotPublishCoordinator` | Background publish queue, banners, success/failure notifications |
+| `SpotSupabaseRepository` | Storage upload, moderation, `publish_spot_with_approved_media_assets_v1` RPC |
+
+**Do not add** `SpotUploader` or Firestore/Firebase Storage upload paths. See [data-plane.md](data-plane.md).
 
 ### Media / storage flow
 

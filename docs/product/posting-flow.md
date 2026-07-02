@@ -10,7 +10,7 @@ Product, engineering, support.
 
 ## Current status
 
-Publishing path uses Supabase: pending image upload, Edge Function moderation, RPC `publish_spot_with_approved_media_assets_v1` (see `SpotSupabaseRepository` and `supabase/migrations/20260504100000_image_moderation_azure_v1.sql`).
+Publishing path uses Supabase only: `PostFlowViewModel` → `SpotPublishCoordinator` → `SpotSupabaseRepository.publishSpotFromDraft` (pending Storage upload, Edge Function moderation, RPC `publish_spot_with_approved_media_assets_v1`). See [../engineering/data-plane.md](../engineering/data-plane.md).
 
 ## Details
 
@@ -58,13 +58,14 @@ flowchart TD
   D --> E[Select or confirm location]
   E --> F[Add vibe tags and details]
   F --> G{User action}
-  G -->|Save draft| H[Persist draft locally or remotely]
-  G -->|Publish| I[Moderate every image]
-  I --> J{Approved?}
-  J -->|No| K[Show blocked reason and do not publish]
-  J -->|Yes| L[Upload media]
-  L --> M[Create Spot record in Supabase]
-  M --> N[Show success state]
+  G -->|Save draft| H[Persist draft locally]
+  G -->|Publish| I[SpotPublishCoordinator enqueue]
+  I --> J[Upload to Supabase pending_images]
+  J --> K[Edge Function moderate-image]
+  K --> L{Approved?}
+  L -->|No| M[Show blocked reason]
+  L -->|Yes| N[RPC publish_spot_with_approved_media_assets_v1]
+  N --> O[Show success / feed update]
 ```
 
 ## Related docs
