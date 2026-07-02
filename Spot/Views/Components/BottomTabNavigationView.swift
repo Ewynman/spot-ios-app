@@ -159,7 +159,7 @@ struct BottomTabNavigationView: View {
                 targetRect: currentTourTargetRect,
                 onPrimary: handleOnboardingPrimaryAction,
                 onBack: handleOnboardingBack,
-                onSkip: firstRunOnboarding.skip
+                onSkip: handleOnboardingSkip
             )
         }
         .onPreferenceChange(CoachFramesPrefKey.self) { coachFrames = $0 }
@@ -267,6 +267,15 @@ struct BottomTabNavigationView: View {
         showNotificationPermissionPrompt = true
     }
 
+    private func handleOnboardingSkip() {
+        firstRunOnboarding.skip()
+        // After onboarding is skipped, request notification permissions
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            requestNotificationPermissionsAfterOnboarding()
+        }
+    }
+    
     private func handleOnboardingBack() {
         if firstRunOnboarding.currentStep == .mapTab {
             selectedTab = 0

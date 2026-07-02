@@ -11,11 +11,13 @@ Spot implements a local notification system for social events, specifically foll
 
 ### Permission Request Flow
 
-1. User completes the first-run onboarding tour (all steps through `.finale`)
+1. User completes the first-run onboarding tour (all steps through `.finale`) **OR** skips the tour
 2. After 600ms delay, `BottomTabNavigationView` checks notification permission status
 3. If status is `.notDetermined`, presents `NotificationPermissionView` sheet
 4. User grants or denies permissions through the system dialog
 5. Permission status is tracked in `PermissionManager.notificationStatus`
+
+**Important**: Notification permissions are requested regardless of whether the user completes or skips onboarding, ensuring all users have the opportunity to enable notifications.
 
 ### Notification Service
 
@@ -195,10 +197,17 @@ Navigation events are posted via `NotificationCenter.default.post()`. Consumers 
 
 ### Manual Testing
 
-1. **Permission Grant**:
+1. **Permission Grant After Completing Onboarding**:
    - Sign up for a new account
    - Complete onboarding tour through all steps
    - After finale, notification permission sheet should appear
+   - Grant permissions → verify `PermissionManager.notificationStatus == .authorized`
+
+2. **Permission Grant After Skipping Onboarding**:
+   - Sign up for a new account
+   - Start onboarding tour
+   - Tap "Skip" button on any step
+   - After 600ms, notification permission sheet should appear
    - Grant permissions → verify `PermissionManager.notificationStatus == .authorized`
 
 2. **Follow Request Accepted Notification**:
