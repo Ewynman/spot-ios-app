@@ -28,6 +28,7 @@ enum MapViewLogs: SpotLog {
     case freshLocationReceived
     case locationUpdateApplied
     case locationUpdateSkipped
+    case memorySnapshot
 
     var tag: String { "MapView" }
     var level: LogLevel {
@@ -50,6 +51,7 @@ enum MapViewLogs: SpotLog {
         case .freshLocationReceived: return .info
         case .locationUpdateApplied: return .info
         case .locationUpdateSkipped: return .debug
+        case .memorySnapshot: return .debug
         }
     }
     var message: String {
@@ -72,6 +74,7 @@ enum MapViewLogs: SpotLog {
         case .freshLocationReceived: return "Map received fresh location update"
         case .locationUpdateApplied: return "Map applied fresh location update and re-centered"
         case .locationUpdateSkipped: return "Map skipped location update (minor change or user moved map)"
+        case .memorySnapshot: return "Memory snapshot (DEBUG only)"
         }
     }
 }
