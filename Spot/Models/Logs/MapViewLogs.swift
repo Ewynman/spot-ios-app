@@ -24,6 +24,10 @@ enum MapViewLogs: SpotLog {
     case visibleSpotsTrimmed
     case mapDrawerDismissed
     case mapSpotSwitchAnimated
+    case freshLocationRequested
+    case freshLocationReceived
+    case locationUpdateApplied
+    case locationUpdateSkipped
     case memorySnapshot
 
     var tag: String { "MapView" }
@@ -43,6 +47,10 @@ enum MapViewLogs: SpotLog {
         case .visibleSpotsTrimmed: return .debug
         case .mapDrawerDismissed: return .debug
         case .mapSpotSwitchAnimated: return .debug
+        case .freshLocationRequested: return .info
+        case .freshLocationReceived: return .info
+        case .locationUpdateApplied: return .info
+        case .locationUpdateSkipped: return .debug
         case .memorySnapshot: return .debug
         }
     }
@@ -62,6 +70,10 @@ enum MapViewLogs: SpotLog {
         case .visibleSpotsTrimmed: return "Map visibleSpots trimmed to viewport cap"
         case .mapDrawerDismissed: return "Map drawer dismissed"
         case .mapSpotSwitchAnimated: return "Map drawer spot switch (animated)"
+        case .freshLocationRequested: return "Map requested fresh location on appear"
+        case .freshLocationReceived: return "Map received fresh location update"
+        case .locationUpdateApplied: return "Map applied fresh location update and re-centered"
+        case .locationUpdateSkipped: return "Map skipped location update (minor change or user moved map)"
         case .memorySnapshot: return "Memory snapshot (DEBUG only)"
         }
     }
