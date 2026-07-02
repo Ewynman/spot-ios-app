@@ -35,7 +35,7 @@ enum MemoryDebugLogger {
             details["residentBytes"] = bytes
         }
         for (k, v) in extra { details[k] = v }
-        SpotLogger.log(MapViewLogs.mapAppeared, details: details)
+        SpotLogger.log(MapViewLogs.memorySnapshot, details: details)
         #else
         _ = tag
         _ = extra
