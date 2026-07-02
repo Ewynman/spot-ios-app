@@ -65,32 +65,36 @@ final class SupabaseUserService {
         let localeId = Locale.current.identifier
         let emailVerified = user.emailConfirmedAt != nil
 
-        struct UserUpsert: Encodable {
-            let id: UUID
-            let email: String?
-            let email_verified: Bool
-            let username: String
-            let username_lower: String
-            let is_private: Bool
-            let last_active_at: String
-            let locale: String
+        // Write via the `sync_current_user_v1` SECURITY DEFINER RPC rather than a
+        // direct PostgREST upsert. The `authenticated` role only has
+        // column-scoped UPDATE on public.users (everything except `id`), so an
+        // `INSERT ... ON CONFLICT (id) DO UPDATE SET id = excluded.id, ...`
+        // upsert is denied for existing rows (SQLSTATE 42501). The RPC derives
+        // the id from auth.uid() server-side and only ever writes the caller's
+        // own row. See migration 20260702120000_sync_current_user_security_definer_v1.
+        struct SyncParams: Encodable {
+            let p_username: String
+            let p_username_lower: String
+            let p_email: String?
+            let p_email_verified: Bool
+            let p_is_private: Bool
+            let p_locale: String
+            let p_last_active_at: String
         }
 
-        let payload = UserUpsert(
-            id: user.id,
-            email: user.email,
-            email_verified: emailVerified,
-            username: username,
-            username_lower: usernameLower,
-            is_private: isPrivate,
-            last_active_at: nowString,
-            locale: localeId
+        let params = SyncParams(
+            p_username: username,
+            p_username_lower: usernameLower,
+            p_email: user.email,
+            p_email_verified: emailVerified,
+            p_is_private: isPrivate,
+            p_locale: localeId,
+            p_last_active_at: nowString
         )
 
         do {
             try await supabase
-                .from("users")
-                .upsert(payload, onConflict: "id")
+                .rpc("sync_current_user_v1", params: params)
                 .execute()
             SpotLogger.log(SupabaseUserServiceLogs.syncSucceeded, details: ["uid": user.id.uuidString])
         } catch {

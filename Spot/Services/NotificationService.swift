@@ -181,13 +181,27 @@ final class NotificationService: NSObject, ObservableObject {
 
 // MARK: - Logging
 
-enum NotificationServiceLogs: String, CaseIterable, SpotLogType {
-    case notificationSent = "notification_sent"
-    case notificationFailed = "notification_failed"
-    case notificationSkippedNotAuthorized = "notification_skipped_not_authorized"
-    case notificationActionHandled = "notification_action_handled"
-    
-    var category: SpotLogCategory {
-        .feature
+enum NotificationServiceLogs: SpotLog {
+    case notificationSent
+    case notificationFailed
+    case notificationSkippedNotAuthorized
+    case notificationActionHandled
+
+    var tag: String { "NotificationService" }
+
+    var level: LogLevel {
+        switch self {
+        case .notificationFailed: return .error
+        case .notificationSent, .notificationSkippedNotAuthorized, .notificationActionHandled: return .info
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .notificationSent: return "Local notification sent"
+        case .notificationFailed: return "Local notification failed"
+        case .notificationSkippedNotAuthorized: return "Notification skipped: not authorized"
+        case .notificationActionHandled: return "Notification action handled"
+        }
     }
 }
