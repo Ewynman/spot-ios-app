@@ -15,7 +15,7 @@ class AuthService {
     // MARK: - Sign Up with Email-in-Use Handling
 
     func signUp(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
-        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
+        let cleanEmail = AuthInputNormalizer.normalizeEmailLegacy(email)
         Task {
             do {
                 _ = try await supabase.auth.signUp(email: cleanEmail, password: password)
@@ -38,7 +38,7 @@ class AuthService {
     // MARK: - Sign In
 
     func signIn(email: String, password: String, completion: @escaping (Result<AuthResult, Error>) -> Void) {
-        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
+        let cleanEmail = AuthInputNormalizer.normalizeEmailLegacy(email)
         Task {
             do {
                 _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
@@ -52,7 +52,7 @@ class AuthService {
     // MARK: - Password Reset
 
     func resetPassword(email: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
+        let cleanEmail = AuthInputNormalizer.normalizeEmailLegacy(email)
         Task {
             do {
                 try await supabase.auth.resetPasswordForEmail(cleanEmail)
@@ -126,8 +126,8 @@ class AuthService {
 
     /// Completion-style sign up used by existing UI
     func signUp(email: String, password: String, username: String, profileImageURL: String, isPrivate: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
-        let cleanUsername = AuthInputNormalizer.normalizeUsername(username)
+        let cleanEmail = AuthInputNormalizer.normalizeEmailLegacy(email)
+        let cleanUsername = AuthInputNormalizer.normalizeUsernameLegacy(username)
         Task {
             do {
                 _ = try await supabase.auth.signUp(
@@ -154,7 +154,7 @@ class AuthService {
 
     /// Completion-style sign in used by existing UI
     func signIn(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        let cleanEmail = AuthInputNormalizer.normalizeEmail(email)
+        let cleanEmail = AuthInputNormalizer.normalizeEmailLegacy(email)
         Task {
             do {
                 _ = try await supabase.auth.signIn(email: cleanEmail, password: password)
@@ -173,7 +173,7 @@ class AuthService {
             do {
                 let emailToUse: String
                 if cleanIdentifier.contains("@") {
-                    emailToUse = AuthInputNormalizer.normalizeEmail(cleanIdentifier)
+                    emailToUse = AuthInputNormalizer.normalizeEmailLegacy(cleanIdentifier)
                 } else {
                     guard let resolved = try await resolveEmail(forUsername: cleanIdentifier) else {
                         throw NSError(
@@ -193,7 +193,7 @@ class AuthService {
     }
 
     private func resolveEmail(forUsername username: String) async throws -> String? {
-        let normalized = AuthInputNormalizer.normalizeUsernameLower(username)
+        let normalized = AuthInputNormalizer.normalizeUsernameLowerLegacy(username)
         guard !normalized.isEmpty else { return nil }
         struct Params: Encodable { let p_username: String }
         let email: String? = try await supabase
@@ -201,7 +201,7 @@ class AuthService {
             .execute()
             .value
         if let email, !email.isEmpty {
-            return AuthInputNormalizer.normalizeEmail(email)
+            return AuthInputNormalizer.normalizeEmailLegacy(email)
         }
         return nil
     }

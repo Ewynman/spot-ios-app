@@ -13,7 +13,7 @@ final class ProfilePictureUploader {
             completion(.failure(NSError(domain: "ProfilePictureUploader", code: 400, userInfo: [NSLocalizedDescriptionKey: "Image conversion failed."])) )
             return
         }
-        guard let userUUID = UUID(uuidString: uid) else {
+        guard let userUUID = InputValidation.parseUUID(uid, context: "ProfilePictureUploader.signup") else {
             completion(.failure(NSError(domain: "ProfilePictureUploader", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user id"])) )
             return
         }

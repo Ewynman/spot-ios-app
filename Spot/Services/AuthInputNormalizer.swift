@@ -16,20 +16,53 @@ enum AuthInputNormalizer {
     /// Normalizes user-entered email by trimming surrounding whitespace and
     /// lowercasing. Supabase treats emails case-insensitively but persists the
     /// exact casing it receives, so callers should always normalize first.
-    static func normalizeEmail(_ raw: String) -> String {
+    /// Throws if email fails validation.
+    static func normalizeEmail(_ raw: String) throws -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        if let error = InputValidation.validateEmail(trimmed) {
+            throw NSError(domain: "AuthInputNormalizer", code: 400, userInfo: [NSLocalizedDescriptionKey: error])
+        }
+        
+        return trimmed
+    }
+    
+    /// Legacy non-throwing variant for backward compatibility.
+    /// Use the throwing variant in new code.
+    static func normalizeEmailLegacy(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     /// Trims user-entered username without changing case. Username casing is
     /// preserved for display, while `username_lower` is computed separately
     /// for case-insensitive uniqueness checks.
-    static func normalizeUsername(_ raw: String) -> String {
+    /// Throws if username fails validation.
+    static func normalizeUsername(_ raw: String) throws -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if let error = InputValidation.validateUsername(trimmed) {
+            throw NSError(domain: "AuthInputNormalizer", code: 400, userInfo: [NSLocalizedDescriptionKey: error])
+        }
+        
+        return trimmed
+    }
+    
+    /// Legacy non-throwing variant for backward compatibility.
+    /// Use the throwing variant in new code.
+    static func normalizeUsernameLegacy(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Lowercased copy of a normalized username for case-insensitive lookups.
-    static func normalizeUsernameLower(_ raw: String) -> String {
-        normalizeUsername(raw).lowercased()
+    /// Throws if username fails validation.
+    static func normalizeUsernameLower(_ raw: String) throws -> String {
+        try normalizeUsername(raw).lowercased()
+    }
+    
+    /// Legacy non-throwing variant for backward compatibility.
+    /// Use the throwing variant in new code.
+    static func normalizeUsernameLowerLegacy(_ raw: String) -> String {
+        normalizeUsernameLegacy(raw).lowercased()
     }
 }
 
