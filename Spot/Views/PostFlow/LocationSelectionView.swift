@@ -489,18 +489,42 @@ struct LocationMapView: View {
     @State private var geocodeWorkItem: DispatchWorkItem?
     private let geocoder = CLGeocoder()
     @State private var isGeocoding = false
-    private let geocodeDebouncer = Debouncer(interval: 0.85)
+    private let geocodeDebouncer = Debouncer(interval: 0.5)
+    @State private var showAccuracyCircle = true
+    @State private var accuracyRadius: CLLocationDistance = 50
+    @State private var markerScale: CGFloat = 1.0
+    @State private var initialLocation: LocationData
+    @State private var hasUserMoved = false
+    @State private var currentZoomLevel: Double = 0.01
 
     init(location: LocationData, onConfirm: @escaping (LocationData) -> Void) {
         self.location = location
         self.onConfirm = onConfirm
+        let optimalSpan = Self.calculateOptimalSpan(for: location)
         let region = MKCoordinateRegion(
             center: location.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            span: optimalSpan
         )
         _position = State(initialValue: .region(region))
         _draggedLocation = State(initialValue: location)
         _currentLocationName = State(initialValue: location.placeName)
+        _initialLocation = State(initialValue: location)
+        _currentZoomLevel = State(initialValue: optimalSpan.latitudeDelta)
+        _accuracyRadius = State(initialValue: Self.calculateAccuracyRadius(for: optimalSpan.latitudeDelta))
+    }
+    
+    private static func calculateOptimalSpan(for location: LocationData) -> MKCoordinateSpan {
+        if location.isCustomName {
+            return MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+        } else if location.address?.contains(",") == true {
+            return MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+        } else {
+            return MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        }
+    }
+    
+    private static func calculateAccuracyRadius(for latitudeDelta: Double) -> CLLocationDistance {
+        return max(25, min(100, latitudeDelta * 5000))
     }
 
     var body: some View {
@@ -509,10 +533,26 @@ struct LocationMapView: View {
                 Map(position: $position) {
                     // Blue dot (appears when permission granted)
                     UserAnnotation()
+                    
+                    // Accuracy circle overlay
+                    if showAccuracyCircle {
+                        MapCircle(center: draggedLocation.coordinate, radius: accuracyRadius)
+                            .foregroundStyle(Constants.Colors.primary.opacity(0.15))
+                            .stroke(Constants.Colors.primary.opacity(0.3), lineWidth: 2)
+                    }
                 }
                 // Debounced center updates while the map moves continuously
                 .onMapCameraChange(frequency: .continuous) { context in
                     let center = context.region.center
+                    hasUserMoved = true
+                    currentZoomLevel = context.region.span.latitudeDelta
+                    accuracyRadius = Self.calculateAccuracyRadius(for: currentZoomLevel)
+                    
+                    // Animate marker on drag
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        markerScale = 0.9
+                    }
+                    
                     // Move selection immediately (for UI), then reverse-geocode after debounce
                     draggedLocation = LocationData(
                         coordinate: center,
@@ -520,60 +560,138 @@ struct LocationMapView: View {
                         address: draggedLocation.address,
                         isCustomName: draggedLocation.isCustomName
                     )
-                    geocodeDebouncer.schedule { self.updateDraggedLocation(to: center) }
+                    geocodeDebouncer.schedule { 
+                        self.updateDraggedLocation(to: center)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                            markerScale = 1.0
+                        }
+                    }
                 }
                 .preferredColorScheme(.light)
                 // Center marker overlay (keeps marker fixed; map moves under it)
                 .overlay(alignment: .center) {
-                    Image("green_marker")
-                        .resizable()
-                        .frame(width: 40, height: 40)
-                        .offset(y: -20)
-                        .allowsHitTesting(false)
+                    ZStack {
+                        // Shadow for depth
+                        Circle()
+                            .fill(Color.black.opacity(0.2))
+                            .frame(width: 8, height: 8)
+                            .offset(y: 20)
+                            .blur(radius: 4)
+                        
+                        // Pin marker
+                        Image("green_marker")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .scaleEffect(markerScale)
+                            .offset(y: -20)
+                            .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    }
+                    .allowsHitTesting(false)
                 }
 
                 // Top “current name” chip
                 VStack {
-                    HStack {
-                        Image(systemName: "mappin.circle.fill")
-                            .foregroundColor(Constants.Colors.primary)
+                    HStack(spacing: 8) {
+                        if isGeocoding {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(Constants.Colors.primary)
+                        } else {
+                            Image(systemName: "mappin.circle.fill")
+                                .foregroundColor(Constants.Colors.primary)
+                        }
                         Text(currentLocationName)
                             .font(FontManager.primaryText())
                             .foregroundColor(Constants.Colors.primary)
                             .lineLimit(1)
                         Spacer()
+                        
+                        if hasUserMoved {
+                            Button(action: resetToInitial) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 12))
+                                    Text("Reset")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundColor(Constants.Colors.primary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.9))
-                    .cornerRadius(8)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.95))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
+                    
+                    // Zoom level indicator
+                    HStack(spacing: 6) {
+                        Image(systemName: "circle.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(Constants.Colors.primary.opacity(0.7))
+                        Text(precisionText)
+                            .font(.caption2)
+                            .foregroundColor(Constants.Colors.primary.opacity(0.7))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(8)
+                    .padding(.top, 8)
 
                     Spacer()
 
-                    // Confirm
-                    Button("Confirm Location") {
+                    // Confirm button with haptic feedback
+                    Button(action: {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
                         Task { await confirmWithUpsert() }
+                    }) {
+                        HStack {
+                            if isGeocoding {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            }
+                            Text(isGeocoding ? "Locating..." : "Confirm Location")
+                                .font(FontManager.buttonText())
+                                .foregroundColor(Constants.Colors.buttonText)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Constants.Colors.primary)
+                        .cornerRadius(20)
+                        .shadow(color: Constants.Colors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                     .buttonStyle(PlainButtonStyle())
-                    .font(FontManager.buttonText())
-                    .foregroundColor(Constants.Colors.buttonText)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Constants.Colors.primary)
-                    .cornerRadius(20)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 32)
-                    // Always allow confirm; we'll upsert name later if geocode still running
 
                 }
-                // Handy built-in controls
+                // Map controls
                 .overlay(alignment: .topTrailing) {
                     VStack(spacing: 8) {
                         MapUserLocationButton()
                         MapCompass()
-                        MapPitchToggle()
+                        
+                        Button(action: {
+                            withAnimation {
+                                showAccuracyCircle.toggle()
+                            }
+                        }) {
+                            Image(systemName: showAccuracyCircle ? "circle.fill" : "circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(Constants.Colors.primary)
+                                .frame(width: 40, height: 40)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .shadow(radius: 2)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
                         MapScaleView()
                     }
                     .padding()
@@ -596,40 +714,41 @@ struct LocationMapView: View {
 
     // MARK: - Reverse geocode the new center (debounced)
     private func updateDraggedLocation(to newCenter: CLLocationCoordinate2D) {
-        geocodeWorkItem?.cancel(); geocoder.cancelGeocode()
+        geocodeWorkItem?.cancel()
+        geocoder.cancelGeocode()
         isGeocoding = true
-        let work = DispatchWorkItem { [newCenter] in
-            let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
-            self.geocoder.reverseGeocodeLocation(loc) { placemarks, error in
-                DispatchQueue.main.async {
-                    defer { self.isGeocoding = false }
-                    if let ns = error as NSError? {
-                        // Ignore cancellation and transient errors
-                        if ns.code == CLError.Code.network.rawValue || ns.code == CLError.Code.geocodeFoundNoResult.rawValue { }
+        
+        let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
+        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                defer { self.isGeocoding = false }
+                if let ns = error as NSError? {
+                    if ns.code != CLError.Code.network.rawValue && 
+                       ns.code != CLError.Code.geocodeFoundNoResult.rawValue &&
+                       ns.code != CLError.Code.geocodeCanceled.rawValue {
                         SpotLogger.log(LocationSelectionViewLogs.reverseGeocodeFailed, details: ["error": ns.localizedDescription])
-                        return
                     }
-                    guard let placemark = placemarks?.first else { return }
-                    let name = placemark.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let city = placemark.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let state = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let country = placemark.country?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
-                    let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
-                    let prettyName = (name?.isEmpty == false ? name! : (cityState.isEmpty ? self.draggedLocation.placeName : cityState))
-                    self.draggedLocation = LocationData(
-                        coordinate: newCenter,
-                        placeName: self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName,
-                        address: address.isEmpty ? nil : address,
-                        isCustomName: self.draggedLocation.isCustomName
-                    )
-                    self.currentLocationName = prettyName
+                    return
                 }
+                guard let placemark = placemarks?.first else { return }
+                let name = placemark.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let city = placemark.locality?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let state = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let country = placemark.country?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let cityState = [city, state].compactMap { $0 }.joined(separator: ", ")
+                let address = [city, state, country].compactMap { $0 }.joined(separator: ", ")
+                let prettyName = (name?.isEmpty == false ? name! : (cityState.isEmpty ? self.draggedLocation.placeName : cityState))
+                
+                self.draggedLocation = LocationData(
+                    coordinate: newCenter,
+                    placeName: self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName,
+                    address: address.isEmpty ? nil : address,
+                    isCustomName: self.draggedLocation.isCustomName
+                )
+                self.currentLocationName = self.draggedLocation.isCustomName ? self.draggedLocation.placeName : prettyName
             }
         }
-        geocodeWorkItem = work
-        // Debounced reverse geocode after user pauses
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: work)
     }
 
     // MARK: - Upsert custom place before returning
@@ -645,6 +764,38 @@ struct LocationMapView: View {
             }
         }
         onConfirm(selected)
+    }
+    
+    // MARK: - Reset to initial location
+    private func resetToInitial() {
+        withAnimation {
+            let region = MKCoordinateRegion(
+                center: initialLocation.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: currentZoomLevel, longitudeDelta: currentZoomLevel)
+            )
+            position = .region(region)
+            draggedLocation = initialLocation
+            currentLocationName = initialLocation.placeName
+            hasUserMoved = false
+        }
+        
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+    }
+    
+    // MARK: - Precision text based on zoom level
+    private var precisionText: String {
+        if currentZoomLevel < 0.002 {
+            return "Very Precise (~25m)"
+        } else if currentZoomLevel < 0.005 {
+            return "Precise (~50m)"
+        } else if currentZoomLevel < 0.01 {
+            return "Accurate (~100m)"
+        } else if currentZoomLevel < 0.02 {
+            return "General Area (~200m)"
+        } else {
+            return "Broad Area (~500m+)"
+        }
     }
 }
 
