@@ -34,6 +34,7 @@ Matches `.cursor/rules/project.mdc` and Xcode schemes **Spot**, **SpotTests**, *
 - Draft behavior when testable without device-only APIs.
 - Supabase repository behavior behind protocols/mocks (**TODO: verify** mock coverage depth).
 - **Map drawer** selection / dismiss policy (`MapDiscoveryDrawerPolicyTests`, panel height tests, etc.).
+- **Data plane guard** — `DataPlaneGuardTests` ensures no legacy Firebase Firestore/Storage upload code under `Spot/`.
 - Onboarding managers (`HomeTourManagerTests`, etc.).
 - **Pro** gating helpers (`ProEntitlementChecker`, subscription manager error paths).
 - **Universal Links** parsing (`DeepLinkRouter` tests if present—**TODO: verify** file names).

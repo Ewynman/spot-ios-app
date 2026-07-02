@@ -2,7 +2,7 @@
 
 ## Purpose
 
-End-to-end create Spot through publish.
+End-to-end create Spot through publish on the **Supabase** data plane.
 
 ## Audience
 
@@ -10,30 +10,28 @@ Engineering, safety.
 
 ## Current status
 
-Matches product posting doc and Supabase moderation pipeline.
+Matches `SpotPublishCoordinator`, `SpotSupabaseRepository`, and moderation migrations.
 
 ## Details
 
 ```mermaid
 flowchart TD
-  A[Create Spot] --> B[Select images]
-  B --> C[Enter Spot details]
-  C --> D[Tap publish]
-  D --> E{Authenticated?}
-  E -->|No| F[Show auth required]
-  E -->|Yes| G[Moderate all images]
-  G --> H{All approved?}
-  H -->|No| I[Block publish and show safe reason]
-  H -->|Yes| J[Upload images]
-  J --> K[Insert Spot record]
-  K --> L{Insert succeeds?}
-  L -->|No| M[Show error and preserve draft]
-  L -->|Yes| N[Show published Spot]
+  A[PostFlowViewModel submitPost] --> B[Build SpotPublishDraft]
+  B --> C[SpotPublishCoordinator.enqueue]
+  C --> D[Upload JPEGs to pending_images]
+  D --> E[moderate-image Edge Function]
+  E --> F{All assets approved?}
+  F -->|No| G[Toast error / draft retained]
+  F -->|Yes| H[publish_spot_with_approved_media_assets_v1 RPC]
+  H --> I{RPC success?}
+  I -->|No| J[Toast error]
+  I -->|Yes| K[spotDidPostSuccess notification]
 ```
 
 ## Related docs
 
 - [../product/posting-flow.md](../product/posting-flow.md)
+- [../engineering/data-plane.md](../engineering/data-plane.md)
 - [../engineering/image-moderation.md](../engineering/image-moderation.md)
 
 ## Open questions / TODOs

@@ -45,6 +45,7 @@ Reflects the repository as of the documentation refresh. Implementation details 
 | [engineering/logging.md](engineering/logging.md) | SpotLogger, debug categories |
 | [engineering/networking-and-auth.md](engineering/networking-and-auth.md) | Sessions, RLS expectations |
 | [engineering/supabase.md](engineering/supabase.md) | Supabase role in the app |
+| [engineering/data-plane.md](engineering/data-plane.md) | **Supabase-only data plane; Firebase observability only** |
 | [engineering/database-and-rls.md](engineering/database-and-rls.md) | RLS principles, migrations |
 | [engineering/production-readiness-audit-2026-05.md](engineering/production-readiness-audit-2026-05.md) | Pre-launch audit: leaks, feed variety, follows |
 | [engineering/storage-and-media.md](engineering/storage-and-media.md) | Buckets, uploads |
@@ -83,7 +84,7 @@ Reflects the repository as of the documentation refresh. Implementation details 
 
 **New developer:** [local-setup](engineering/local-setup.md) → [architecture](engineering/architecture.md) → [testing](engineering/testing.md) → [product overview](product/overview.md).
 
-**Cursor agent:** [.cursor/rules/project.mdc](../.cursor/rules/project.mdc) → [architecture](engineering/architecture.md) → [networking-and-auth](engineering/networking-and-auth.md) → [database-and-rls](engineering/database-and-rls.md) → [universal-links](engineering/universal-links.md).
+**Cursor agent:** [.cursor/rules/project.mdc](../.cursor/rules/project.mdc) → [data-plane](engineering/data-plane.md) → [architecture](engineering/architecture.md) → [networking-and-auth](engineering/networking-and-auth.md) → [database-and-rls](engineering/database-and-rls.md) → [universal-links](engineering/universal-links.md).
 
 **Release owner:** [release-process](engineering/release-process.md) → [runbooks](operations/runbooks.md) → [app-store-review-notes](operations/app-store-review-notes.md) → [troubleshooting](engineering/troubleshooting.md).
 

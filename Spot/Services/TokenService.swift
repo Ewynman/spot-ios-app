@@ -12,7 +12,7 @@ import Supabase
 class TokenService {
     static let shared = TokenService()
 
-    private let tokenKey = "com.spotapp.spot.firebaseToken"
+    private let tokenKey = "com.spotapp.spot.supabaseAccessToken"
     private let expirationKey = "com.spotapp.spot.tokenExpiration"
     private let tokenExpirationHours: TimeInterval = 24 // 24 hours
 
@@ -20,7 +20,7 @@ class TokenService {
 
     // MARK: - Token Management
 
-    /// Get a valid Firebase auth token, refreshing if necessary
+    /// Get a valid Supabase access token, refreshing if necessary
     func getToken(completion: @escaping (Result<String, Error>) -> Void) {
         // Check if we have a cached token that's still valid
         if let cachedToken = getCachedToken(), !isTokenExpired() {
@@ -29,7 +29,7 @@ class TokenService {
             return
         }
 
-        // Get fresh token from Firebase
+        // Get fresh token from Supabase Auth session
         getFreshToken(completion: completion)
     }
 
