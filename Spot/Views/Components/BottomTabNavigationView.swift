@@ -60,10 +60,13 @@ private struct PublishBannerView: View {
 
 struct BottomTabNavigationView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var permissionManager: PermissionManager
     @ObservedObject private var spotPublishCoordinator = SpotPublishCoordinator.shared
     @StateObject private var firstRunOnboarding = SpotFirstRunOnboardingManager()
     @State private var selectedTab: Int = 0
     @State private var coachFrames: [CoachTarget: CGRect] = [:]
+    /// Pre-permission sheet for the first-run map tour step (`.userLocation`).
+    @State private var showTourLocationPrePrompt = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -163,6 +166,20 @@ struct BottomTabNavigationView: View {
         .onChange(of: authVM.userId) { _, _ in evaluateFirstRunOnboarding() }
         .onChange(of: authVM.likedSpots) { _, _ in evaluateFirstRunOnboarding() }
         .onChange(of: authVM.bookmarkedSpots) { _, _ in evaluateFirstRunOnboarding() }
+        .sheet(isPresented: $showTourLocationPrePrompt) {
+            LocationPermissionView(
+                authDestination: .signup,
+                showsBackButton: false,
+                onComplete: {
+                    showTourLocationPrePrompt = false
+                    LocationManager.shared.requestCurrentLocationForMapTab()
+                    if firstRunOnboarding.isPresented, firstRunOnboarding.currentStep == .userLocation {
+                        firstRunOnboarding.next()
+                    }
+                }
+            )
+            .environmentObject(permissionManager)
+        }
         .accessibilityIdentifier("main.tabShell")
     }
 
@@ -215,6 +232,8 @@ struct BottomTabNavigationView: View {
         case .mapTab:
             selectedTab = 1
             firstRunOnboarding.mapTabSelected()
+        case .userLocation:
+            handleTourUserLocationContinue()
         case .finale:
             selectedTab = 0
             firstRunOnboarding.finish()
@@ -229,6 +248,29 @@ struct BottomTabNavigationView: View {
         }
         firstRunOnboarding.back()
     }
+
+    /// First-run map tour: "Start from where you are" is the contextual moment
+    /// to surface the Location pre-prompt (App Review 5.1.1 / 5.1.5).
+    private func handleTourUserLocationContinue() {
+        guard firstRunOnboarding.isPresented, firstRunOnboarding.currentStep == .userLocation else { return }
+        guard selectedTab == 1 else {
+            selectedTab = 1
+            return
+        }
+
+        permissionManager.updatePermissionStatuses()
+        switch LocationManager.shared.authorizationStatus {
+        case .notDetermined:
+            showTourLocationPrePrompt = true
+        case .authorizedAlways, .authorizedWhenInUse:
+            LocationManager.shared.requestCurrentLocationForMapTab()
+            firstRunOnboarding.next()
+        case .denied, .restricted:
+            firstRunOnboarding.next()
+        @unknown default:
+            firstRunOnboarding.next()
+        }
+    }
 }
 
 // MARK: - Previews
@@ -238,6 +280,7 @@ struct BottomTabNavigationView: View {
     auth.isAuthenticated = true
     return BottomTabNavigationView()
         .environmentObject(auth)
+        .environmentObject(PermissionManager.shared)
 }
 
 #Preview("Tab bar only") {

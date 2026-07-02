@@ -11,7 +11,7 @@
 //     with a continental US map fallback.
 //
 //  This view used to gate onboarding. It is retained for contextual
-//  pre-prompts (e.g. tapping "use my location" on the map) but no longer
+//  pre-prompts (first-run map tour, map recenter, etc.) but no longer
 //  blocks any post-auth flow.
 //
 

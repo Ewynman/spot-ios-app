@@ -491,8 +491,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses the camera only when you choose to take a photo for your profile or a spot. You can decline and continue using the app.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and center the map when you choose location-based features. You can still use Spot without sharing your location.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Spot accesses your photo library when you choose photos to upload for your profile or a spot.";
@@ -538,8 +538,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Spot/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Spot;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Spot uses the camera only when you choose to take a photo for your profile or a spot. You can decline and continue using the app.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Spot uses your location to show nearby spots and center the map when you choose location-based features. You can still use Spot without sharing your location.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Spot accesses your photo library when you choose photos to upload for your profile or a spot.";

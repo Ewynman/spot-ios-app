@@ -31,9 +31,9 @@ struct MapView: View {
     @EnvironmentObject var permissionManager: PermissionManager
 
     /// True while the contextual Location pre-prompt sheet is presented.
-    /// Shown only when the user explicitly asks to use their location
-    /// (recenter button), not on tab open — matches Apple’s expectation
-    /// that permission education tracks the user’s feature intent.
+    /// Shown when the user explicitly asks to use their location (recenter
+    /// button) or when the first-run map tour reaches "Start from where
+    /// you are". Not on tab open — permission education tracks user intent.
     @State private var showLocationPrePrompt: Bool = false
 
     @State private var selectedSpot: Spot?

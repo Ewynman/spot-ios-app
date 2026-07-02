@@ -532,6 +532,8 @@ struct SpotFirstRunOnboardingOverlay: View {
         switch manager.currentStep {
         case .mapTab:
             return "Tap Map to continue"
+        case .userLocation:
+            return "Continue"
         case .markerPreview:
             return "Finish tour"
         default:

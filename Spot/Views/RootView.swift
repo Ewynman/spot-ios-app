@@ -37,9 +37,9 @@ struct RootView: View {
                     //   2. Terms-of-service update gate.
                     //   3. Standard tab shell — permission pre-prompts are
                     //      surfaced contextually by the feature that needs
-                    //      them (Map tab → Location, Take Photo → Camera,
-                    //      Settings → Permissions → Notifications). The
-                    //      app never blocks on a permission decision.
+                    //      them (first-run map tour → Location, map recenter,
+                    //      Take Photo → Camera, Settings → Permissions).
+                    //      The app never blocks on a permission decision.
                     //
                     // App Review (Guidelines 5.1.1 / 5.1.5 / 4.5.4):
                     // permissions never block account creation, never
