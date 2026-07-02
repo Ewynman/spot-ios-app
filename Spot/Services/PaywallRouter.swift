@@ -24,6 +24,13 @@ extension Notification.Name {
     static let mainTabReselectSame = Notification.Name("SpotMainTabReselectSame")
     /// Remove feed rows immediately after block/report (see `SpotHomeFeedNotification`).
     static let homeFeedLocallyRemove = Notification.Name("SpotHomeFeedLocallyRemove")
+    
+    /// Posted when a notification action requests navigation to the follow requests screen.
+    static let navigateToFollowRequests = Notification.Name("SpotNavigateToFollowRequests")
+    /// Posted when a notification action requests navigation to follow requests and auto-accept a specific request.
+    static let navigateToFollowRequestsAndAccept = Notification.Name("SpotNavigateToFollowRequestsAndAccept")
+    /// Posted when a notification action requests navigation to a specific user profile.
+    static let navigateToProfile = Notification.Name("SpotNavigateToProfile")
 }
 
 enum PaywallRouter {
