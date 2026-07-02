@@ -499,58 +499,21 @@ private struct SpotWelcomeHeroView: View {
     let configuration: WelcomeHeroMotionConfiguration
 
     @State private var entranceVisible = false
-    @State private var pinPulse = false
-    @State private var animationStartDate = Date()
+    @State private var floatAnimation = false
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
-            let height = proxy.size.height
-            let center = CGPoint(x: width * 0.50, y: height * 0.52)
-            let orbitRadiusX = width * 0.34
-            let orbitRadiusY = height * 0.31
-            let globeSize = min(width * 0.72, height * 0.72, 250)
-
-            TimelineView(.animation) { timeline in
-                let elapsedTime = configuration.continuousAnimationsEnabled
-                    ? timeline.date.timeIntervalSince(animationStartDate)
-                    : 0
-
-                ZStack {
-                    WelcomeGlobeBaseView(
-                        elapsedTime: elapsedTime,
-                        continuousAnimationsEnabled: configuration.continuousAnimationsEnabled
-                    )
-                    .frame(width: globeSize, height: globeSize)
-                    .position(center)
+            ZStack {
+                ModernMapBackgroundView()
                     .opacity(entranceVisible ? 1 : 0)
                     .scaleEffect(entranceVisible ? 1 : 0.95)
-                    .zIndex(1)
 
-                    ZStack {
-                        ForEach(Array(WelcomeHeroContent.orbitingItems.enumerated()), id: \.element.id) { index, item in
-                            let metrics = WelcomeHeroSpin.metrics(
-                                for: item,
-                                center: center,
-                                baseRadiusX: orbitRadiusX,
-                                baseRadiusY: orbitRadiusY,
-                                elapsedTime: elapsedTime
-                            )
-
-                            OrbitingItemView(
-                                item: item,
-                                pulse: item.kind == .pin(isHighlighted: true) && configuration.pinPulseEnabled && pinPulse
-                            )
-                            .frame(width: item.size.width, height: item.size.height)
-                            .position(metrics.position)
-                            .scaleEffect(metrics.scale)
-                            .opacity(entranceVisible ? 1 : 0)
-                            .welcomeEntrance(entranceVisible, delay: 0.18 + Double(index) * 0.045)
-                            .zIndex(10)
-                        }
-                    }
-                    .zIndex(2)
-                }
+                FloatingCardsLayerView(
+                    configuration: configuration,
+                    containerSize: proxy.size,
+                    isVisible: entranceVisible,
+                    floatAnimation: floatAnimation
+                )
             }
         }
         .accessibilityElement(children: .ignore)
@@ -571,11 +534,189 @@ private struct SpotWelcomeHeroView: View {
             return
         }
 
-        if configuration.pinPulseEnabled {
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
-                pinPulse = true
+        withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+            floatAnimation = true
+        }
+    }
+}
+
+private struct ModernMapBackgroundView: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                MapGridLinesView()
+                    .stroke(Constants.Colors.primary.opacity(0.06), lineWidth: 0.5)
+
+                MapStreetShapesView()
+                    .fill(Constants.Colors.accent.opacity(0.3))
+
+                ForEach(0..<5, id: \.self) { index in
+                    MapPinView()
+                        .position(
+                            x: proxy.size.width * [0.25, 0.65, 0.45, 0.75, 0.35][index],
+                            y: proxy.size.height * [0.3, 0.4, 0.65, 0.7, 0.55][index]
+                        )
+                }
             }
         }
+    }
+}
+
+private struct MapGridLinesView: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        for i in stride(from: 0, to: rect.width, by: 40) {
+            path.move(to: CGPoint(x: i, y: 0))
+            path.addLine(to: CGPoint(x: i, y: rect.height))
+        }
+
+        for i in stride(from: 0, to: rect.height, by: 40) {
+            path.move(to: CGPoint(x: 0, y: i))
+            path.addLine(to: CGPoint(x: rect.width, y: i))
+        }
+
+        return path
+    }
+}
+
+private struct MapStreetShapesView: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.15, y: rect.height * 0.25, width: rect.width * 0.3, height: rect.height * 0.08),
+            cornerSize: CGSize(width: 8, height: 8)
+        )
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.55, y: rect.height * 0.35, width: rect.width * 0.25, height: rect.height * 0.12),
+            cornerSize: CGSize(width: 8, height: 8)
+        )
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.25, y: rect.height * 0.55, width: rect.width * 0.35, height: rect.height * 0.1),
+            cornerSize: CGSize(width: 8, height: 8)
+        )
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.65, y: rect.height * 0.65, width: rect.width * 0.2, height: rect.height * 0.08),
+            cornerSize: CGSize(width: 8, height: 8)
+        )
+
+        return path
+    }
+}
+
+private struct MapPinView: View {
+    var body: some View {
+        Image(systemName: "mappin.circle.fill")
+            .font(.system(size: 20, weight: .semibold))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(Constants.Colors.mapMarkerDot, Constants.Colors.mapMarkerGreen)
+            .opacity(0.4)
+    }
+}
+
+private struct FloatingCardsLayerView: View {
+    let configuration: WelcomeHeroMotionConfiguration
+    let containerSize: CGSize
+    let isVisible: Bool
+    let floatAnimation: Bool
+
+    private let cards: [(title: String, vibe: String, author: String, offset: CGSize, rotation: Double, delay: Double)] = [
+        ("Hidden Cafe", "Cozy Corner", "Noah", CGSize(width: -60, height: -50), -8, 0.0),
+        ("Sunset Point", "Scenic View", "Jules", CGSize(width: 45, height: -35), 5, 0.15),
+        ("Beach Spot", "Romantic", "Sarah", CGSize(width: -30, height: 45), -3, 0.3),
+        ("Rooftop Bar", "Late Night", "Alex", CGSize(width: 55, height: 50), 7, 0.45)
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(cards.enumerated()), id: \.offset) { index, card in
+                FloatingPlaceCardView(
+                    title: card.title,
+                    vibeTag: card.vibe,
+                    authorName: card.author
+                )
+                .offset(card.offset)
+                .offset(y: floatAnimation ? -8 : 8)
+                .rotationEffect(.degrees(card.rotation))
+                .opacity(isVisible ? 1 : 0)
+                .scaleEffect(isVisible ? 1 : 0.85)
+                .animation(.easeOut(duration: 0.5).delay(card.delay), value: isVisible)
+                .animation(.easeInOut(duration: 3.5 + Double(index) * 0.3).repeatForever(autoreverses: true), value: floatAnimation)
+            }
+        }
+    }
+}
+
+private struct FloatingPlaceCardView: View {
+    let title: String
+    let vibeTag: String
+    let authorName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    LinearGradient(
+                        colors: [Constants.Colors.accent.opacity(0.6), Constants.Colors.welcomeGlow.opacity(0.4)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 140, height: 80)
+                .overlay(
+                    Image(systemName: "photo.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(Constants.Colors.primary.opacity(0.2))
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(Constants.Colors.primary)
+
+                HStack(spacing: 4) {
+                    Image(systemName: WelcomeHeroContent.systemImage(for: vibeTag))
+                        .font(.system(size: 9))
+                    Text(vibeTag)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(Constants.Colors.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Constants.Colors.welcomeChipFill)
+                .clipShape(Capsule())
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Constants.Colors.mapMarkerGreen)
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            Text(String(authorName.prefix(1)))
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(Constants.Colors.buttonText)
+                        )
+
+                    Text("by \(authorName)")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(Constants.Colors.welcomeMutedText)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 160)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Constants.Colors.welcomeSurface.opacity(0.95))
+                .shadow(color: Constants.Colors.welcomeCardShadow.opacity(0.25), radius: 20, y: 12)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Constants.Colors.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 
