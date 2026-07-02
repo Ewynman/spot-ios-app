@@ -46,6 +46,12 @@ struct MapView: View {
     /// fix at appear time, the first fix from `.onReceive` triggers it.
     @State private var hasCenteredOnUser: Bool = false
     @State private var lastRegionFromMap: MKCoordinateRegion?
+    /// Coordinate we last centered on, used to detect if a fresh location
+    /// update is significantly different and should trigger a re-center.
+    @State private var lastCenteredCoordinate: CLLocationCoordinate2D?
+    /// Track if user has manually interacted with the map. If true, we
+    /// won't automatically re-center on fresh location updates.
+    @State private var userHasMovedMap: Bool = false
 
     @State private var filterState: SpotMapFilterState = .empty
     @State private var showVibePicker: Bool = false
@@ -311,22 +317,33 @@ struct MapView: View {
         MemoryDebugLogger.snapshot("map_appear")
         // Re-arm the one-shot auto-center every time the map tab appears.
         hasCenteredOnUser = false
+        userHasMovedMap = false
         permissionManager.updatePermissionStatuses()
-        bootstrapLocationIfAlreadyAuthorized()
+        
         if authVM.userId != nil {
             authVM.refreshUserFlags()
         }
         performInitialFitIfNeeded()
 
+        // Always request a fresh location when authorized, even if we have
+        // a cached one. This ensures the map shows the user's current
+        // location, not where they were during onboarding or last session.
+        let isAuthorized = locationManager.authorizationStatus == .authorizedWhenInUse ||
+                          locationManager.authorizationStatus == .authorizedAlways
+        if isAuthorized {
+            SpotLogger.log(MapViewLogs.freshLocationRequested, details: [
+                "hasCachedLocation": locationManager.userLocation != nil,
+                "auth": authStatusLabel(locationManager.authorizationStatus)
+            ])
+            locationManager.requestCurrentLocationForMapTab()
+        }
+
         // Best path: we already have a real or cached location fix →
-        // jump straight to it. `userLocation` may have been seeded from
-        // the persisted last-known-good fix at LocationManager init,
-        // which keeps the map useful on cold starts and on simulators
-        // without a configured location.
-        if let fix = locationManager.userLocation,
-           locationManager.authorizationStatus == .authorizedWhenInUse ||
-           locationManager.authorizationStatus == .authorizedAlways {
-            centerOnUser(coordinate: fix.coordinate, animated: false, source: "appear_fix")
+        // jump straight to it for immediate feedback. A fresh location
+        // update will arrive shortly via `onUserLocationReceived` if the
+        // user has moved significantly.
+        if let fix = locationManager.userLocation, isAuthorized {
+            centerOnUser(coordinate: fix.coordinate, animated: false, source: "appear_cached")
             return
         }
 
@@ -363,27 +380,14 @@ struct MapView: View {
         }
     }
 
-    /// If the user already granted When-In-Use (or Always), start a location
-    /// request on tab open so cached fixes and updates still flow. We never
-    /// show the pre-prompt or call `requestWhenInUseAuthorization()` here.
-    private func bootstrapLocationIfAlreadyAuthorized() {
-        SpotLogger.log(MapViewLogs.mapTabLocationRequestStarted, details: [
-            "auth": authStatusLabel(locationManager.authorizationStatus),
-            "hasUserLocation": locationManager.userLocation != nil
-        ])
-        switch locationManager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.requestCurrentLocationForMapTab()
-        default:
-            break
-        }
-    }
 
     private func onDisappear() {
         SpotLogger.log(MapViewLogs.mapDisappeared)
         MemoryDebugLogger.snapshot("map_disappear")
         locationManager.stopUpdatingLocation()
         hasCenteredOnUser = false
+        userHasMovedMap = false
+        lastCenteredCoordinate = nil
         mapFilterPillsMaxY = nil
         if selectedSpot != nil {
             dismissSelectedSpot(reason: .tabLeft, animated: false)
@@ -397,20 +401,67 @@ struct MapView: View {
     /// from earlier in the app session.
     private func onUserLocationReceived(_ location: CLLocation?) {
         guard let location else { return }
-        guard !hasCenteredOnUser else { return }
         guard selectedSpot == nil else { return }
-        centerOnUser(coordinate: location.coordinate, animated: true, source: "received_fix")
+        
+        SpotLogger.log(MapViewLogs.freshLocationReceived, details: [
+            "lat": location.coordinate.latitude,
+            "lon": location.coordinate.longitude,
+            "hasCenteredOnUser": hasCenteredOnUser,
+            "userHasMovedMap": userHasMovedMap
+        ])
+        
+        // If we haven't centered yet, do the initial center
+        if !hasCenteredOnUser {
+            centerOnUser(coordinate: location.coordinate, animated: true, source: "received_fix")
+            return
+        }
+        
+        // If user has manually moved the map, don't fight them with auto-updates
+        guard !userHasMovedMap else {
+            SpotLogger.log(MapViewLogs.locationUpdateSkipped, details: [
+                "reason": "userMovedMap"
+            ])
+            return
+        }
+        
+        // Check if the new location is significantly different from where we centered
+        if let lastCentered = lastCenteredCoordinate {
+            let lastLocation = CLLocation(latitude: lastCentered.latitude,
+                                         longitude: lastCentered.longitude)
+            let distance = location.distance(from: lastLocation)
+            
+            // Only re-center if the user has moved more than 100 meters
+            // This prevents jittery updates from GPS drift while still
+            // catching meaningful location changes
+            if distance > 100 {
+                SpotLogger.log(MapViewLogs.locationUpdateApplied, details: [
+                    "distance": distance,
+                    "fromLat": lastCentered.latitude,
+                    "fromLon": lastCentered.longitude,
+                    "toLat": location.coordinate.latitude,
+                    "toLon": location.coordinate.longitude
+                ])
+                centerOnUser(coordinate: location.coordinate, animated: true, source: "location_changed")
+            } else {
+                SpotLogger.log(MapViewLogs.locationUpdateSkipped, details: [
+                    "reason": "minorChange",
+                    "distance": distance
+                ])
+            }
+        }
     }
 
     /// Center the discovery camera on `coordinate` and trigger a viewport
     /// fetch in the same beat. Sets `hasCenteredOnUser` so we don't keep
-    /// fighting the user once they pan around.
+    /// fighting the user once they pan around. Tracks the centered coordinate
+    /// so we can detect significant location changes later.
     private func centerOnUser(
         coordinate: CLLocationCoordinate2D,
         animated: Bool,
         source: String
     ) {
         hasCenteredOnUser = true
+        lastCenteredCoordinate = coordinate
         let region = MapCameraRegion.neighborhood(
             center: coordinate,
             radiusMeters: Constants.MapDesign.initialNeighborhoodRadiusMeters
@@ -556,6 +607,15 @@ struct MapView: View {
 
     private func handleMapRegionChanged(_ region: MKCoordinateRegion) {
         lastRegionFromMap = region
+        
+        // Track if this region change was user-initiated (not programmatic).
+        // If we're not in a programmatic camera suppression window and the
+        // camera intent is none, this is a user pan/zoom.
+        let isProgrammatic = isProgrammaticCameraSuppressActive || cameraIntent != .none
+        if !isProgrammatic && hasCenteredOnUser {
+            userHasMovedMap = true
+        }
+        
         cameraIntent = .none
         mapVM.loadForRegion(region)
 
@@ -642,6 +702,10 @@ struct MapView: View {
     private func recenterOnUser() {
         SpotLogger.log(MapViewLogs.recenterTapped)
         permissionManager.updatePermissionStatuses()
+        
+        // Reset the "user moved map" flag since recenter is an explicit
+        // action to re-enable location tracking
+        userHasMovedMap = false
 
         switch locationManager.authorizationStatus {
         case .notDetermined:
@@ -662,6 +726,8 @@ struct MapView: View {
                     dismissSelectedSpot(reason: .mapMoved, animated: false)
                 }
                 centerOnUser(coordinate: loc.coordinate, animated: true, source: "recenter_button")
+                // Request fresh location in case the user has moved
+                locationManager.requestCurrentLocationForMapTab()
             } else {
                 locationManager.requestCurrentLocationForMapTab()
             }
