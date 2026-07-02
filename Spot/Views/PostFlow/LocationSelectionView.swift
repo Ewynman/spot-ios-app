@@ -793,8 +793,7 @@ struct LocationMapView: View {
         isGeocoding = true
         
         let loc = CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude)
-        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, error in
-            guard let self = self else { return }
+        geocoder.reverseGeocodeLocation(loc) { placemarks, error in
             DispatchQueue.main.async {
                 defer { self.isGeocoding = false }
                 if let ns = error as NSError? {

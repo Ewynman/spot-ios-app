@@ -205,7 +205,7 @@ enum InputValidationLogs: SpotLog {
     case uuidParseFailedInvalid
     case validationFailed
 
-    var category: String { "InputValidation" }
+    var tag: String { "InputValidation" }
 
     var message: String {
         switch self {
@@ -218,5 +218,10 @@ enum InputValidationLogs: SpotLog {
         }
     }
 
-    var level: SpotLogLevel { .warning }
+    var level: LogLevel {
+        switch self {
+        case .uuidParseFailedEmpty, .uuidParseFailedInvalid, .validationFailed:
+            return .info
+        }
+    }
 }

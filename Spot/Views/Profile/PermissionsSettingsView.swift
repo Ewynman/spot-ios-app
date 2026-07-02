@@ -22,18 +22,13 @@ import SwiftUI
 
 struct PermissionsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var permissionManager: PermissionManager
+    @ObservedObject private var permissionManager = PermissionManager.shared
 
     /// Indirection over `UIApplication.openSettingsURLString` so unit tests
     /// can verify the row actions without launching the iOS Settings app.
     private let settingsOpener: AppSettingsOpening
 
-    @MainActor
-    init(
-        permissionManager: PermissionManager = .shared,
-        settingsOpener: AppSettingsOpening = UIApplicationSettingsOpener.shared
-    ) {
-        self.permissionManager = permissionManager
+    init(settingsOpener: AppSettingsOpening = UIApplicationSettingsOpener.shared) {
         self.settingsOpener = settingsOpener
     }
 

@@ -137,7 +137,7 @@ struct SettingsView: View {
                         VStack(spacing: 12) {
                             sectionHeader("Permissions")
                             NavigationLink {
-                                PermissionsSettingsView(permissionManager: permissionManager)
+                                PermissionsSettingsView()
                             } label: {
                                 settingsRow(
                                     title: "Permissions",

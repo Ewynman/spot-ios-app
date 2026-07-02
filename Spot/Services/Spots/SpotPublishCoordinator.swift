@@ -60,7 +60,7 @@ final class SpotPublishCoordinator: ObservableObject, SpotPublishing {
     private func runPublish(draft: SpotPublishDraft) async {
         bannerPhase = .uploading
 
-        guard let uid = UUID(uuidString: draft.userId) else {
+        guard UUID(uuidString: draft.userId) != nil else {
             await presentErrorToast("Error Posting Spot Try Again Later")
             NotificationCenter.default.post(name: .spotDidPostFailed, object: nil)
             bannerPhase = .hidden

@@ -26,5 +26,11 @@ private enum SupabaseConfiguration {
 
 let supabase: SupabaseClient = {
     let (url, anonKey) = SupabaseConfiguration.load()
-    return SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
+    return SupabaseClient(
+        supabaseURL: url,
+        supabaseKey: anonKey,
+        options: SupabaseClientOptions(
+            auth: .init(emitLocalSessionAsInitialSession: true)
+        )
+    )
 }()
