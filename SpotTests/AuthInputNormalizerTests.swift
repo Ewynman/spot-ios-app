@@ -84,6 +84,24 @@ struct AuthErrorClassifierTests {
     @Test func emptyMessageIsNotEmailInUse() {
         #expect(AuthErrorClassifier.isEmailInUse("") == false)
     }
+
+    // MARK: - Existing-account sign-up detection
+
+    @Test func existingAccountWhenNoSessionAndNoIdentities() {
+        // Supabase repeated-signup obfuscation: HTTP 200, no session, empty identities.
+        #expect(AuthErrorClassifier.isExistingAccountSignup(hasSession: false, identityCount: 0) == true)
+    }
+
+    @Test func newSignupWithIdentityIsNotExistingAccount() {
+        // A genuine new email signup (confirm-email on) returns one identity, no session.
+        #expect(AuthErrorClassifier.isExistingAccountSignup(hasSession: false, identityCount: 1) == false)
+    }
+
+    @Test func autoConfirmedSessionIsNotExistingAccount() {
+        // Auto-confirm flows return a session; never treat as existing account.
+        #expect(AuthErrorClassifier.isExistingAccountSignup(hasSession: true, identityCount: 0) == false)
+        #expect(AuthErrorClassifier.isExistingAccountSignup(hasSession: true, identityCount: 1) == false)
+    }
 }
 
 struct EmailInUseTypeTests {

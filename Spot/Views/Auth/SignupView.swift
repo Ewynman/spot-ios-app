@@ -270,6 +270,32 @@ struct SignupView: View {
                     ]
                 )
 
+                // Supabase does not throw when an email is already registered
+                // (email-enumeration protection). Instead it returns HTTP 200
+                // with no session and an empty `identities` array, and it does
+                // NOT send a confirmation email. Detect that here so the user
+                // isn't stranded on the verification screen waiting for a code
+                // that will never arrive.
+                let isExistingAccount = AuthErrorClassifier.isExistingAccountSignup(
+                    hasSession: response.session != nil,
+                    identityCount: response.user.identities?.count ?? 0
+                )
+                if isExistingAccount {
+                    SpotLogger.log(SignupViewLogs.emailAlreadyRegistered)
+                    await MainActor.run {
+                        AnalyticsService.shared.trackAuthEvent(
+                            Constants.Analytics.authEmailInUse,
+                            parameters: ["action": "detected", "surface": "signup"]
+                        )
+                        self.isLoading = false
+                        self.showToast(
+                            "An account with this email already exists. Try logging in or resetting your password.",
+                            isError: true
+                        )
+                    }
+                    return
+                }
+
                 await MainActor.run {
                     AnalyticsService.shared.setUserId(response.user.id.uuidString)
                     AnalyticsService.shared.logEvent("user_signup", parameters: [
