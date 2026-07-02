@@ -545,16 +545,19 @@ private struct ModernMapBackgroundView: View {
         GeometryReader { proxy in
             ZStack {
                 MapGridLinesView()
-                    .stroke(Constants.Colors.primary.opacity(0.06), lineWidth: 0.5)
+                    .stroke(Constants.Colors.primary.opacity(0.15), lineWidth: 1.0)
 
                 MapStreetShapesView()
-                    .fill(Constants.Colors.accent.opacity(0.3))
+                    .fill(Constants.Colors.accent.opacity(0.5))
 
-                ForEach(0..<5, id: \.self) { index in
+                MapAdditionalDetailsView()
+                    .fill(Constants.Colors.welcomeGlow.opacity(0.25))
+
+                ForEach(0..<7, id: \.self) { index in
                     MapPinView()
                         .position(
-                            x: proxy.size.width * [0.25, 0.65, 0.45, 0.75, 0.35][index],
-                            y: proxy.size.height * [0.3, 0.4, 0.65, 0.7, 0.55][index]
+                            x: proxy.size.width * [0.25, 0.65, 0.45, 0.75, 0.35, 0.55, 0.20][index],
+                            y: proxy.size.height * [0.3, 0.4, 0.65, 0.7, 0.55, 0.25, 0.75][index]
                         )
                 }
             }
@@ -604,6 +607,33 @@ private struct MapStreetShapesView: Shape {
             cornerSize: CGSize(width: 8, height: 8)
         )
 
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.08, y: rect.height * 0.45, width: rect.width * 0.18, height: rect.height * 0.06),
+            cornerSize: CGSize(width: 6, height: 6)
+        )
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.72, y: rect.height * 0.48, width: rect.width * 0.22, height: rect.height * 0.09),
+            cornerSize: CGSize(width: 8, height: 8)
+        )
+
+        return path
+    }
+}
+
+private struct MapAdditionalDetailsView: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        path.addEllipse(in: CGRect(x: rect.width * 0.50, y: rect.height * 0.20, width: rect.width * 0.15, height: rect.height * 0.08))
+
+        path.addRoundedRect(
+            in: CGRect(x: rect.width * 0.12, y: rect.height * 0.68, width: rect.width * 0.12, height: rect.height * 0.06),
+            cornerSize: CGSize(width: 4, height: 4)
+        )
+
+        path.addEllipse(in: CGRect(x: rect.width * 0.78, y: rect.height * 0.30, width: rect.width * 0.10, height: rect.height * 0.06))
+
         return path
     }
 }
@@ -611,10 +641,11 @@ private struct MapStreetShapesView: Shape {
 private struct MapPinView: View {
     var body: some View {
         Image(systemName: "mappin.circle.fill")
-            .font(.system(size: 20, weight: .semibold))
+            .font(.system(size: 22, weight: .semibold))
             .symbolRenderingMode(.palette)
             .foregroundStyle(Constants.Colors.mapMarkerDot, Constants.Colors.mapMarkerGreen)
-            .opacity(0.4)
+            .opacity(0.65)
+            .shadow(color: Constants.Colors.primary.opacity(0.1), radius: 2, y: 1)
     }
 }
 
@@ -624,11 +655,11 @@ private struct FloatingCardsLayerView: View {
     let isVisible: Bool
     let floatAnimation: Bool
 
-    private let cards: [(title: String, vibe: String, author: String, offset: CGSize, rotation: Double, delay: Double)] = [
-        ("Hidden Cafe", "Cozy Corner", "Noah", CGSize(width: -60, height: -50), -8, 0.0),
-        ("Sunset Point", "Scenic View", "Jules", CGSize(width: 45, height: -35), 5, 0.15),
-        ("Beach Spot", "Romantic", "Sarah", CGSize(width: -30, height: 45), -3, 0.3),
-        ("Rooftop Bar", "Late Night", "Alex", CGSize(width: 55, height: 50), 7, 0.45)
+    private let cards: [(title: String, vibe: String, author: String, offset: CGSize, rotation: Double, delay: Double, gradientType: CardGradientType)] = [
+        ("Hidden Cafe", "Cozy Corner", "Noah", CGSize(width: -60, height: -50), -8, 0.0, .cozy),
+        ("Sunset Point", "Scenic View", "Jules", CGSize(width: 45, height: -35), 5, 0.15, .scenic),
+        ("Beach Spot", "Romantic", "Sarah", CGSize(width: -30, height: 45), -3, 0.3, .beach),
+        ("Rooftop Bar", "Late Night", "Alex", CGSize(width: 55, height: 50), 7, 0.45, .night)
     ]
 
     var body: some View {
@@ -637,7 +668,8 @@ private struct FloatingCardsLayerView: View {
                 FloatingPlaceCardView(
                     title: card.title,
                     vibeTag: card.vibe,
-                    authorName: card.author
+                    authorName: card.author,
+                    gradientType: card.gradientType
                 )
                 .offset(card.offset)
                 .offset(y: floatAnimation ? -8 : 8)
@@ -651,27 +683,39 @@ private struct FloatingCardsLayerView: View {
     }
 }
 
+enum CardGradientType {
+    case cozy, scenic, beach, night
+}
+
 private struct FloatingPlaceCardView: View {
     let title: String
     let vibeTag: String
     let authorName: String
+    let gradientType: CardGradientType
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [Constants.Colors.accent.opacity(0.6), Constants.Colors.welcomeGlow.opacity(0.4)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(gradientForType(gradientType))
+                    .frame(width: 140, height: 80)
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.3), Color.clear],
+                            center: .topLeading,
+                            startRadius: 5,
+                            endRadius: 60
+                        )
                     )
-                )
-                .frame(width: 140, height: 80)
-                .overlay(
-                    Image(systemName: "photo.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(Constants.Colors.primary.opacity(0.2))
-                )
+                    .frame(width: 80, height: 80)
+                    .offset(x: -20, y: -15)
+                    .blendMode(.overlay)
+
+                overlayShapeForType(gradientType)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -717,6 +761,78 @@ private struct FloatingPlaceCardView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Constants.Colors.primary.opacity(0.06), lineWidth: 1)
         )
+    }
+
+    private func gradientForType(_ type: CardGradientType) -> LinearGradient {
+        switch type {
+        case .cozy:
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.82, green: 0.71, blue: 0.55),
+                    Color(red: 0.65, green: 0.54, blue: 0.42),
+                    Color(red: 0.48, green: 0.40, blue: 0.32)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .scenic:
+            return LinearGradient(
+                colors: [
+                    Color(red: 1.0, green: 0.75, blue: 0.45),
+                    Color(red: 0.95, green: 0.55, blue: 0.35),
+                    Color(red: 0.75, green: 0.40, blue: 0.50)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .beach:
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.40, green: 0.70, blue: 0.85),
+                    Color(red: 0.50, green: 0.75, blue: 0.80),
+                    Color(red: 0.85, green: 0.88, blue: 0.75)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .night:
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.15, green: 0.20, blue: 0.35),
+                    Color(red: 0.25, green: 0.30, blue: 0.45),
+                    Color(red: 0.35, green: 0.35, blue: 0.50)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func overlayShapeForType(_ type: CardGradientType) -> some View {
+        switch type {
+        case .cozy:
+            Circle()
+                .fill(Color(red: 0.90, green: 0.78, blue: 0.62).opacity(0.4))
+                .frame(width: 45, height: 45)
+                .offset(x: 35, y: 20)
+        case .scenic:
+            Capsule()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 80, height: 12)
+                .rotationEffect(.degrees(-15))
+                .offset(x: 10, y: -10)
+        case .beach:
+            Circle()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: 30, height: 30)
+                .offset(x: -40, y: 25)
+        case .night:
+            Circle()
+                .fill(Color.yellow.opacity(0.6))
+                .frame(width: 20, height: 20)
+                .offset(x: 45, y: -25)
+        }
     }
 }
 
