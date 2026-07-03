@@ -328,12 +328,12 @@ struct MapView: View {
         // Always request a fresh location when authorized, even if we have
         // a cached one. This ensures the map shows the user's current
         // location, not where they were during onboarding or last session.
-        let isAuthorized = locationManager.authorizationStatus == .authorizedWhenInUse ||
-                          locationManager.authorizationStatus == .authorizedAlways
+        let isAuthorized = permissionManager.locationStatus == .authorizedWhenInUse ||
+                          permissionManager.locationStatus == .authorizedAlways
         if isAuthorized {
             SpotLogger.log(MapViewLogs.freshLocationRequested, details: [
                 "hasCachedLocation": locationManager.userLocation != nil,
-                "auth": authStatusLabel(locationManager.authorizationStatus)
+                "auth": authStatusLabel(permissionManager.locationStatus)
             ])
             locationManager.requestCurrentLocationForMapTab()
         }
@@ -358,7 +358,7 @@ struct MapView: View {
         mapVM.loadForRegion(fallback)
         cameraIntent = .region(fallback, animated: false)
         SpotLogger.log(MapViewLogs.waitingForUserLocation, details: [
-            "auth": authStatusLabel(locationManager.authorizationStatus),
+            "auth": authStatusLabel(permissionManager.locationStatus),
             "fallback": "continentalUS"
         ])
     }
@@ -368,7 +368,7 @@ struct MapView: View {
     /// authorized but still waiting on CoreLocation. Hidden when access is
     /// denied/restricted and we have no cached coordinate to recenter on.
     private var shouldShowRecenterControl: Bool {
-        switch locationManager.authorizationStatus {
+        switch permissionManager.locationStatus {
         case .denied, .restricted:
             return locationManager.userLocation != nil
         case .notDetermined:
@@ -707,7 +707,7 @@ struct MapView: View {
         // action to re-enable location tracking
         userHasMovedMap = false
 
-        switch locationManager.authorizationStatus {
+        switch permissionManager.locationStatus {
         case .notDetermined:
             showLocationPrePrompt = true
             return
