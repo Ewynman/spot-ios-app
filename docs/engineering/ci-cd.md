@@ -26,13 +26,13 @@ The Spot project uses GitHub Actions for continuous integration. Configuration l
 
 **Environment:**
 - Runner: macOS 15
-- Xcode: 16.3+ (required for Swift 6.1 used by swift-crypto@4.5.0)
-- Simulator: First available iPhone simulator
+- Xcode: Default Xcode on the runner (must support the available simulator runtimes)
+- Simulator: iPhone 16 simulator
 
 **Pipeline stages:**
 
 1. **Checkout:** Pull repository code
-2. **Setup:** Select Xcode 16.3, install xcbeautify
+2. **Setup:** Install xcbeautify
 3. **Cache:** Restore Swift Package Manager dependencies
 4. **Test:** Run SpotTests scheme with code coverage enabled
 5. **Artifacts:** Upload test results (`.xcresult`) and coverage reports
@@ -105,9 +105,9 @@ xcodebuild -scheme SpotTests -destination "id=$SIM_ID" test | $BEAUTIFY
 
 #### CI environment details
 
-- **Xcode version:** 16.3+ (set via `xcode-select`)
-- **Swift version:** 6.1 (comes with Xcode 16.3)
-- **Simulator:** First available iPhone from `xcrun simctl list`
+- **Xcode version:** Default Xcode on the macos-15 runner
+- **Swift version:** Provided by the default Xcode on the runner
+- **Simulator:** iPhone 16 (`platform=iOS Simulator,name=iPhone 16`)
 - **Caching:** Swift Package Manager dependencies cached between runs
 - **Code coverage:** Always enabled (`-enableCodeCoverage YES`)
 
