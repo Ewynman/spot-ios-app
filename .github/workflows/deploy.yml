@@ -230,6 +230,13 @@ jobs:
           
           npm install -g firebase-tools
           
+          PROJECT_ID=$(jq -r '.project_id' "$CREDS_FILE")
+          
+          # Ensure the "testers" group exists (distribute fails with 404 otherwise).
+          # Idempotent: ignore the error if the group already exists.
+          firebase appdistribution:group:create "Testers" testers --project "$PROJECT_ID" \
+            || echo "testers group already exists (or creation skipped); continuing"
+          
           firebase appdistribution:distribute "$RUNNER_TEMP/export/Spot.ipa" \
             --app "$FIREBASE_APP_ID" \
             --groups testers \
