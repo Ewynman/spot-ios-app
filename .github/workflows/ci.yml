@@ -44,10 +44,10 @@ jobs:
           set -o pipefail
           
           # Run unit tests only (SpotTests scheme)
-          # Use platform and name for more robust simulator selection
+          # Use platform and name with specific OS version
           xcodebuild \
             -scheme SpotTests \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
+            -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" \
             -enableCodeCoverage YES \
             test | xcbeautify
         
