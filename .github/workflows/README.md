@@ -12,7 +12,7 @@ This directory contains GitHub Actions workflows for the Spot iOS app.
 
 **What it does:**
 - Runs full unit test suite using the `SpotTests` scheme
-- Uses macOS 14 runners with Xcode 15.2
+- Uses macOS 14 runners with Xcode 16.1
 - Boots an iPhone simulator and executes tests
 - Enables code coverage collection
 - Uploads test results and coverage reports as artifacts
