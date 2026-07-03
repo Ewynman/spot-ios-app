@@ -2,8 +2,6 @@
 
 This directory contains GitHub Actions workflows for the Spot iOS app.
 
-**Note:** Xcode Cloud is disabled for this repository. GitHub Actions is the sole CI/CD system. See `../../docs/engineering/ci-cd.md` for details.
-
 ## Workflows
 
 ### `ci.yml` - Continuous Integration

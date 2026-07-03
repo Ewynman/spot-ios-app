@@ -43,17 +43,11 @@ jobs:
         run: |
           set -o pipefail
           
-          # Get first available iPhone simulator
-          SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
-          echo "Using simulator: $SIM_ID"
-          
-          # Boot the simulator
-          xcrun simctl boot "$SIM_ID" || true
-          
           # Run unit tests only (SpotTests scheme)
+          # Use platform and name for more robust simulator selection
           xcodebuild \
             -scheme SpotTests \
-            -destination "id=$SIM_ID" \
+            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
             -enableCodeCoverage YES \
             test | xcbeautify
         
