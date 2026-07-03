@@ -23,6 +23,9 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
       
+      - name: Show available SDKs
+        run: xcodebuild -showsdks
+      
       - name: List available simulators
         run: xcrun simctl list devices available
       
