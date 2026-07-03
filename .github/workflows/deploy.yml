@@ -1,0 +1,248 @@
+name: Deploy to Firebase
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to Firebase App Distribution
+    runs-on: macos-15
+    
+    # Only run on merge commits (not on PR commits)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !contains(github.event.head_commit.message, 'Merge pull request'))
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for proper versioning
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Show Xcode version
+        run: xcodebuild -version
+      
+      - name: Install dependencies
+        run: brew install xcbeautify
+      
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+      
+      - name: Get current build number
+        id: get_build_number
+        run: |
+          # Extract current build number from project.pbxproj
+          CURRENT_BUILD=$(grep -m 1 "CURRENT_PROJECT_VERSION = " Spot.xcodeproj/project.pbxproj | sed 's/.*CURRENT_PROJECT_VERSION = \([0-9]*\);/\1/')
+          echo "Current build number: $CURRENT_BUILD"
+          
+          # Increment build number
+          NEW_BUILD=$((CURRENT_BUILD + 1))
+          echo "New build number: $NEW_BUILD"
+          
+          echo "current_build=$CURRENT_BUILD" >> $GITHUB_OUTPUT
+          echo "new_build=$NEW_BUILD" >> $GITHUB_OUTPUT
+      
+      - name: Increment build number
+        id: increment_build
+        run: |
+          NEW_BUILD=${{ steps.get_build_number.outputs.new_build }}
+          
+          # Update all occurrences of CURRENT_PROJECT_VERSION in project.pbxproj
+          # We need to update the main app target (not test targets)
+          
+          # Create a backup
+          cp Spot.xcodeproj/project.pbxproj Spot.xcodeproj/project.pbxproj.backup
+          
+          # Update build number for the main app target (first two occurrences)
+          # This preserves test target build numbers
+          awk -v new_build="$NEW_BUILD" '
+            /CURRENT_PROJECT_VERSION = [0-9]+;/ {
+              if (count < 2) {
+                sub(/CURRENT_PROJECT_VERSION = [0-9]+;/, "CURRENT_PROJECT_VERSION = " new_build ";")
+                count++
+              }
+            }
+            { print }
+          ' Spot.xcodeproj/project.pbxproj.backup > Spot.xcodeproj/project.pbxproj
+          
+          # Verify the change
+          echo "Build numbers in project file:"
+          grep "CURRENT_PROJECT_VERSION = " Spot.xcodeproj/project.pbxproj
+          
+          # Commit the build number change
+          git add Spot.xcodeproj/project.pbxproj
+          git commit -m "Bump build number to $NEW_BUILD [skip ci]"
+      
+      - name: Extract release notes from merged PR
+        id: release_notes
+        run: |
+          # Get the last merged PR info
+          LAST_PR=$(gh pr list --state merged --limit 1 --json number,title,body,mergedAt --jq '.[0]')
+          
+          if [ -z "$LAST_PR" ] || [ "$LAST_PR" = "null" ]; then
+            echo "No recent PR found, using commit message"
+            NOTES="Build ${{ steps.get_build_number.outputs.new_build }}: ${{ github.event.head_commit.message }}"
+          else
+            PR_NUMBER=$(echo "$LAST_PR" | jq -r '.number')
+            PR_TITLE=$(echo "$LAST_PR" | jq -r '.title')
+            PR_BODY=$(echo "$LAST_PR" | jq -r '.body' | head -c 500)
+            
+            # Create release notes with proper formatting
+            {
+              echo "Build ${{ steps.get_build_number.outputs.new_build }} - PR #${PR_NUMBER}: ${PR_TITLE}"
+              echo ""
+              echo "${PR_BODY}"
+              echo ""
+              echo "Commit: ${{ github.sha }}"
+              echo "Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            } > release_notes.txt
+          fi
+          
+          # Ensure file exists
+          if [ ! -f release_notes.txt ]; then
+            echo "Build ${{ steps.get_build_number.outputs.new_build }}" > release_notes.txt
+          fi
+          
+          # Also output for GitHub
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Install Apple Certificate and Provisioning Profile
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          
+          # The `secrets` context cannot be used in a step-level `if`, so guard here instead.
+          if [ -z "$CERTIFICATE_BASE64" ]; then
+            echo "❌ APPLE_CERTIFICATE_BASE64 is not set. Add the signing secrets before deploying."
+            exit 1
+          fi
+          
+          # Create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          
+          # Import certificate and provisioning profile from secrets
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+          
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          
+          # Allow codesign/productbuild to use the key without an interactive prompt (required for headless CI)
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Make the temporary keychain searchable so codesign can find the imported identity
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          
+          # Install the provisioning profile under its UUID and expose its name for manual signing
+          PROFILE_UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
+          PROFILE_NAME=$(security cms -D -i "$PP_PATH" | plutil -extract Name raw -)
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "Installed provisioning profile: $PROFILE_NAME ($PROFILE_UUID)"
+          echo "PROVISIONING_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+      
+      - name: Build app
+        run: |
+          set -euo pipefail
+          
+          # Inject the resolved provisioning profile name into ExportOptions for manual signing.
+          EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist
+          cp .github/workflows/ExportOptions.plist "$EXPORT_OPTIONS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.edwardwynman.Spot string ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:com.edwardwynman.Spot ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS"
+          
+          # Build and archive the app with manual signing (headless CI cannot use automatic signing).
+          xcodebuild \
+            -scheme Spot \
+            -destination "generic/platform=iOS" \
+            -archivePath $RUNNER_TEMP/Spot.xcarchive \
+            -configuration Release \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=55JK72KR4W \
+            CODE_SIGN_IDENTITY="Apple Development" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROVISIONING_PROFILE_NAME}" \
+            clean archive | xcbeautify
+          
+          # Export IPA
+          xcodebuild \
+            -exportArchive \
+            -archivePath $RUNNER_TEMP/Spot.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist "$EXPORT_OPTIONS" | xcbeautify
+          
+          # Verify IPA was created
+          if [ -f "$RUNNER_TEMP/export/Spot.ipa" ]; then
+            echo "✅ IPA created successfully"
+            ls -lh $RUNNER_TEMP/export/Spot.ipa
+          else
+            echo "❌ IPA creation failed"
+            exit 1
+          fi
+      
+      - name: Upload to Firebase App Distribution
+        if: success()
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          groups: testers
+          file: ${{ runner.temp }}/export/Spot.ipa
+          releaseNotesFile: release_notes.txt
+      
+      - name: Push build number update
+        if: success()
+        run: |
+          git push origin main
+      
+      - name: Create build summary
+        if: always()
+        run: |
+          echo "## 🚀 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number**: ${{ steps.get_build_number.outputs.new_build }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: 1.000" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release Notes" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat release_notes.txt >> $GITHUB_STEP_SUMMARY || echo "No release notes" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Clean up keychain and provisioning profile
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+          if [ -n "${PROVISIONING_PROFILE_UUID:-}" ]; then
+            rm -f ~/Library/MobileDevice/Provisioning\ Profiles/"$PROVISIONING_PROFILE_UUID".mobileprovision || true
+          fi
