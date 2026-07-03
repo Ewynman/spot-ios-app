@@ -56,7 +56,40 @@ This is the Firebase iOS App ID from your Firebase project.
 
 ---
 
-### 3. APPLE_CERTIFICATE_BASE64
+### 3. GOOGLE_SERVICE_INFO_PLIST_BASE64
+
+**What it is**: Your Firebase configuration file (`GoogleService-Info.plist`) encoded in base64. This file is required for the app to initialize Firebase services (Analytics, Crashlytics, App Check).
+
+**How to get it**:
+
+#### Step 1: Download GoogleService-Info.plist
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Select project: `spot-a6a75`
+3. Click the gear icon → **Project settings**
+4. Scroll down to **Your apps** section
+5. Find the iOS app: `com.edwardwynman.Spot`
+6. Click **Download GoogleService-Info.plist**
+7. Save the file to your computer
+
+#### Step 2: Convert to Base64
+
+```bash
+cd ~/Downloads  # or wherever you saved the plist
+base64 -i GoogleService-Info.plist | pbcopy
+# The base64 string is now in your clipboard
+```
+
+#### Step 3: Add to GitHub Secrets
+
+- Secret name: `GOOGLE_SERVICE_INFO_PLIST_BASE64`
+- Secret value: Paste from clipboard (should be a long string of letters and numbers)
+
+**Why this is needed**: The app calls `FirebaseApp.configure()` on launch, which requires `GoogleService-Info.plist` to be present. Without this file, the app will crash immediately on startup. This file is excluded from the repository via `.gitignore` for security reasons, so it must be injected during the CI build process.
+
+---
+
+### 4. APPLE_CERTIFICATE_BASE64
 
 **What it is**: Your Apple Distribution certificate exported as a .p12 file and encoded in base64.
 
@@ -90,7 +123,7 @@ base64 -i Certificates.p12 | pbcopy
 
 ---
 
-### 4. APPLE_CERTIFICATE_PASSWORD
+### 5. APPLE_CERTIFICATE_PASSWORD
 
 **What it is**: The password you set when exporting the .p12 certificate.
 
@@ -101,7 +134,7 @@ base64 -i Certificates.p12 | pbcopy
 
 ---
 
-### 5. PROVISIONING_PROFILE_BASE64
+### 6. PROVISIONING_PROFILE_BASE64
 
 **What it is**: Your App Store distribution provisioning profile, encoded in base64.
 
@@ -128,7 +161,7 @@ base64 -i Spot_Distribution.mobileprovision | pbcopy
 
 ---
 
-### 6. KEYCHAIN_PASSWORD
+### 7. KEYCHAIN_PASSWORD
 
 **What it is**: A temporary password for the CI keychain (can be any secure string).
 
@@ -162,6 +195,7 @@ Before triggering a build, verify you have:
 
 - [ ] `FIREBASE_APP_ID` set to `1:415359921164:ios:66b52b0b2c5f0f2eb59229`
 - [ ] `FIREBASE_SERVICE_ACCOUNT_JSON` (full JSON from Firebase)
+- [ ] `GOOGLE_SERVICE_INFO_PLIST_BASE64` (base64-encoded GoogleService-Info.plist)
 - [ ] `APPLE_CERTIFICATE_BASE64` (base64-encoded .p12)
 - [ ] `APPLE_CERTIFICATE_PASSWORD` (your .p12 password)
 - [ ] `PROVISIONING_PROFILE_BASE64` (base64-encoded .mobileprovision)
@@ -181,6 +215,14 @@ Once all secrets are configured:
 ---
 
 ## Troubleshooting
+
+### "App crashes immediately on launch"
+
+- **Most common cause**: Missing `GOOGLE_SERVICE_INFO_PLIST_BASE64` secret
+- Verify the secret is set in GitHub repository settings
+- Verify the base64 encoding is correct (try re-encoding)
+- Check GitHub Actions logs for "GoogleService-Info.plist installation failed"
+- The app requires this file to initialize Firebase - without it, `FirebaseApp.configure()` will crash
 
 ### "No identity found" error
 

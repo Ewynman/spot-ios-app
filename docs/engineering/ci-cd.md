@@ -75,10 +75,11 @@ See `.github/workflows/README.md` for detailed workflow documentation.
 1. **Checkout:** Pull repository code with full history
 2. **Version Management:** Auto-increment build number
 3. **Release Notes:** Extract PR information for release notes
-4. **Code Signing:** Install certificates and provisioning profiles
-5. **Build:** Archive and export signed IPA
-6. **Deploy:** Upload to Firebase App Distribution
-7. **Version Commit:** Push build number update back to main
+4. **Firebase Configuration:** Inject GoogleService-Info.plist from secrets
+5. **Code Signing:** Install certificates and provisioning profiles
+6. **Build:** Archive and export signed IPA
+7. **Deploy:** Upload to Firebase App Distribution
+8. **Version Commit:** Push build number update back to main
 
 **What it does:**
 - Automatically increments `CURRENT_PROJECT_VERSION` in Xcode project via `scripts/increment-build-number.sh`
@@ -89,6 +90,7 @@ See `.github/workflows/README.md` for detailed workflow documentation.
 - Skips re-deploy on bump commits (`Bump build number to … [skip ci]`)
 
 **Required secrets:**
+- `GOOGLE_SERVICE_INFO_PLIST_BASE64` - Firebase GoogleService-Info.plist file (base64 encoded)
 - `FIREBASE_APP_ID` - Firebase iOS App ID
 - `FIREBASE_SERVICE_ACCOUNT_JSON` - Firebase service account credentials
 - `APPLE_CERTIFICATE_BASE64` - Distribution certificate (.p12 encoded)
