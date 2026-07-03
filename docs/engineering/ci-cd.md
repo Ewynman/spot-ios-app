@@ -81,11 +81,12 @@ See `.github/workflows/README.md` for detailed workflow documentation.
 7. **Version Commit:** Push build number update back to main
 
 **What it does:**
-- Automatically increments `CURRENT_PROJECT_VERSION` in Xcode project
+- Automatically increments `CURRENT_PROJECT_VERSION` in Xcode project via `scripts/increment-build-number.sh`
+- **Pushes the build number bump to `main` before building** (prevents duplicate Firebase build numbers when upload succeeds but a later step fails)
 - Builds signed IPA for distribution
 - Generates release notes from merged PR title and description
 - Uploads to Firebase App Distribution with testers group
-- Commits build number increment back to main (with [skip ci])
+- Skips re-deploy on bump commits (`Bump build number to … [skip ci]`)
 
 **Required secrets:**
 - `FIREBASE_APP_ID` - Firebase iOS App ID
@@ -297,17 +298,34 @@ If Xcode Cloud starts building again:
    - All tests pass
 3. PR is reviewed and merged to `main`
 4. **Deployment workflow triggers** (`deploy.yml`):
-   - Build number auto-increments (e.g., 6 → 7)
+   - Build number auto-increments (e.g., 7 → 8)
+   - **Build number is pushed to `main` before archive/upload** so a failed deploy cannot leave the repo stale and cause duplicate Firebase build numbers
    - Release notes generated from PR
    - App is built and signed
    - IPA uploaded to Firebase App Distribution
-   - Build number committed back to main
 5. Testers receive notification in Firebase App Distribution
 
 **Build versioning:**
 - Marketing version: `1.000` (manual updates for releases)
-- Build number: Auto-incremented on every deployment (current: `6`)
+- Build number: Auto-incremented on every deployment (current: `7`)
 - Format: `Version 1.000 (Build 7)`
+
+**Deploy safeguards:**
+- **Concurrency:** Only one deploy runs at a time (`deploy-firebase-main` group)
+- **Skip bump commits:** Pushes with message `Bump build number to … [skip ci]` do not re-trigger deploy
+- **Skip CI on bumps:** `ci.yml` skips validation on `[skip ci]` commits
+- **Push before build:** The incremented build number is committed and pushed to `main` before archiving/uploading to Firebase
+
+**Troubleshooting duplicate Firebase build numbers**
+
+If multiple Firebase releases show the same build number (e.g. three `1.000 (7)` entries), the usual cause is deploy runs that **uploaded an IPA but failed to push** the incremented `CURRENT_PROJECT_VERSION` back to `main`. Each subsequent run then read the same build number from the repo and produced the same Firebase build.
+
+Common failure modes (July 2026):
+1. Missing `contents: write` permission on deploy — push failed with 403 after Firebase upload
+2. Manual `workflow_dispatch` runs from feature branches — upload succeeds but push to `main` is skipped
+3. Concurrent deploy runs before concurrency was added — both read the same `CURRENT_PROJECT_VERSION`
+
+The push-before-build ordering prevents new duplicates even when archive or Firebase upload fails later in the job.
 
 ### Future Enhancements
 
