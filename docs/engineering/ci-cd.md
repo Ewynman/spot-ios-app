@@ -16,7 +16,12 @@ Developers, release owners, and anyone maintaining or troubleshooting the build 
 
 ### CI/CD System: GitHub Actions
 
-The Spot project uses GitHub Actions for continuous integration. Configuration lives in `.github/workflows/`.
+The Spot project uses GitHub Actions for continuous integration and deployment. Configuration lives in `.github/workflows/`.
+
+#### Workflows
+
+1. **`ci.yml`** - Pull Request validation (runs on PRs to main)
+2. **`deploy.yml`** - Firebase App Distribution deployment (runs on merge to main)
 
 #### Main workflow: `ci.yml`
 
@@ -51,6 +56,48 @@ The Spot project uses GitHub Actions for continuous integration. Configuration l
 - Data plane compliance (via DataPlaneGuardTests)
 
 See `.github/workflows/README.md` for detailed workflow documentation.
+
+---
+
+#### Deployment workflow: `deploy.yml`
+
+**Triggers:**
+- Merge to `main` (after PR validation passes)
+- Manual workflow dispatch
+
+**Environment:**
+- Runner: macOS 15
+- Xcode: Default Xcode on the runner
+- Requires: Apple signing certificates and Firebase credentials
+
+**Pipeline stages:**
+
+1. **Checkout:** Pull repository code with full history
+2. **Version Management:** Auto-increment build number
+3. **Release Notes:** Extract PR information for release notes
+4. **Code Signing:** Install certificates and provisioning profiles
+5. **Build:** Archive and export signed IPA
+6. **Deploy:** Upload to Firebase App Distribution
+7. **Version Commit:** Push build number update back to main
+
+**What it does:**
+- Automatically increments `CURRENT_PROJECT_VERSION` in Xcode project
+- Builds signed IPA for distribution
+- Generates release notes from merged PR title and description
+- Uploads to Firebase App Distribution with testers group
+- Commits build number increment back to main (with [skip ci])
+
+**Required secrets:**
+- `FIREBASE_APP_ID` - Firebase iOS App ID
+- `FIREBASE_SERVICE_ACCOUNT_JSON` - Firebase service account credentials
+- `APPLE_CERTIFICATE_BASE64` - Distribution certificate (.p12 encoded)
+- `APPLE_CERTIFICATE_PASSWORD` - Certificate password
+- `PROVISIONING_PROFILE_BASE64` - Provisioning profile encoded
+- `KEYCHAIN_PASSWORD` - Temporary keychain password
+
+See [firebase-distribution-setup.md](firebase-distribution-setup.md) for detailed setup instructions.
+
+---
 
 ### Xcode Cloud Status
 
@@ -238,20 +285,44 @@ If Xcode Cloud starts building again:
 3. Verify the `.xcode-cloud-disabled` file is still present in the repo
 4. Consult with team if there was an intentional policy change
 
+### Deployment Process
+
+**Step-by-step deployment flow:**
+
+1. Developer creates PR with changes
+2. **CI validation runs** (`ci.yml`):
+   - Code coverage validated (80% minimum)
+   - API changes detected
+   - Documentation checked
+   - All tests pass
+3. PR is reviewed and merged to `main`
+4. **Deployment workflow triggers** (`deploy.yml`):
+   - Build number auto-increments (e.g., 6 → 7)
+   - Release notes generated from PR
+   - App is built and signed
+   - IPA uploaded to Firebase App Distribution
+   - Build number committed back to main
+5. Testers receive notification in Firebase App Distribution
+
+**Build versioning:**
+- Marketing version: `1.000` (manual updates for releases)
+- Build number: Auto-incremented on every deployment (current: `6`)
+- Format: `Version 1.000 (Build 7)`
+
 ### Future Enhancements
 
 Planned or possible improvements to the CI/CD pipeline:
 
+- ✅ **Build and archive:** Automated Firebase App Distribution _(completed in Step 2)_
+- ✅ **Build number automation:** Auto-increment build numbers _(completed in Step 2)_
+- ✅ **Release notes generation:** Extract PR info into release notes _(completed in Step 2)_
 - **UI tests workflow:** Separate job for SpotUITests (longer runtime, separate from unit tests)
-- **Build and archive:** Automated TestFlight distribution for release candidates (step 2/3 of roadmap)
-- **Firebase build triggers:** Automatic Firebase builds on merge to main (step 2/3 of roadmap)
-- **Build number automation:** Auto-increment build numbers on release builds
-- **Release notes generation:** Extract PR info into release notes
+- **TestFlight distribution:** Add TestFlight upload option alongside Firebase
 - **Static analysis:** SwiftLint, SwiftFormat, or similar tools
 - **PR automation:** Danger for additional automated checks and comments
 - **Coverage trending:** Track coverage changes over time
 - **Performance tests:** Benchmark critical paths and track regressions
-- **Manual dispatch:** Workflow dispatch for on-demand test runs
+- **Deployment notifications:** Slack/Discord notifications on successful deploys
 
 See `.github/workflows/README.md` for specific enhancement ideas.
 
@@ -269,6 +340,7 @@ If the team decides to re-enable Xcode Cloud in the future:
 ## Related docs
 
 - [.github/workflows/README.md](../../.github/workflows/README.md) — GitHub Actions workflows
+- [firebase-distribution-setup.md](firebase-distribution-setup.md) — Firebase App Distribution setup guide
 - [testing.md](testing.md) — Test organization and execution
 - [release-process.md](release-process.md) — Pre-release and App Store process
 - [troubleshooting.md](troubleshooting.md) — Common build and test failures
@@ -278,7 +350,8 @@ If the team decides to re-enable Xcode Cloud in the future:
 
 - ~~Consider adding UI test workflow (SpotUITests) as separate job~~ (on roadmap)
 - ~~Evaluate coverage reporting tools (Codecov, Coveralls, etc.)~~ (implemented with validate-coverage.sh)
-- ~~Add SwiftLint or SwiftFormat for code style consistency~~ (on roadmap)
-- ~~Configure required status checks in GitHub branch protection~~ (should be enabled for production)
-- **Next steps (2/3):** Firebase build automation on merge to main
-- **Next steps (3/3):** Build number automation and release notes generation
+- ~~Firebase build automation on merge to main~~ _(completed: deploy.yml)_
+- ~~Build number automation and release notes generation~~ _(completed: deploy.yml)_
+- Add SwiftLint or SwiftFormat for code style consistency (on roadmap)
+- Configure required status checks in GitHub branch protection (should be enabled for production)
+- Consider adding TestFlight distribution alongside Firebase

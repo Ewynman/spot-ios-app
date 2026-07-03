@@ -1,6 +1,6 @@
 # Validation Scripts
 
-This directory contains CI/CD validation scripts used by GitHub Actions workflows to enforce code quality standards.
+This directory contains CI/CD validation scripts and build automation tools used by GitHub Actions workflows.
 
 ## Scripts
 
@@ -95,6 +95,36 @@ Validates that documentation is updated when significant code changes are made.
 ./scripts/validate-documentation.sh origin/main
 ```
 
+### `increment-build-number.sh`
+
+Increments the build number (`CURRENT_PROJECT_VERSION`) in the Xcode project.
+
+**Usage:**
+```bash
+./scripts/increment-build-number.sh [new-build-number]
+```
+
+**Arguments:**
+- `new-build-number` (optional): Specific build number to set. If not provided, auto-increments.
+
+**What it does:**
+- Reads current build number from `Spot.xcodeproj/project.pbxproj`
+- Increments or sets to specified value
+- Updates only the main app target (preserves test target build numbers)
+- Creates backup before modifying
+- Shows git commands for committing the change
+
+**Example:**
+```bash
+# Auto-increment (6 → 7)
+./scripts/increment-build-number.sh
+
+# Set to specific number
+./scripts/increment-build-number.sh 42
+```
+
+**Note:** This script is also run automatically by the `deploy.yml` workflow on every deployment.
+
 ## Running Locally
 
 All scripts can be run locally before pushing to verify your changes will pass CI:
@@ -116,16 +146,26 @@ xcodebuild \
 
 # 4. Validate documentation
 ./scripts/validate-documentation.sh origin/main
+
+# 5. (Optional) Manually increment build number
+./scripts/increment-build-number.sh
 ```
 
 ## CI Integration
 
-These scripts are integrated into the GitHub Actions workflow at `.github/workflows/ci.yml`:
+These scripts are integrated into GitHub Actions workflows:
 
+### PR Validation (`.github/workflows/ci.yml`)
 - **API validation** runs before tests
 - **Documentation validation** runs before tests
 - **Tests** run with coverage enabled
 - **Coverage validation** runs after tests
+
+### Deployment (`.github/workflows/deploy.yml`)
+- **Build number increment** runs automatically
+- Builds and signs the app
+- Uploads to Firebase App Distribution
+- Commits build number change back to main
 
 See [.github/workflows/README.md](../.github/workflows/README.md) for workflow documentation.
 
