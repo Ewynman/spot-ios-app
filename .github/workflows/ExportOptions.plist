@@ -11,8 +11,12 @@
     <key>uploadSymbols</key>
     <true/>
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
     <key>signingCertificate</key>
     <string>Apple Development</string>
+    <!--
+      provisioningProfiles is injected at build time by deploy.yml, because the
+      profile name is only known after decoding PROVISIONING_PROFILE_BASE64.
+    -->
 </dict>
 </plist>

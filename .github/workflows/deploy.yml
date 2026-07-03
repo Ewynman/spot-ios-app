@@ -29,6 +29,9 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
       
+      - name: Install dependencies
+        run: brew install xcbeautify
+      
       - name: Cache Swift Package Manager
         uses: actions/cache@v4
         with:
@@ -122,13 +125,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Install Apple Certificate and Provisioning Profile
-        if: secrets.APPLE_CERTIFICATE_BASE64 != ''
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          set -euo pipefail
+          
+          # The `secrets` context cannot be used in a step-level `if`, so guard here instead.
+          if [ -z "$CERTIFICATE_BASE64" ]; then
+            echo "❌ APPLE_CERTIFICATE_BASE64 is not set. Add the signing secrets before deploying."
+            exit 1
+          fi
+          
           # Create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
@@ -145,30 +155,51 @@ jobs:
           
           # Import certificate to keychain
           security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          
+          # Allow codesign/productbuild to use the key without an interactive prompt (required for headless CI)
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Make the temporary keychain searchable so codesign can find the imported identity
           security list-keychain -d user -s $KEYCHAIN_PATH
           
-          # Apply provisioning profile
+          # Install the provisioning profile under its UUID and expose its name for manual signing
+          PROFILE_UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
+          PROFILE_NAME=$(security cms -D -i "$PP_PATH" | plutil -extract Name raw -)
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "Installed provisioning profile: $PROFILE_NAME ($PROFILE_UUID)"
+          echo "PROVISIONING_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
       
       - name: Build app
         run: |
-          set -o pipefail
+          set -euo pipefail
           
-          # Build and archive the app
+          # Inject the resolved provisioning profile name into ExportOptions for manual signing.
+          EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist
+          cp .github/workflows/ExportOptions.plist "$EXPORT_OPTIONS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.edwardwynman.Spot string ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:com.edwardwynman.Spot ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS"
+          
+          # Build and archive the app with manual signing (headless CI cannot use automatic signing).
           xcodebuild \
             -scheme Spot \
             -destination "generic/platform=iOS" \
             -archivePath $RUNNER_TEMP/Spot.xcarchive \
             -configuration Release \
-            clean archive | xcbeautify || true
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=55JK72KR4W \
+            CODE_SIGN_IDENTITY="Apple Development" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROVISIONING_PROFILE_NAME}" \
+            clean archive | xcbeautify
           
           # Export IPA
           xcodebuild \
             -exportArchive \
             -archivePath $RUNNER_TEMP/Spot.xcarchive \
             -exportPath $RUNNER_TEMP/export \
-            -exportOptionsPlist .github/workflows/ExportOptions.plist | xcbeautify || true
+            -exportOptionsPlist "$EXPORT_OPTIONS" | xcbeautify
           
           # Verify IPA was created
           if [ -f "$RUNNER_TEMP/export/Spot.ipa" ]; then
@@ -212,4 +243,6 @@ jobs:
         if: always()
         run: |
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
-          rm ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision || true
+          if [ -n "${PROVISIONING_PROFILE_UUID:-}" ]; then
+            rm -f ~/Library/MobileDevice/Provisioning\ Profiles/"$PROVISIONING_PROFILE_UUID".mobileprovision || true
+          fi
