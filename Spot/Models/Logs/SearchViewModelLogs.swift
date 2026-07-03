@@ -22,6 +22,8 @@ enum SearchViewModelLogs: SpotLog {
     case applyVibeFiltersToLocation
     case clearVibeFilters
     case clearFiltersReloadingVibe
+    case searchHistoryLoaded
+    case searchHistoryCleared
 
     var tag: String { "SearchViewModel" }
     var level: LogLevel {
@@ -40,6 +42,8 @@ enum SearchViewModelLogs: SpotLog {
         case .applyVibeFiltersToLocation: return .debug
         case .clearVibeFilters: return .debug
         case .clearFiltersReloadingVibe: return .debug
+        case .searchHistoryLoaded: return .debug
+        case .searchHistoryCleared: return .info
         }
     }
     var message: String {
@@ -58,6 +62,8 @@ enum SearchViewModelLogs: SpotLog {
         case .applyVibeFiltersToLocation: return "Apply vibe filters to location"
         case .clearVibeFilters: return "Clear vibe filters, reloading location"
         case .clearFiltersReloadingVibe: return "Clear filters, reloading vibe"
+        case .searchHistoryLoaded: return "Search history loaded"
+        case .searchHistoryCleared: return "Search history cleared"
         }
     }
 }
