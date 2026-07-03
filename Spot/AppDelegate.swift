@@ -18,21 +18,24 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Initialize Firebase early
-        FirebaseApp.configure()
+        // Skip Firebase initialisation during unit tests – GoogleService-Info.plist
+        // is not present in the repository and FirebaseApp.configure() would abort.
+        if !SpotLaunchConfiguration.isUnitTestMode {
+            // Initialize Firebase early
+            FirebaseApp.configure()
 
+            // Enable Crashlytics collection
+            Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
+            Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
 
-        // Enable Crashlytics collection
-        Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(true)
-        Crashlytics.crashlytics().log("AppDelegate didFinishLaunching")
-        
-        // Configure Firebase Analytics
-        #if DEBUG
-        // Disable analytics collection in debug builds (optional, for privacy)
-        // Analytics.setAnalyticsCollectionEnabled(false)
-        #else
-        Analytics.setAnalyticsCollectionEnabled(true)
-        #endif
+            // Configure Firebase Analytics
+            #if DEBUG
+            // Disable analytics collection in debug builds (optional, for privacy)
+            // Analytics.setAnalyticsCollectionEnabled(false)
+            #else
+            Analytics.setAnalyticsCollectionEnabled(true)
+            #endif
+        }
 
         // Configure logging defaults.
         LoggingConfig.configure()

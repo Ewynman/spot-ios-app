@@ -361,7 +361,7 @@ struct FollowRequestsServiceTests {
         let pages = await withTaskGroup(of: FollowRequestsService.Page?.self) { group -> [FollowRequestsService.Page?] in
             for userId in userIds {
                 group.addTask {
-                    try? await self.FollowRequestsService.shared.fetchPage(for: userId, start: 0, pageSize: 10)
+                    try? await FollowRequestsService.shared.fetchPage(for: userId, start: 0, pageSize: 10)
                 }
             }
             

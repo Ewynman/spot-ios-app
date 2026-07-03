@@ -15,36 +15,45 @@ import Testing
 
 struct AuthInputNormalizerTests {
 
-    @Test func emailIsLowercasedAndTrimmed() {
-        #expect(AuthInputNormalizer.normalizeEmail("  Foo@Example.COM  ") == "foo@example.com")
+    @Test func emailIsLowercasedAndTrimmed() throws {
+        #expect(try AuthInputNormalizer.normalizeEmail("  Foo@Example.COM  ") == "foo@example.com")
     }
 
-    @Test func emailWithoutWhitespaceJustLowercases() {
-        #expect(AuthInputNormalizer.normalizeEmail("BAR@example.com") == "bar@example.com")
+    @Test func emailWithoutWhitespaceJustLowercases() throws {
+        #expect(try AuthInputNormalizer.normalizeEmail("BAR@example.com") == "bar@example.com")
     }
 
-    @Test func emailEmptyStringStaysEmpty() {
-        #expect(AuthInputNormalizer.normalizeEmail("") == "")
-        #expect(AuthInputNormalizer.normalizeEmail("   \n\t ") == "")
+    @Test func emptyEmailThrows() {
+        #expect(throws: (any Error).self) {
+            try AuthInputNormalizer.normalizeEmail("")
+        }
+        #expect(throws: (any Error).self) {
+            try AuthInputNormalizer.normalizeEmail("   \n\t ")
+        }
     }
 
-    @Test func emailDoesNotStripInternalWhitespace() {
-        // Supabase will reject these, but the normalizer never edits the
-        // local part — it only trims the boundaries.
-        #expect(AuthInputNormalizer.normalizeEmail("Foo Bar@example.com") == "foo bar@example.com")
+    @Test func invalidEmailWithInternalWhitespaceThrows() {
+        // Supabase will reject these, and the normalizer now validates format.
+        #expect(throws: (any Error).self) {
+            try AuthInputNormalizer.normalizeEmail("Foo Bar@example.com")
+        }
     }
 
-    @Test func usernameIsTrimmedNotLowercased() {
-        #expect(AuthInputNormalizer.normalizeUsername("  Edward  ") == "Edward")
+    @Test func usernameIsTrimmedNotLowercased() throws {
+        #expect(try AuthInputNormalizer.normalizeUsername("  Edward  ") == "Edward")
     }
 
-    @Test func usernameLowerIsTrimmedAndLowercased() {
-        #expect(AuthInputNormalizer.normalizeUsernameLower("  Edward_42 ") == "edward_42")
+    @Test func usernameLowerIsTrimmedAndLowercased() throws {
+        #expect(try AuthInputNormalizer.normalizeUsernameLower("  Edward_42 ") == "edward_42")
     }
 
-    @Test func usernameAllWhitespaceBecomesEmpty() {
-        #expect(AuthInputNormalizer.normalizeUsername("   ").isEmpty)
-        #expect(AuthInputNormalizer.normalizeUsernameLower("\n\t").isEmpty)
+    @Test func whitespaceOnlyUsernameThrows() {
+        #expect(throws: (any Error).self) {
+            try AuthInputNormalizer.normalizeUsername("   ")
+        }
+        #expect(throws: (any Error).self) {
+            try AuthInputNormalizer.normalizeUsernameLower("\n\t")
+        }
     }
 }
 

@@ -10,6 +10,13 @@ import Foundation
 
 enum SpotLaunchConfiguration {
 
+    /// True when the process is hosted by XCTest (unit test runs).
+    /// Used to skip side-effectful initialisation (e.g. Firebase) that would
+    /// crash the host app when required resources are absent during CI.
+    static var isUnitTestMode: Bool {
+        NSClassFromString("XCTestCase") != nil
+    }
+
     /// True when UI tests set `SPOT_UI_TEST_MODE=1` (DEBUG only).
     static var isUITestMode: Bool {
         #if DEBUG

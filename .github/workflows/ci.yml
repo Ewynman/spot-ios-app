@@ -17,11 +17,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Select Xcode version (16.3+ for Swift 6.1)
-        run: sudo xcode-select -s /Applications/Xcode_16.3.app/Contents/Developer
-      
       - name: Show Xcode version
         run: xcodebuild -version
+      
+      - name: Show available SDKs
+        run: xcodebuild -showsdks
       
       - name: List available simulators
         run: xcrun simctl list devices available
@@ -39,21 +39,21 @@ jobs:
       - name: Install xcbeautify
         run: brew install xcbeautify
       
+      - name: Show available destinations
+        run: |
+          xcodebuild \
+            -scheme SpotTests \
+            -showdestinations
+      
       - name: Run Unit Tests
         run: |
           set -o pipefail
           
-          # Get first available iPhone simulator
-          SIM_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
-          echo "Using simulator: $SIM_ID"
-          
-          # Boot the simulator
-          xcrun simctl boot "$SIM_ID" || true
-          
           # Run unit tests only (SpotTests scheme)
+          # Use any available iOS Simulator
           xcodebuild \
             -scheme SpotTests \
-            -destination "id=$SIM_ID" \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
             -enableCodeCoverage YES \
             test | xcbeautify
         

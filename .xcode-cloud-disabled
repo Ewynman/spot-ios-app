@@ -1,0 +1,41 @@
+# Xcode Cloud Disabled
+
+Xcode Cloud automatic builds are **disabled** for this repository.
+
+## Current CI/CD
+
+This project uses **GitHub Actions** for continuous integration (see `.github/workflows/ci.yml`).
+
+## Why Xcode Cloud is Disabled
+
+- **Single source of truth:** GitHub Actions is the sole CI/CD system
+- **Cost management:** Avoids consuming Apple build minutes unnecessarily
+- **Consistency:** All builds use the same GitHub Actions configuration
+- **Transparency:** CI logs and results visible in GitHub PR checks
+
+## How It's Disabled
+
+1. **App Distribution:** Workflows disabled in App Store Connect → App Distribution
+2. **No workflow files:** Repository contains no `.xcode` workflow directory
+3. **This marker file:** Documents the decision for team awareness
+
+## If Xcode Cloud Starts Running
+
+If you see Xcode Cloud builds triggering unexpectedly:
+
+1. Check App Store Connect → App Distribution → Xcode Cloud
+2. Ensure all workflows are disabled or deleted
+3. Verify no start conditions are enabled for:
+   - Branch Changes
+   - Pull Requests
+   - Tag Changes
+
+## Re-enabling Xcode Cloud
+
+If needed in the future:
+
+1. Discuss with team the CI/CD strategy change
+2. Remove this `.xcode-cloud-disabled` file
+3. Configure workflows in App Store Connect
+4. Update documentation in `docs/engineering/ci-cd.md`
+5. Consider removing or adapting GitHub Actions workflows
