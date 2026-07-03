@@ -22,6 +22,7 @@ final class SearchViewModel: ObservableObject {
             gridSpots = []
             lastGridDoc = nil
             hasMoreGrid = true
+            loadSearchHistory()
             Task {
                 if self.segment == .vibes {
                     await self.loadAllVibeTags()
@@ -35,6 +36,10 @@ final class SearchViewModel: ObservableObject {
     @Published var users: [[String: Any]] = []
     @Published var locations: [String] = []
     @Published var vibes: [String] = []
+    
+    // Search History
+    @Published var searchHistory: [SearchHistoryManager.SearchHistoryItem] = []
+    @Published var showHistory: Bool = false
 
     // Grids
     @Published var gridTitle: String?
@@ -51,6 +56,7 @@ final class SearchViewModel: ObservableObject {
 
     private let debouncer = Debouncer(interval: 0.3)
     private let service = SearchService.shared
+    private let historyManager = SearchHistoryManager.shared
 
     func clear() {
         users = []
@@ -64,11 +70,85 @@ final class SearchViewModel: ObservableObject {
         gridVibeFilters = nil
         gridLocationFilter = nil
         selectedVibeFilters.removeAll()
+        showHistory = false
+    }
+    
+    // MARK: - Search History
+    
+    func loadSearchHistory() {
+        let historyType: SearchHistoryManager.SearchHistoryItem.SearchType
+        switch segment {
+        case .users: historyType = .user
+        case .locations: historyType = .location
+        case .vibes: historyType = .vibe
+        }
+        searchHistory = historyManager.getHistory(for: historyType)
+        SpotLogger.log(SearchViewModelLogs.searchHistoryLoaded, details: [
+            "segment": segment.rawValue,
+            "count": searchHistory.count
+        ])
+    }
+    
+    func addToHistory(query: String, displayText: String) {
+        let historyType: SearchHistoryManager.SearchHistoryItem.SearchType
+        switch segment {
+        case .users: historyType = .user
+        case .locations: historyType = .location
+        case .vibes: historyType = .vibe
+        }
+        
+        let item = SearchHistoryManager.SearchHistoryItem(
+            type: historyType,
+            query: query,
+            displayText: displayText
+        )
+        historyManager.addItem(item)
+        loadSearchHistory()
+    }
+    
+    func removeHistoryItem(withId id: UUID) {
+        historyManager.removeItem(withId: id)
+        loadSearchHistory()
+    }
+    
+    func clearSearchHistory() {
+        let historyType: SearchHistoryManager.SearchHistoryItem.SearchType
+        switch segment {
+        case .users: historyType = .user
+        case .locations: historyType = .location
+        case .vibes: historyType = .vibe
+        }
+        historyManager.clearHistory(for: historyType)
+        loadSearchHistory()
+        SpotLogger.log(SearchViewModelLogs.searchHistoryCleared, details: ["segment": segment.rawValue])
+    }
+    
+    func selectHistoryItem(_ item: SearchHistoryManager.SearchHistoryItem) {
+        query = item.query
+        showHistory = false
+        
+        // Trigger the appropriate action based on type
+        Task {
+            switch item.type {
+            case .user:
+                // For users, just perform the search
+                await performSearch(force: true)
+            case .location:
+                await openLocation(item.query)
+            case .vibe:
+                await openVibe(item.query)
+            }
+        }
     }
 
     func performSearch(force: Bool = false) async {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Show history when query is empty
         if q.isEmpty {
+            showHistory = true
+            loadSearchHistory()
+            
             if segment == .vibes {
                 if allVibeTags.isEmpty {
                     await loadAllVibeTags()
@@ -76,10 +156,15 @@ final class SearchViewModel: ObservableObject {
                 vibes = allVibeTags
                 SpotLogger.log(SearchViewModelLogs.searchVibesSuggestions, details: ["count": vibes.count, "defaultList": true])
             } else {
-                clear()
+                users = []
+                locations = []
+                vibes = []
             }
             return
         }
+        
+        // Hide history when actively searching
+        showHistory = false
 
         switch segment {
         case .users:
@@ -102,22 +187,28 @@ final class SearchViewModel: ObservableObject {
     
     // MARK: Grid flows
     func openLocation(_ name: String) async {
+        // Add to history
+        addToHistory(query: name, displayText: name.capitalized)
+        
         gridTitle = name
         gridIsVibe = false
-        gridLocationFilter = name // Store location for potential vibe filtering
-        gridVibeFilters = nil // Clear vibe filters when opening new location
-        // Clear suggestions so only the grid is visible
+        gridLocationFilter = name
+        gridVibeFilters = nil
         users = []
         locations = []
         vibes = []
         gridSpots = []
         lastGridDoc = nil
         hasMoreGrid = true
+        showHistory = false
         SpotLogger.log(SearchViewModelLogs.openLocationGrid, details: ["name": name])
         await loadMoreGrid()
     }
 
     func openVibe(_ tag: String) async {
+        // Add to history
+        addToHistory(query: tag, displayText: tag.capitalized)
+        
         gridTitle = tag
         gridIsVibe = true
         users = []
@@ -127,6 +218,7 @@ final class SearchViewModel: ObservableObject {
         lastGridDoc = nil
         hasMoreGrid = true
         gridVibeFilters = nil
+        showHistory = false
         SpotLogger.log(SearchViewModelLogs.openVibeGrid, details: ["tag": tag])
         await loadMoreGrid(isVibe: true)
     }

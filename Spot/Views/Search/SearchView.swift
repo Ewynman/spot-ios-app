@@ -18,6 +18,12 @@ struct SearchView: View {
                         .autocorrectionDisabled()
                         .focused($focused)
                         .foregroundColor(Constants.Colors.textPrimary)
+                        .onChange(of: focused) { _, newValue in
+                            if newValue && vm.query.isEmpty {
+                                vm.loadSearchHistory()
+                                vm.showHistory = true
+                            }
+                        }
                     if !vm.query.isEmpty {
                         Button(action: {
                             vm.query = ""
@@ -72,8 +78,13 @@ struct SearchView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 12) {
+                        // Search History Section (shown when query is empty and history exists)
+                        if vm.showHistory && !vm.searchHistory.isEmpty && vm.query.isEmpty {
+                            searchHistorySection
+                        }
+                        
                         // Users tab only
-                        if vm.segment == .users {
+                        if vm.segment == .users && !vm.query.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(vm.users.indices, id: \.self) { i in
                                     let u = vm.users[i]
@@ -110,7 +121,7 @@ struct SearchView: View {
                         }
 
                         // Locations tab
-                        if vm.segment == .locations {
+                        if vm.segment == .locations && !vm.query.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(vm.locations, id: \.self) { name in
                                     Button { Task { await vm.openLocation(name) } } label: {
@@ -132,7 +143,7 @@ struct SearchView: View {
                         }
 
                         // Vibes tab
-                        if vm.segment == .vibes {
+                        if vm.segment == .vibes && !vm.query.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(vm.vibes, id: \.self) { tag in
                                     Button { Task { await vm.openVibe(tag) } } label: {
@@ -231,6 +242,68 @@ struct SearchView: View {
             selectedGridSpot = nil
             showFilters = false
             focused = false
+        }
+    }
+}
+
+// MARK: - Search History Section
+extension SearchView {
+    @ViewBuilder
+    private var searchHistorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent Searches")
+                    .font(FontManager.sectionHeader())
+                    .foregroundColor(Constants.Colors.primary)
+                Spacer()
+                if !vm.searchHistory.isEmpty {
+                    Button("Clear All") {
+                        vm.clearSearchHistory()
+                    }
+                    .font(FontManager.primaryText())
+                    .foregroundColor(Constants.Colors.primary)
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, 16)
+            
+            ForEach(vm.searchHistory, id: \.id) { item in
+                HStack(spacing: 12) {
+                    Image(systemName: historyIcon(for: item.type))
+                        .foregroundColor(.gray)
+                        .frame(width: 20)
+                    
+                    Button {
+                        vm.selectHistoryItem(item)
+                    } label: {
+                        Text(item.displayText)
+                            .font(FontManager.primaryText())
+                            .foregroundColor(Constants.Colors.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    Button {
+                        vm.removeHistoryItem(withId: item.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.gray)
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    private func historyIcon(for type: SearchHistoryManager.SearchHistoryItem.SearchType) -> String {
+        switch type {
+        case .user: return "person.circle"
+        case .location: return "mappin.circle"
+        case .vibe: return "sparkles"
         }
     }
 }
