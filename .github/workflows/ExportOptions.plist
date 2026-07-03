@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>app-store</string>
+    <string>development</string>
     <key>teamID</key>
     <string>55JK72KR4W</string>
     <key>uploadBitcode</key>
@@ -11,11 +11,8 @@
     <key>uploadSymbols</key>
     <true/>
     <key>signingStyle</key>
-    <string>manual</string>
-    <key>provisioningProfiles</key>
-    <dict>
-        <key>com.edwardwynman.Spot</key>
-        <string>Spot Distribution Profile</string>
-    </dict>
+    <string>automatic</string>
+    <key>signingCertificate</key>
+    <string>Apple Development</string>
 </dict>
 </plist>
