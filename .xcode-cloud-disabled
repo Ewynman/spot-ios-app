@@ -1,0 +1,27 @@
+# Xcode Cloud Disabled
+
+Xcode Cloud automatic builds are **disabled** for this repository.
+
+## Why?
+
+This project uses a custom CI/CD pipeline instead of Xcode Cloud.
+Xcode Cloud builds have been disabled to:
+- Avoid redundant builds
+- Reduce build minutes consumption
+- Use the custom pipeline as the single source of truth
+
+## How to Keep It Disabled
+
+Xcode Cloud is configured through App Store Connect, not local files.
+
+To ensure it stays disabled:
+1. Go to App Store Connect → Xcode Cloud
+2. Keep all workflows disabled or deleted
+3. Do not enable "Start Conditions" for branch changes or pull requests
+
+## If You Need to Re-enable
+
+If you need to re-enable Xcode Cloud in the future:
+1. Remove this `.xcode-cloud-disabled` file
+2. Configure workflows in App Store Connect
+3. Update the team about the change in CI/CD strategy

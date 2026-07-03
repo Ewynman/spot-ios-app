@@ -16,7 +16,7 @@ Process expectations for iOS app + Supabase backend; exact team checklist may li
 
 ### Pre-release
 
-- Run **SpotTests** on CI or locally; run **SpotUITests** before major UI releases.
+- Ensure **CI/CD pipeline** passes (see [ci-cd.md](ci-cd.md)); run **SpotTests** on CI or locally; run **SpotUITests** before major UI releases.
 - Verify **RLS** and migrations applied to production Supabase in correct order.
 - Verify **moderation** function live and secrets set.
 - Verify **Universal Links** on device (see [universal-links.md](universal-links.md)).
@@ -37,6 +37,7 @@ If a bad build ships, use App Store phased release controls and/or expedited rol
 
 ## Related docs
 
+- [ci-cd.md](ci-cd.md)
 - [troubleshooting.md](troubleshooting.md)
 - [../operations/runbooks.md](../operations/runbooks.md)
 

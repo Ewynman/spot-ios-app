@@ -53,6 +53,7 @@ Reflects the repository as of the documentation refresh. Implementation details 
 | [engineering/ugc-moderation.md](engineering/ugc-moderation.md) | UGC moderation, reporting, blocking, Terms (Guideline 1.2) |
 | [engineering/universal-links.md](engineering/universal-links.md) | Deep links and Universal Links |
 | [engineering/testing.md](engineering/testing.md) | Schemes, unit vs UI tests |
+| [engineering/ci-cd.md](engineering/ci-cd.md) | CI/CD pipeline, Xcode Cloud disabled |
 | [engineering/release-process.md](engineering/release-process.md) | Pre-release and App Store |
 | [engineering/troubleshooting.md](engineering/troubleshooting.md) | Common failures |
 
