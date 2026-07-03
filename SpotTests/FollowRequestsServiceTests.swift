@@ -13,29 +13,28 @@ import Testing
 @Suite("FollowRequestsService Tests")
 struct FollowRequestsServiceTests {
     
-    let service = FollowRequestsService.shared
-    
     // MARK: - Service Initialization Tests
     
     @Test("Service singleton exists")
     func testServiceSingletonExists() {
-        let instance = FollowRequestsService.shared
-        #expect(instance != nil, "Service shared instance should exist")
+        let service = FollowRequestsService.shared
+        #expect(service != nil, "Service shared instance should exist")
     }
     
     // MARK: - Count Pending Tests
     
     @Test("Count pending with invalid user ID returns 0")
     func testCountPendingWithInvalidUserId() async throws {
+        let service = FollowRequestsService.shared
         let invalidUserId = "not-a-uuid"
-        let count = try await service.countPending(targetUserId: invalidUserId)
+        let count = try await FollowRequestsService.shared.countPending(targetUserId: invalidUserId)
         #expect(count == 0, "Invalid user ID should return 0")
     }
     
     @Test("Count pending with empty user ID returns 0")
     func testCountPendingWithEmptyUserId() async throws {
         let emptyUserId = ""
-        let count = try await service.countPending(targetUserId: emptyUserId)
+        let count = try await FollowRequestsService.shared.countPending(targetUserId: emptyUserId)
         #expect(count == 0, "Empty user ID should return 0")
     }
     
@@ -44,7 +43,7 @@ struct FollowRequestsServiceTests {
         let validUuid = UUID().uuidString
         
         do {
-            let count = try await service.countPending(targetUserId: validUuid)
+            let count = try await FollowRequestsService.shared.countPending(targetUserId: validUuid)
             #expect(count >= 0, "Count should be non-negative")
         } catch {
             // Network errors are acceptable in test environment
@@ -57,7 +56,7 @@ struct FollowRequestsServiceTests {
     @Test("Fetch page with invalid user ID returns empty page")
     func testFetchPageWithInvalidUserId() async throws {
         let invalidUserId = "not-a-uuid"
-        let page = try await service.fetchPage(for: invalidUserId, start: 0, pageSize: 10)
+        let page = try await FollowRequestsService.shared.fetchPage(for: invalidUserId, start: 0, pageSize: 10)
         
         #expect(page.items.count == 0, "Invalid user ID should return empty page")
         #expect(page.nextStart == nil, "Invalid user ID should have no next page")
@@ -66,7 +65,7 @@ struct FollowRequestsServiceTests {
     @Test("Fetch page with empty user ID returns empty page")
     func testFetchPageWithEmptyUserId() async throws {
         let emptyUserId = ""
-        let page = try await service.fetchPage(for: emptyUserId, start: 0, pageSize: 10)
+        let page = try await FollowRequestsService.shared.fetchPage(for: emptyUserId, start: 0, pageSize: 10)
         
         #expect(page.items.count == 0, "Empty user ID should return empty page")
         #expect(page.nextStart == nil, "Empty user ID should have no next page")
@@ -77,7 +76,7 @@ struct FollowRequestsServiceTests {
         let validUuid = UUID().uuidString
         
         do {
-            let page = try await service.fetchPage(for: validUuid, start: 0, pageSize: 10)
+            let page = try await FollowRequestsService.shared.fetchPage(for: validUuid, start: 0, pageSize: 10)
             
             #expect(page.items != nil, "Page should have items array")
             #expect(page.items.count >= 0, "Items count should be non-negative")
@@ -98,7 +97,7 @@ struct FollowRequestsServiceTests {
         let pageSize = 5
         
         do {
-            let page = try await service.fetchPage(for: validUuid, start: 0, pageSize: pageSize)
+            let page = try await FollowRequestsService.shared.fetchPage(for: validUuid, start: 0, pageSize: pageSize)
             
             if page.items.count < pageSize {
                 #expect(page.nextStart == nil, "Should have no next page when items < pageSize")
@@ -115,7 +114,7 @@ struct FollowRequestsServiceTests {
         let validUuid = UUID().uuidString
         
         do {
-            let page = try await service.fetchPage(for: validUuid, start: 0, pageSize: 0)
+            let page = try await FollowRequestsService.shared.fetchPage(for: validUuid, start: 0, pageSize: 0)
             #expect(page.items != nil, "Should return valid page structure")
         } catch {
             #expect(true, "Error is acceptable for edge case")
@@ -127,7 +126,7 @@ struct FollowRequestsServiceTests {
         let validUuid = UUID().uuidString
         
         do {
-            let page = try await service.fetchPage(for: validUuid, start: 0, pageSize: 1000)
+            let page = try await FollowRequestsService.shared.fetchPage(for: validUuid, start: 0, pageSize: 1000)
             #expect(page.items.count >= 0, "Should handle large page size")
         } catch {
             #expect(true, "Network error is acceptable")
@@ -142,7 +141,7 @@ struct FollowRequestsServiceTests {
         let validTargetUid = UUID().uuidString
         
         do {
-            try await service.accept(requesterUid: invalidRequesterUid, targetUid: validTargetUid)
+            try await FollowRequestsService.shared.accept(requesterUid: invalidRequesterUid, targetUid: validTargetUid)
             Issue.record("Should throw error for invalid requester UID")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -155,7 +154,7 @@ struct FollowRequestsServiceTests {
         let invalidTargetUid = "not-a-uuid"
         
         do {
-            try await service.accept(requesterUid: validRequesterUid, targetUid: invalidTargetUid)
+            try await FollowRequestsService.shared.accept(requesterUid: validRequesterUid, targetUid: invalidTargetUid)
             Issue.record("Should throw error for invalid target UID")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -168,7 +167,7 @@ struct FollowRequestsServiceTests {
         let invalidTargetUid = "also-not-a-uuid"
         
         do {
-            try await service.accept(requesterUid: invalidRequesterUid, targetUid: invalidTargetUid)
+            try await FollowRequestsService.shared.accept(requesterUid: invalidRequesterUid, targetUid: invalidTargetUid)
             Issue.record("Should throw error for invalid UIDs")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -181,7 +180,7 @@ struct FollowRequestsServiceTests {
         let targetUid = UUID().uuidString
         
         do {
-            try await service.accept(requesterUid: requesterUid, targetUid: targetUid)
+            try await FollowRequestsService.shared.accept(requesterUid: requesterUid, targetUid: targetUid)
             #expect(true, "Accept should complete without error")
         } catch {
             #expect(true, "Network/database error is acceptable in test environment")
@@ -196,7 +195,7 @@ struct FollowRequestsServiceTests {
         let validTargetUid = UUID().uuidString
         
         do {
-            try await service.deny(requesterUid: invalidRequesterUid, targetUid: validTargetUid)
+            try await FollowRequestsService.shared.deny(requesterUid: invalidRequesterUid, targetUid: validTargetUid)
             Issue.record("Should throw error for invalid requester UID")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -209,7 +208,7 @@ struct FollowRequestsServiceTests {
         let invalidTargetUid = "not-a-uuid"
         
         do {
-            try await service.deny(requesterUid: validRequesterUid, targetUid: invalidTargetUid)
+            try await FollowRequestsService.shared.deny(requesterUid: validRequesterUid, targetUid: invalidTargetUid)
             Issue.record("Should throw error for invalid target UID")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -222,7 +221,7 @@ struct FollowRequestsServiceTests {
         let invalidTargetUid = "also-not-a-uuid"
         
         do {
-            try await service.deny(requesterUid: invalidRequesterUid, targetUid: invalidTargetUid)
+            try await FollowRequestsService.shared.deny(requesterUid: invalidRequesterUid, targetUid: invalidTargetUid)
             Issue.record("Should throw error for invalid UIDs")
         } catch {
             #expect(error.localizedDescription.contains("Invalid user id"), "Should indicate invalid user ID")
@@ -235,7 +234,7 @@ struct FollowRequestsServiceTests {
         let targetUid = UUID().uuidString
         
         do {
-            try await service.deny(requesterUid: requesterUid, targetUid: targetUid)
+            try await FollowRequestsService.shared.deny(requesterUid: requesterUid, targetUid: targetUid)
             #expect(true, "Deny should complete without error")
         } catch {
             #expect(true, "Network/database error is acceptable in test environment")
@@ -341,7 +340,7 @@ struct FollowRequestsServiceTests {
         let counts = await withTaskGroup(of: Int.self) { group -> [Int] in
             for userId in userIds {
                 group.addTask {
-                    (try? await self.service.countPending(targetUserId: userId)) ?? 0
+                    (try? await FollowRequestsService.shared.countPending(targetUserId: userId)) ?? 0
                 }
             }
             
@@ -362,7 +361,7 @@ struct FollowRequestsServiceTests {
         let pages = await withTaskGroup(of: FollowRequestsService.Page?.self) { group -> [FollowRequestsService.Page?] in
             for userId in userIds {
                 group.addTask {
-                    try? await self.service.fetchPage(for: userId, start: 0, pageSize: 10)
+                    try? await self.FollowRequestsService.shared.fetchPage(for: userId, start: 0, pageSize: 10)
                 }
             }
             
@@ -382,24 +381,24 @@ struct FollowRequestsServiceTests {
     func testEmptyStringsAsUids() async throws {
         let emptyUid = ""
         
-        let count = try await service.countPending(targetUserId: emptyUid)
+        let count = try await FollowRequestsService.shared.countPending(targetUserId: emptyUid)
         #expect(count == 0, "Empty UID should return 0")
         
-        let page = try await service.fetchPage(for: emptyUid, start: 0, pageSize: 10)
+        let page = try await FollowRequestsService.shared.fetchPage(for: emptyUid, start: 0, pageSize: 10)
         #expect(page.items.count == 0, "Empty UID should return empty page")
     }
     
     @Test("Whitespace-only UIDs are handled gracefully")
     func testWhitespaceOnlyUids() async throws {
         let whitespaceUid = "   "
-        let count = try await service.countPending(targetUserId: whitespaceUid)
+        let count = try await FollowRequestsService.shared.countPending(targetUserId: whitespaceUid)
         #expect(count == 0, "Whitespace UID should return 0")
     }
     
     @Test("Very long invalid UIDs are handled without crashing")
     func testVeryLongInvalidUids() async throws {
         let longUid = String(repeating: "x", count: 1000)
-        let count = try await service.countPending(targetUserId: longUid)
+        let count = try await FollowRequestsService.shared.countPending(targetUserId: longUid)
         #expect(count == 0, "Long invalid UID should return 0")
     }
 }
