@@ -39,15 +39,21 @@ jobs:
       - name: Install xcbeautify
         run: brew install xcbeautify
       
+      - name: Show available destinations
+        run: |
+          xcodebuild \
+            -scheme SpotTests \
+            -showdestinations
+      
       - name: Run Unit Tests
         run: |
           set -o pipefail
           
           # Run unit tests only (SpotTests scheme)
-          # Use platform and name with specific OS version
+          # Use any available iOS Simulator
           xcodebuild \
             -scheme SpotTests \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" \
+            -destination "platform=iOS Simulator,name=Any iOS Simulator Device" \
             -enableCodeCoverage YES \
             test | xcbeautify
         
