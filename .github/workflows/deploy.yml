@@ -10,6 +10,8 @@ jobs:
   build-and-deploy:
     name: Build and Deploy to Firebase App Distribution
     runs-on: macos-15
+    permissions:
+      contents: write
     
     # Only run on merge commits (not on PR commits)
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !contains(github.event.head_commit.message, 'Merge pull request'))
