@@ -38,6 +38,7 @@ Matches `.cursor/rules/project.mdc` and Xcode schemes **Spot**, **SpotTests**, *
 - Onboarding managers (`HomeTourManagerTests`, etc.).
 - **Pro** gating helpers (`ProEntitlementChecker`, subscription manager error paths).
 - **Universal Links** parsing (`DeepLinkRouter` tests if present—**TODO: verify** file names).
+- **Private accounts** — `AuthorPrivacyCacheTests`, `FollowRequestsServiceTests`, and `PrivateAccountIntegrationTests` cover privacy filtering, follow requests, and content visibility. See [../testing/private-account-tests.md](../testing/private-account-tests.md) for details.
 
 ### Commands
 
@@ -63,6 +64,7 @@ Add previews for new or heavily changed UI when practical to speed design review
 
 - [local-setup.md](local-setup.md)
 - [../diagrams/testing-release-flow.md](../diagrams/testing-release-flow.md)
+- [../testing/private-account-tests.md](../testing/private-account-tests.md)
 
 ## Open questions / TODOs
 
