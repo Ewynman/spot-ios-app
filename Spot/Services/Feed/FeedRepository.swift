@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import CoreLocation
 
 /// Coarse load state for the homepage feed. Distinct from "is `spots` empty?"
 /// because we want to keep the existing list visible during retries and show

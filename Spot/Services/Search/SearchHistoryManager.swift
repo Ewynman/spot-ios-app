@@ -117,6 +117,10 @@ enum SearchHistoryLogs: SpotLog {
     case historyTypeCleared
     case saveFailed
     
+    var tag: String { "SearchHistoryManager" }
+    
+    var level: LogLevel { .debug }
+    
     var message: String {
         switch self {
         case .itemAdded: return "Search history item added"
