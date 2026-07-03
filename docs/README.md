@@ -54,6 +54,7 @@ Reflects the repository as of the documentation refresh. Implementation details 
 | [engineering/universal-links.md](engineering/universal-links.md) | Deep links and Universal Links |
 | [engineering/testing.md](engineering/testing.md) | Schemes, unit vs UI tests |
 | [testing/private-account-tests.md](testing/private-account-tests.md) | Private account test suite |
+| [engineering/ci-cd.md](engineering/ci-cd.md) | GitHub Actions CI/CD, Xcode Cloud disabled |
 | [engineering/release-process.md](engineering/release-process.md) | Pre-release and App Store |
 | [engineering/troubleshooting.md](engineering/troubleshooting.md) | Common failures |
 
