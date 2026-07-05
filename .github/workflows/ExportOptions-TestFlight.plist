@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- TestFlight lane: App Store export signed with the Apple Distribution
+         certificate from TESTFLIGHT_APPLE_CERT and the App Store Connect profile
+         from TESTFLIGHT_APPLE_PROFILE. -->
+    <key>method</key>
+    <string>app-store</string>
+    <key>teamID</key>
+    <string>55JK72KR4W</string>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+    <key>destination</key>
+    <string>export</string>
+    <!--
+      provisioningProfiles is injected at build time by testflight.yml, because the
+      profile name is only known after decoding TESTFLIGHT_APPLE_PROFILE.
+    -->
+</dict>
+</plist>

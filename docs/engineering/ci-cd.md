@@ -21,7 +21,18 @@ The Spot project uses GitHub Actions for continuous integration and deployment. 
 #### Workflows
 
 1. **`ci.yml`** - Pull Request validation (runs on PRs to main)
-2. **`deploy.yml`** - Firebase App Distribution deployment (runs on merge to main)
+2. **`deploy.yml`** - Firebase App Distribution deployment / Test ENV (runs on push/merge to main)
+3. **`testflight.yml`** - App Store Connect / TestFlight deployment (runs on push to `release/**`)
+
+**Three lanes at a glance:**
+
+| Lane | Trigger | Signing cert secret | Profile secret | Export method | Versioning |
+| --- | --- | --- | --- | --- | --- |
+| PR validation | `pull_request` → `main` | none | none | n/a (simulator tests) | n/a |
+| Firebase Test ENV | `push` → `main` | `FIREBASE_DEV_CERT` | `FIREBASE_PROVISIONING_PROFILE` | `ad-hoc` | build number `+1` |
+| TestFlight | `push` → `release/**` | `TESTFLIGHT_APPLE_CERT` | `TESTFLIGHT_APPLE_PROFILE` | `app-store` | version from branch, build = `run_number` |
+
+The Firebase and TestFlight signing assets are never swapped: the Ad Hoc profile is only used for Firebase, and the App Store Connect profile is only used for TestFlight. `APPLE_CERTIFICATE_PASSWORD` is the single password used to import both `.p12` files, and `KEYCHAIN_PASSWORD` is the temporary CI keychain password.
 
 #### Main workflow: `ci.yml`
 
@@ -92,13 +103,62 @@ See `.github/workflows/README.md` for detailed workflow documentation.
 **Required secrets:**
 - `GOOGLE_SERVICE_INFO_PLIST_BASE64` - Firebase GoogleService-Info.plist file (base64 encoded)
 - `FIREBASE_APP_ID` - Firebase iOS App ID
-- `FIREBASE_SERVICE_ACCOUNT_JSON` - Firebase service account credentials
-- `APPLE_CERTIFICATE_BASE64` - Distribution certificate (.p12 encoded)
-- `APPLE_CERTIFICATE_PASSWORD` - Certificate password
-- `PROVISIONING_PROFILE_BASE64` - Provisioning profile encoded
-- `KEYCHAIN_PASSWORD` - Temporary keychain password
+- `FIREBASE_SERVICE_ACCOUNT_JSON` - Firebase service account credentials (raw JSON)
+- `FIREBASE_DEV_CERT` - Apple Distribution certificate (.p12, base64 encoded). Despite the name, this is the distribution cert used for CI signing.
+- `APPLE_CERTIFICATE_PASSWORD` - Password used when exporting the .p12
+- `FIREBASE_PROVISIONING_PROFILE` - Ad Hoc provisioning profile (.mobileprovision, base64 encoded)
+- `KEYCHAIN_PASSWORD` - Temporary CI keychain password
+
+Export options template: `.github/workflows/ExportOptions-Firebase.plist` (`method = ad-hoc`, `signingCertificate = Apple Distribution`). The provisioning profile name is injected at build time after decoding `FIREBASE_PROVISIONING_PROFILE`.
 
 See [firebase-distribution-setup.md](firebase-distribution-setup.md) for detailed setup instructions.
+
+---
+
+#### Deployment workflow: `testflight.yml`
+
+**Triggers:**
+- Push to a `release/**` branch
+- Manual workflow dispatch (from a `release/**` branch)
+
+**Environment:**
+- Runner: macOS 15
+- Requires: Apple signing assets, Firebase config, and App Store Connect API credentials for upload
+
+**Pipeline stages:**
+
+1. **Checkout:** Pull repository code with full history
+2. **Resolve version:** Derive `MARKETING_VERSION` from the branch name and set `CURRENT_PROJECT_VERSION` to `github.run_number`
+3. **Firebase Configuration:** Inject GoogleService-Info.plist from secrets
+4. **Code Signing:** Install `TESTFLIGHT_APPLE_CERT` + `TESTFLIGHT_APPLE_PROFILE` into a temporary keychain
+5. **Build:** Archive unsigned, then export an App Store `.ipa`
+6. **Artifact:** Upload the `.ipa` as a workflow artifact
+7. **Upload:** Send the `.ipa` to App Store Connect / TestFlight via `xcrun altool`
+8. **Summary + cleanup:** Emit a build summary and remove temporary keychain/profile/key files
+
+**Versioning rule:**
+- The release branch name controls the user-facing version. `release/1.1.0` → `MARKETING_VERSION = 1.1.0`.
+- Only the build number auto-increments, using the unique `github.run_number`:
+  - `release/1.1.0` run 101 → version `1.1.0`, build `101`
+  - `release/1.1.0` run 102 → version `1.1.0`, build `102`
+- The pipeline never bumps `1.1.0` → `1.2.0` automatically. To ship a new version, create a new `release/<version>` branch.
+- TestFlight upload does **not** submit the build to App Store Review.
+
+**Required secrets:**
+- `GOOGLE_SERVICE_INFO_PLIST_BASE64`
+- `TESTFLIGHT_APPLE_CERT` - Apple Distribution certificate (.p12, base64 encoded)
+- `APPLE_CERTIFICATE_PASSWORD` - Password used when exporting the .p12
+- `TESTFLIGHT_APPLE_PROFILE` - App Store Connect provisioning profile (.mobileprovision, base64 encoded). *(The PRD refers to this as `TESTFLIGHT_PROVISIONING_PROFILE`; the repo's actual secret is `TESTFLIGHT_APPLE_PROFILE`, and we reference the existing name instead of renaming it.)*
+- `KEYCHAIN_PASSWORD`
+
+**App Store Connect API secrets (TODO — not yet configured):** the upload step fails with a clear message until these exist. Names follow the PRD's suggested naming:
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`
+- `APP_STORE_CONNECT_API_KEY_P8_BASE64` (base64 of the `AuthKey_XXX.p8`)
+
+Create the key at App Store Connect → **Users and Access → Integrations → App Store Connect API**.
+
+Export options template: `.github/workflows/ExportOptions-TestFlight.plist` (`method = app-store`, `signingCertificate = Apple Distribution`).
 
 ---
 
@@ -336,8 +396,8 @@ Planned or possible improvements to the CI/CD pipeline:
 - ✅ **Build and archive:** Automated Firebase App Distribution _(completed in Step 2)_
 - ✅ **Build number automation:** Auto-increment build numbers _(completed in Step 2)_
 - ✅ **Release notes generation:** Extract PR info into release notes _(completed in Step 2)_
+- ✅ **TestFlight distribution:** `testflight.yml` builds + uploads on `release/**` (upload needs the App Store Connect API secrets)
 - **UI tests workflow:** Separate job for SpotUITests (longer runtime, separate from unit tests)
-- **TestFlight distribution:** Add TestFlight upload option alongside Firebase
 - **Static analysis:** SwiftLint, SwiftFormat, or similar tools
 - **PR automation:** Danger for additional automated checks and comments
 - **Coverage trending:** Track coverage changes over time
@@ -374,4 +434,4 @@ If the team decides to re-enable Xcode Cloud in the future:
 - ~~Build number automation and release notes generation~~ _(completed: deploy.yml)_
 - Add SwiftLint or SwiftFormat for code style consistency (on roadmap)
 - Configure required status checks in GitHub branch protection (should be enabled for production)
-- Consider adding TestFlight distribution alongside Firebase
+- Add the App Store Connect API secrets (`APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_P8_BASE64`) so the TestFlight upload step in `testflight.yml` can complete

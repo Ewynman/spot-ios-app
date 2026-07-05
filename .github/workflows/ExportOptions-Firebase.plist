@@ -2,8 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Firebase App Distribution lane: Ad Hoc export signed with the Apple
+         Distribution certificate from FIREBASE_DEV_CERT and the Ad Hoc profile
+         from FIREBASE_PROVISIONING_PROFILE. -->
     <key>method</key>
-    <string>development</string>
+    <string>ad-hoc</string>
     <key>teamID</key>
     <string>55JK72KR4W</string>
     <key>uploadBitcode</key>
@@ -13,10 +16,10 @@
     <key>signingStyle</key>
     <string>manual</string>
     <key>signingCertificate</key>
-    <string>Apple Development</string>
+    <string>Apple Distribution</string>
     <!--
       provisioningProfiles is injected at build time by deploy.yml, because the
-      profile name is only known after decoding PROVISIONING_PROFILE_BASE64.
+      profile name is only known after decoding FIREBASE_PROVISIONING_PROFILE.
     -->
 </dict>
 </plist>
