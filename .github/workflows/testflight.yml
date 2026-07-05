@@ -15,21 +15,35 @@ jobs:
   build-and-upload:
     name: Build and Upload to App Store Connect / TestFlight
     runs-on: macos-15
+    permissions:
+      contents: write
+
+    # Skip automated bump commits pushed by this workflow ([skip ci]).
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, '[skip ci]') &&
+       !startsWith(github.event.head_commit.message, 'Bump build number to'))
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve version and build number
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve marketing version
         id: version
         run: |
           set -euo pipefail
 
           # The release branch name controls the user-facing marketing version.
           # Example: release/1.1.0 -> MARKETING_VERSION=1.1.0
-          # Only the build number auto-increments (via the unique run number).
           BRANCH="${GITHUB_REF_NAME}"
           VERSION="${BRANCH#release/}"
 
@@ -39,14 +53,28 @@ jobs:
             exit 1
           fi
 
-          # github.run_number is unique and monotonically increasing per workflow,
-          # which satisfies App Store Connect's "build number must be unique per version".
-          BUILD="${{ github.run_number }}"
-
           echo "Marketing version: $VERSION"
-          echo "Build number: $BUILD"
           echo "marketing_version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build_number=$BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Increment build number
+        id: increment_build
+        run: |
+          set -euo pipefail
+
+          ./scripts/increment-build-number.sh
+
+          NEW_BUILD=$(grep -m 1 "CURRENT_PROJECT_VERSION = " Spot.xcodeproj/project.pbxproj | sed 's/.*CURRENT_PROJECT_VERSION = \([0-9]*\);/\1/')
+          echo "New build number: $NEW_BUILD"
+          echo "new_build=$NEW_BUILD" >> "$GITHUB_OUTPUT"
+
+          git add Spot.xcodeproj/project.pbxproj
+          git commit -m "Bump build number to $NEW_BUILD [skip ci]"
+
+      - name: Push build number update
+        run: |
+          # Push before archive/upload so a failed deploy cannot leave the branch stale
+          # and cause the next run to reuse the same build number in App Store Connect.
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Select Xcode 26 (iOS 26 SDK required by App Store Connect)
         run: |
@@ -160,7 +188,7 @@ jobs:
       - name: Build and export production archive
         env:
           MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
-          CURRENT_PROJECT_VERSION: ${{ steps.version.outputs.build_number }}
+          CURRENT_PROJECT_VERSION: ${{ steps.increment_build.outputs.new_build }}
         run: |
           set -euo pipefail
 
@@ -179,7 +207,7 @@ jobs:
           # the provisioning profile to the app's bundle id.
           #
           # MARKETING_VERSION comes from the release/** branch name; CURRENT_PROJECT_VERSION
-          # is the unique GitHub run number. These are safe to set globally (unlike signing).
+          # was auto-incremented and pushed before this step. Safe to set globally (unlike signing).
           xcodebuild \
             -scheme Spot \
             -destination "generic/platform=iOS" \
@@ -210,7 +238,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Spot-TestFlight-${{ steps.version.outputs.marketing_version }}-${{ steps.version.outputs.build_number }}
+          name: Spot-TestFlight-${{ steps.version.outputs.marketing_version }}-${{ steps.increment_build.outputs.new_build }}
           path: ${{ runner.temp }}/export/Spot.ipa
           retention-days: 7
           if-no-files-found: warn
@@ -253,11 +281,21 @@ jobs:
 
           # Upload to App Store Connect. This makes the build available in TestFlight
           # after processing. It does NOT submit the build to App Store Review.
+          # altool can log "UPLOAD FAILED" but still exit 0, so capture output and verify.
+          ALTOOL_LOG="$RUNNER_TEMP/altool-upload.log"
+          set +e
           xcrun altool --upload-app \
             --type ios \
             --file "$RUNNER_TEMP/export/Spot.ipa" \
             --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
+            --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee "$ALTOOL_LOG"
+          ALTOOL_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$ALTOOL_EXIT" -ne 0 ] || rg -q "UPLOAD FAILED|Failed to upload package" "$ALTOOL_LOG"; then
+            echo "❌ TestFlight upload failed. See altool log above."
+            exit 1
+          fi
 
           echo "✅ Uploaded to App Store Connect. The build will appear in TestFlight after processing."
 
@@ -270,7 +308,7 @@ jobs:
           echo "## 🚀 TestFlight Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: ${{ steps.version.outputs.marketing_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Build Number**: ${{ steps.version.outputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number**: ${{ steps.increment_build.outputs.new_build }}" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
