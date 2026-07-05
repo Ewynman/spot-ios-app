@@ -154,16 +154,23 @@ jobs:
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          # Firebase lane signing assets (Apple Distribution cert + Ad Hoc profile).
+          # Despite the name, FIREBASE_DEV_CERT is the base64-encoded distribution
+          # .p12 used for CI signing (see docs/engineering/ci-cd.md).
+          CERTIFICATE_BASE64: ${{ secrets.FIREBASE_DEV_CERT }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.FIREBASE_PROVISIONING_PROFILE }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
 
           # The `secrets` context cannot be used in a step-level `if`, so guard here instead.
           if [ -z "$CERTIFICATE_BASE64" ]; then
-            echo "❌ APPLE_CERTIFICATE_BASE64 is not set. Add the signing secrets before deploying."
+            echo "❌ FIREBASE_DEV_CERT is not set. Add the Firebase signing secrets before deploying."
+            exit 1
+          fi
+          if [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
+            echo "❌ FIREBASE_PROVISIONING_PROFILE is not set. Add the Ad Hoc provisioning profile before deploying."
             exit 1
           fi
 
@@ -172,11 +179,13 @@ jobs:
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          # Import certificate and provisioning profile from secrets
+          # Import certificate and provisioning profile from secrets.
+          # FIREBASE_DEV_CERT is a base64-encoded .p12; FIREBASE_PROVISIONING_PROFILE
+          # is a base64-encoded .mobileprovision.
           echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
           echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
 
-          # Create temporary keychain
+          # Create a temporary CI keychain (never the login keychain)
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -185,7 +194,7 @@ jobs:
           security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
 
           # Allow codesign/productbuild to use the key without an interactive prompt (required for headless CI)
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
           # Make the temporary keychain searchable so codesign can find the imported identity
           security list-keychain -d user -s $KEYCHAIN_PATH
@@ -204,8 +213,9 @@ jobs:
           set -euo pipefail
 
           # Inject the resolved provisioning profile name into ExportOptions for manual signing.
+          # Firebase lane uses the Ad Hoc export options template.
           EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist
-          cp .github/workflows/ExportOptions.plist "$EXPORT_OPTIONS"
+          cp .github/workflows/ExportOptions-Firebase.plist "$EXPORT_OPTIONS"
           /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.edwardwynman.Spot string ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS" 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:com.edwardwynman.Spot ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS"

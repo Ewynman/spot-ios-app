@@ -23,7 +23,9 @@ Process expectations for iOS app + Supabase backend; exact team checklist may li
 
 ### TestFlight
 
-- Increment build number, archive with distribution cert.
+- Cut a `release/<version>` branch (e.g. `release/1.1.0`) and push it. The `testflight.yml` workflow derives `MARKETING_VERSION` from the branch name and uses the GitHub run number as the build number, then archives with the distribution cert and uploads to App Store Connect / TestFlight. See [ci-cd.md](ci-cd.md).
+- To ship a new version, create a new `release/<version>` branch; pushes to the same branch keep the version and only bump the build number.
+- The upload step requires the App Store Connect API secrets (`APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_P8_BASE64`).
 - Smoke: auth, feed, map drawer, post happy path, deep link, Pro purchase in sandbox.
 
 ### App Store

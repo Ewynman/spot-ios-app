@@ -89,9 +89,9 @@ base64 -i GoogleService-Info.plist | pbcopy
 
 ---
 
-### 4. APPLE_CERTIFICATE_BASE64
+### 4. FIREBASE_DEV_CERT
 
-**What it is**: Your Apple Distribution certificate exported as a .p12 file and encoded in base64.
+**What it is**: Your Apple Distribution certificate exported as a **.p12** file and encoded in base64. Despite the `DEV` in the name, this is the **distribution** certificate used for CI signing of the Firebase Ad Hoc build.
 
 **How to get it**:
 
@@ -118,14 +118,14 @@ base64 -i Certificates.p12 | pbcopy
 
 #### Step 3: Add to GitHub Secrets
 
-- Secret name: `APPLE_CERTIFICATE_BASE64`
+- Secret name: `FIREBASE_DEV_CERT`
 - Secret value: Paste from clipboard (should be a long string of letters and numbers)
 
 ---
 
 ### 5. APPLE_CERTIFICATE_PASSWORD
 
-**What it is**: The password you set when exporting the .p12 certificate.
+**What it is**: The password you set when exporting the .p12 certificate. The same password is used to import both the Firebase (`FIREBASE_DEV_CERT`) and TestFlight (`TESTFLIGHT_APPLE_CERT`) `.p12` files, so export both with the same password.
 
 **How to get it**: This is the password you chose in Step 1 above.
 
@@ -134,17 +134,17 @@ base64 -i Certificates.p12 | pbcopy
 
 ---
 
-### 6. PROVISIONING_PROFILE_BASE64
+### 6. FIREBASE_PROVISIONING_PROFILE
 
-**What it is**: Your App Store distribution provisioning profile, encoded in base64.
+**What it is**: Your **Ad Hoc** distribution provisioning profile for `com.edwardwynman.Spot`, encoded in base64. Ad Hoc profiles include your registered test devices, which is what Firebase App Distribution installs to.
 
 **How to get it**:
 
 #### Step 1: Download Provisioning Profile
 
 1. Go to [Apple Developer Portal](https://developer.apple.com/account/resources/profiles/list)
-2. Find your distribution profile for `com.edwardwynman.Spot`
-3. Download it (will be named something like `Spot_Distribution.mobileprovision`)
+2. Find your **Ad Hoc** profile for `com.edwardwynman.Spot`
+3. Download it (will be named something like `Spot_AdHoc.mobileprovision`)
 
 #### Step 2: Convert to Base64
 
@@ -156,14 +156,14 @@ base64 -i Spot_Distribution.mobileprovision | pbcopy
 
 #### Step 3: Add to GitHub Secrets
 
-- Secret name: `PROVISIONING_PROFILE_BASE64`
+- Secret name: `FIREBASE_PROVISIONING_PROFILE`
 - Secret value: Paste from clipboard
 
 ---
 
 ### 7. KEYCHAIN_PASSWORD
 
-**What it is**: A temporary password for the CI keychain (can be any secure string).
+**What it is**: A temporary password for the CI keychain (can be any secure string). This is **not** an Apple Developer password.
 
 **How to get it**: Generate a random password or use a password generator.
 
@@ -196,10 +196,18 @@ Before triggering a build, verify you have:
 - [ ] `FIREBASE_APP_ID` set to `1:415359921164:ios:66b52b0b2c5f0f2eb59229`
 - [ ] `FIREBASE_SERVICE_ACCOUNT_JSON` (full JSON from Firebase)
 - [ ] `GOOGLE_SERVICE_INFO_PLIST_BASE64` (base64-encoded GoogleService-Info.plist)
-- [ ] `APPLE_CERTIFICATE_BASE64` (base64-encoded .p12)
-- [ ] `APPLE_CERTIFICATE_PASSWORD` (your .p12 password)
-- [ ] `PROVISIONING_PROFILE_BASE64` (base64-encoded .mobileprovision)
+- [ ] `FIREBASE_DEV_CERT` (base64-encoded Apple Distribution .p12)
+- [ ] `APPLE_CERTIFICATE_PASSWORD` (your .p12 export password)
+- [ ] `FIREBASE_PROVISIONING_PROFILE` (base64-encoded Ad Hoc .mobileprovision)
 - [ ] `KEYCHAIN_PASSWORD` (any secure random string)
+
+For the TestFlight lane (`testflight.yml`), additionally configure:
+
+- [ ] `TESTFLIGHT_APPLE_CERT` (base64-encoded Apple Distribution .p12)
+- [ ] `TESTFLIGHT_APPLE_PROFILE` (base64-encoded App Store Connect .mobileprovision)
+- [ ] `APP_STORE_CONNECT_API_KEY_ID` (App Store Connect API Key ID) — required for upload
+- [ ] `APP_STORE_CONNECT_API_ISSUER_ID` (Issuer ID / UUID) — required for upload
+- [ ] `APP_STORE_CONNECT_API_KEY_P8_BASE64` (base64 of `AuthKey_XXX.p8`) — required for upload
 
 ---
 
@@ -226,14 +234,14 @@ Once all secrets are configured:
 
 ### "No identity found" error
 
-- Verify `APPLE_CERTIFICATE_BASE64` is correctly encoded
+- Verify `FIREBASE_DEV_CERT` (Firebase lane) or `TESTFLIGHT_APPLE_CERT` (TestFlight lane) is correctly encoded
 - Verify `APPLE_CERTIFICATE_PASSWORD` is correct
 - Ensure the certificate is a **Distribution** certificate (not Development)
 
 ### "No matching provisioning profile found"
 
-- Verify `PROVISIONING_PROFILE_BASE64` is correctly encoded
-- Ensure the profile is for **App Store** distribution
+- Verify `FIREBASE_PROVISIONING_PROFILE` (Firebase / Ad Hoc) or `TESTFLIGHT_APPLE_PROFILE` (TestFlight / App Store Connect) is correctly encoded
+- Ensure the Firebase profile is **Ad Hoc** and the TestFlight profile is **App Store Connect**
 - Ensure the profile includes your Team ID: `55JK72KR4W`
 - Ensure the profile is for Bundle ID: `com.edwardwynman.Spot`
 

@@ -1,0 +1,273 @@
+name: Deploy to TestFlight
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:  # Allow manual triggers from a release/** branch
+
+# Serialize release uploads so two pushes cannot race for the same run context.
+concurrency:
+  group: deploy-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build and Upload to App Store Connect / TestFlight
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and build number
+        id: version
+        run: |
+          set -euo pipefail
+
+          # The release branch name controls the user-facing marketing version.
+          # Example: release/1.1.0 -> MARKETING_VERSION=1.1.0
+          # Only the build number auto-increments (via the unique run number).
+          BRANCH="${GITHUB_REF_NAME}"
+          VERSION="${BRANCH#release/}"
+
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "❌ Could not derive a valid marketing version from branch '$BRANCH'."
+            echo "Expected a branch like 'release/1.1.0' (release/MAJOR.MINOR.PATCH)."
+            exit 1
+          fi
+
+          # github.run_number is unique and monotonically increasing per workflow,
+          # which satisfies App Store Connect's "build number must be unique per version".
+          BUILD="${{ github.run_number }}"
+
+          echo "Marketing version: $VERSION"
+          echo "Build number: $BUILD"
+          echo "marketing_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install dependencies
+        run: brew install xcbeautify
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install GoogleService-Info.plist
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            echo "❌ GOOGLE_SERVICE_INFO_PLIST_BASE64 is not set. Firebase will fail to initialize."
+            echo "Add this secret to your GitHub repository settings with the base64-encoded GoogleService-Info.plist content."
+            exit 1
+          fi
+
+          echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o Spot/GoogleService-Info.plist
+
+          if [ -f "Spot/GoogleService-Info.plist" ]; then
+            echo "✅ GoogleService-Info.plist installed successfully"
+            plutil -lint Spot/GoogleService-Info.plist || {
+              echo "❌ GoogleService-Info.plist is not a valid plist file"
+              exit 1
+            }
+          else
+            echo "❌ GoogleService-Info.plist installation failed"
+            exit 1
+          fi
+
+      - name: Install Apple Certificate and Provisioning Profile
+        env:
+          # TestFlight lane signing assets (Apple Distribution cert + App Store Connect profile).
+          # TESTFLIGHT_APPLE_CERT is a base64-encoded .p12; TESTFLIGHT_APPLE_PROFILE
+          # is a base64-encoded .mobileprovision. Do NOT use the Firebase Ad Hoc assets here.
+          # NOTE: The PRD lists this profile secret as TESTFLIGHT_PROVISIONING_PROFILE, but the
+          # secret actually configured in the repo is TESTFLIGHT_APPLE_PROFILE. Per the "do not
+          # rename secrets" rule we reference the existing name rather than renaming the secret.
+          CERTIFICATE_BASE64: ${{ secrets.TESTFLIGHT_APPLE_CERT }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.TESTFLIGHT_APPLE_PROFILE }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # The `secrets` context cannot be used in a step-level `if`, so guard here instead.
+          if [ -z "$CERTIFICATE_BASE64" ]; then
+            echo "❌ TESTFLIGHT_APPLE_CERT is not set. Add the TestFlight signing secrets before deploying."
+            exit 1
+          fi
+          if [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
+            echo "❌ TESTFLIGHT_APPLE_PROFILE is not set. Add the App Store Connect provisioning profile before deploying."
+            exit 1
+          fi
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # Create a temporary CI keychain (never the login keychain)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+
+          # Allow codesign to use the key without an interactive prompt (required for headless CI)
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Make the temporary keychain searchable so codesign can find the imported identity
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Install the provisioning profile under its UUID and expose its name for manual signing
+          PROFILE_UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
+          PROFILE_NAME=$(security cms -D -i "$PP_PATH" | plutil -extract Name raw -)
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "Installed provisioning profile: $PROFILE_NAME ($PROFILE_UUID)"
+          echo "PROVISIONING_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+      - name: Build and export production archive
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
+          CURRENT_PROJECT_VERSION: ${{ steps.version.outputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          # Inject the resolved provisioning profile name into ExportOptions for manual signing.
+          # TestFlight lane uses the App Store export options template.
+          EXPORT_OPTIONS=$RUNNER_TEMP/ExportOptions.plist
+          cp .github/workflows/ExportOptions-TestFlight.plist "$EXPORT_OPTIONS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.edwardwynman.Spot string ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:com.edwardwynman.Spot ${PROVISIONING_PROFILE_NAME}" "$EXPORT_OPTIONS"
+
+          # Archive WITHOUT code signing. Passing signing settings on the xcodebuild
+          # command line applies them to every target, including Swift Package
+          # dependencies which do not support provisioning profiles and fail the archive.
+          # We archive unsigned and sign only at export time, where ExportOptions scopes
+          # the provisioning profile to the app's bundle id.
+          #
+          # MARKETING_VERSION comes from the release/** branch name; CURRENT_PROJECT_VERSION
+          # is the unique GitHub run number. These are safe to set globally (unlike signing).
+          xcodebuild \
+            -scheme Spot \
+            -destination "generic/platform=iOS" \
+            -archivePath $RUNNER_TEMP/Spot.xcarchive \
+            -configuration Release \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean archive | xcbeautify
+
+          # Export & sign the IPA for App Store Connect (manual signing scoped via ExportOptions)
+          xcodebuild \
+            -exportArchive \
+            -archivePath $RUNNER_TEMP/Spot.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist "$EXPORT_OPTIONS" | xcbeautify
+
+          if [ -f "$RUNNER_TEMP/export/Spot.ipa" ]; then
+            echo "✅ IPA created successfully (version $MARKETING_VERSION build $CURRENT_PROJECT_VERSION)"
+            ls -lh $RUNNER_TEMP/export/Spot.ipa
+          else
+            echo "❌ IPA creation failed"
+            exit 1
+          fi
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spot-TestFlight-${{ steps.version.outputs.marketing_version }}-${{ steps.version.outputs.build_number }}
+          path: ${{ runner.temp }}/export/Spot.ipa
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload to App Store Connect / TestFlight
+        if: success()
+        env:
+          # TODO: These App Store Connect API secrets are NOT yet configured in the
+          # repository. Add them in GitHub → Settings → Secrets and variables → Actions
+          # for the TestFlight upload to succeed. Names follow the PRD's suggested naming:
+          #   APP_STORE_CONNECT_API_KEY_ID          - the Key ID (e.g. ABC123DEF4)
+          #   APP_STORE_CONNECT_API_ISSUER_ID       - the Issuer ID (a UUID)
+          #   APP_STORE_CONNECT_API_KEY_P8_BASE64   - base64 of the AuthKey_XXX.p8 file
+          # Create the key at App Store Connect → Users and Access → Integrations → App Store Connect API.
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8_BASE64" ]; then
+            echo "❌ App Store Connect API credentials are missing."
+            echo ""
+            echo "The archive built and exported successfully (see the uploaded artifact),"
+            echo "but TestFlight upload requires App Store Connect API secrets that are not yet set."
+            echo ""
+            echo "Add these repository secrets to enable automatic TestFlight upload:"
+            echo "  - APP_STORE_CONNECT_API_KEY_ID"
+            echo "  - APP_STORE_CONNECT_API_ISSUER_ID"
+            echo "  - APP_STORE_CONNECT_API_KEY_P8_BASE64  (base64 of the AuthKey_XXX.p8)"
+            echo ""
+            echo "Create the key at App Store Connect → Users and Access → Integrations → App Store Connect API."
+            exit 1
+          fi
+
+          # altool looks for the private key at ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
+          PRIVATE_KEYS_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$PRIVATE_KEYS_DIR"
+          echo -n "$ASC_KEY_P8_BASE64" | base64 --decode -o "$PRIVATE_KEYS_DIR/AuthKey_${ASC_KEY_ID}.p8"
+
+          # Upload to App Store Connect. This makes the build available in TestFlight
+          # after processing. It does NOT submit the build to App Store Review.
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/Spot.ipa" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+          echo "✅ Uploaded to App Store Connect. The build will appear in TestFlight after processing."
+
+          # Remove the decoded private key
+          rm -f "$PRIVATE_KEYS_DIR/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Create build summary
+        if: always()
+        run: |
+          echo "## 🚀 TestFlight Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.marketing_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number**: ${{ steps.version.outputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Clean up keychain and provisioning profile
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+          if [ -n "${PROVISIONING_PROFILE_UUID:-}" ]; then
+            rm -f ~/Library/MobileDevice/Provisioning\ Profiles/"$PROVISIONING_PROFILE_UUID".mobileprovision || true
+          fi
+          rm -f "$HOME/.appstoreconnect/private_keys"/AuthKey_*.p8 || true
+          # Remove GoogleService-Info.plist to ensure it's not cached
+          rm -f Spot/GoogleService-Info.plist || true
