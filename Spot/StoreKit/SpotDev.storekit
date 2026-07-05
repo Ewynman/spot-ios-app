@@ -1,11 +1,11 @@
 {
   "appPolicies" : {
-    "eula" : "",
+    "eula" : "https://spotapp.online/terms",
     "policies" : [
       {
         "locale" : "en_US",
         "policyText" : "",
-        "policyURL" : ""
+        "policyURL" : "https://spotapp.online/privacy"
       }
     ]
   },
