@@ -46,6 +46,21 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Select Xcode 26 (match App Store SDK requirements)
+        run: |
+          set -euo pipefail
+          # Build with the newest installed Xcode 26.x so the Firebase build matches
+          # the SDK used for the TestFlight/App Store lane. The runner still defaults
+          # to Xcode 16.x. If no Xcode 26.x is present, keep the default rather than fail.
+          XCODE_APP=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$XCODE_APP" ]; then
+            sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+            echo "Selected Xcode: $XCODE_APP"
+          else
+            echo "⚠️ No Xcode 26.x found; using default $(xcode-select -p)"
+          fi
+          xcodebuild -version
+
       - name: Install dependencies
         run: brew install xcbeautify
 

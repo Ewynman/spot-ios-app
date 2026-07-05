@@ -48,8 +48,21 @@ jobs:
           echo "marketing_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD" >> "$GITHUB_OUTPUT"
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Select Xcode 26 (iOS 26 SDK required by App Store Connect)
+        run: |
+          set -euo pipefail
+          # App Store Connect rejects apps built with the iOS 18.x SDK; it requires
+          # the iOS 26 SDK (Xcode 26+). The macos runner still defaults to Xcode 16.x,
+          # so select the newest installed Xcode 26.x for the archive.
+          XCODE_APP=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "❌ No Xcode 26.x found on the runner. Installed Xcodes:"
+            ls -d /Applications/Xcode_*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          echo "Selected Xcode: $XCODE_APP"
+          xcodebuild -version
 
       - name: Install dependencies
         run: brew install xcbeautify
