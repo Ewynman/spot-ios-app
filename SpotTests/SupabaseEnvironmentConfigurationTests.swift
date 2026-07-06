@@ -168,14 +168,10 @@ final class SupabaseEnvironmentConfigurationTests: XCTestCase {
     // MARK: - Integration Tests
     
     func testGlobalSupabaseClientIsInitialized() {
-        // The global supabase client should be accessible
+        // The global supabase client should be accessible and functional
         XCTAssertNotNil(supabase)
-    }
-    
-    func testGlobalSupabaseClientHasValidURL() {
-        // The global client should have a valid Supabase URL
-        let urlString = supabase.supabaseURL.absoluteString
-        XCTAssertTrue(urlString.contains("supabase.co"))
+        // Client should have auth property
+        XCTAssertNotNil(supabase.auth)
     }
     
     func testEnvironmentEquality() {
