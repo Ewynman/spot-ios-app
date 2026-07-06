@@ -13,7 +13,7 @@ import Supabase
 /// Environment configuration for Supabase connections.
 /// - In DEBUG builds: uses staging environment (current project: aeurigbbohyxvtsfiyul)
 /// - In RELEASE builds: uses production environment (to be created)
-private enum SupabaseEnvironment {
+enum SupabaseEnvironment {
     case staging
     case production
     
@@ -66,7 +66,7 @@ private enum SupabaseEnvironment {
 /// Configuration loader that supports both environment-based and Info.plist-based configuration.
 /// - In DEBUG: uses SupabaseEnvironment enum directly
 /// - In RELEASE: attempts to load from Info.plist first (for CI/CD injection), falls back to enum
-private enum SupabaseConfiguration {
+enum SupabaseConfiguration {
     /// Load Supabase configuration from Info.plist or environment defaults.
     static func load() -> (url: URL, anonKey: String, environment: SupabaseEnvironment) {
         let environment = SupabaseEnvironment.current
