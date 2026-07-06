@@ -8,27 +8,18 @@
 import Foundation
 import Supabase
 
-private enum SupabaseConfiguration {
-    static func load() -> (url: URL, anonKey: String) {
-        guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
-              let root = NSDictionary(contentsOfFile: path) as? [String: Any],
-              let supabase = root["Supabase"] as? [String: Any],
-              let urlString = supabase["url"] as? String,
-              let anonKey = supabase["anonKey"] as? String,
-              let url = URL(string: urlString),
-              !anonKey.isEmpty
-        else {
-            fatalError("Add Supabase.url and Supabase.anonKey to Info.plist (see Supabase dashboard).")
-        }
-        return (url, anonKey)
-    }
-}
-
 let supabase: SupabaseClient = {
-    let (url, anonKey) = SupabaseConfiguration.load()
+    let config = SupabaseConfiguration.load()
+    
+    #if DEBUG
+    // Log environment in DEBUG builds only (never log in production)
+    print("🔧 Supabase Environment: \(config.environment.displayName)")
+    print("🔧 Supabase URL: \(config.url.absoluteString)")
+    #endif
+    
     return SupabaseClient(
-        supabaseURL: url,
-        supabaseKey: anonKey,
+        supabaseURL: config.url,
+        supabaseKey: config.anonKey,
         options: SupabaseClientOptions(
             auth: .init(emitLocalSessionAsInitialSession: true)
         )

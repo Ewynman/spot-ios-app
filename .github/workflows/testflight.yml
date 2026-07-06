@@ -130,6 +130,38 @@ jobs:
             exit 1
           fi
 
+      - name: Configure Supabase Environment (Production)
+        env:
+          SUPABASE_PRODUCTION_URL: ${{ secrets.SUPABASE_PRODUCTION_URL }}
+          SUPABASE_PRODUCTION_ANON_KEY: ${{ secrets.SUPABASE_PRODUCTION_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          
+          # TestFlight/App Store builds MUST use production Supabase environment.
+          # GitHub secrets are REQUIRED for production builds.
+          
+          if [ -z "${SUPABASE_PRODUCTION_URL:-}" ] || [ -z "${SUPABASE_PRODUCTION_ANON_KEY:-}" ]; then
+            echo "❌ Production Supabase credentials are not configured"
+            echo ""
+            echo "TestFlight builds require production Supabase credentials."
+            echo "Add these secrets to GitHub repository settings:"
+            echo "  - SUPABASE_PRODUCTION_URL"
+            echo "  - SUPABASE_PRODUCTION_ANON_KEY"
+            echo ""
+            echo "See docs/engineering/supabase-environment-strategy.md for setup instructions."
+            exit 1
+          fi
+          
+          echo "✅ Using Supabase production credentials from GitHub secrets"
+          
+          # Inject production credentials into Info.plist
+          /usr/libexec/PlistBuddy -c "Set :Supabase:url ${SUPABASE_PRODUCTION_URL}" Spot/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :Supabase:url string ${SUPABASE_PRODUCTION_URL}" Spot/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :Supabase:anonKey ${SUPABASE_PRODUCTION_ANON_KEY}" Spot/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :Supabase:anonKey string ${SUPABASE_PRODUCTION_ANON_KEY}" Spot/Info.plist
+          
+          echo "✅ Supabase production configuration injected into Info.plist"
+
       - name: Install Apple Certificate and Provisioning Profile
         env:
           # TestFlight lane signing assets (Apple Distribution cert + App Store Connect profile).

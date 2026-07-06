@@ -45,7 +45,8 @@ Reflects the repository as of the documentation refresh. Implementation details 
 | [engineering/logging.md](engineering/logging.md) | SpotLogger, debug categories |
 | [engineering/networking-and-auth.md](engineering/networking-and-auth.md) | Sessions, RLS expectations |
 | [engineering/supabase.md](engineering/supabase.md) | Supabase role in the app |
-| [engineering/supabase-environment-strategy.md](engineering/supabase-environment-strategy.md) | **PRD: Production and non-production environment split** |
+| [engineering/supabase-environment-strategy.md](engineering/supabase-environment-strategy.md) | **Production and non-production environment split strategy** |
+| [engineering/supabase-environment-setup-guide.md](engineering/supabase-environment-setup-guide.md) | **Step-by-step setup instructions for two-environment strategy** |
 | [engineering/data-plane.md](engineering/data-plane.md) | **Supabase-only data plane; Firebase observability only** |
 | [engineering/database-and-rls.md](engineering/database-and-rls.md) | RLS principles, migrations |
 | [engineering/production-readiness-audit-2026-05.md](engineering/production-readiness-audit-2026-05.md) | Pre-launch audit: leaks, feed variety, follows |
