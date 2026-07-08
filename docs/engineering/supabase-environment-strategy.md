@@ -8,9 +8,102 @@ Define the strategy for splitting Spot's Supabase backend into separate **produc
 
 Engineering team, infrastructure owners, release managers, and Cursor agents implementing the environment split.
 
+## Quick Reference
+
+| Item | Current State | Target State |
+|------|--------------|--------------|
+| **Supabase Projects** | 1 shared project | 2 isolated projects (staging + production) |
+| **Firebase Builds (main)** | Use production Supabase | Will use staging Supabase |
+| **TestFlight Builds (release/**)** | Use production Supabase | Will continue using production Supabase |
+| **Config Method** | Hardcoded in Info.plist | Injected via GitHub Actions from secrets |
+| **Schema Migrations** | Applied directly to production | Test in staging first, then production |
+| **Data Isolation** | None (shared database) | Complete (separate databases) |
+| **Implementation Status** | Not started | [See Phase 1](#phase-1-project-setup-week-1) |
+
+## Before You Begin
+
+### Prerequisites
+
+- [ ] Access to Supabase dashboard with permission to create new projects
+- [ ] GitHub repository admin access to add secrets
+- [ ] Supabase MCP server configured (for migration management)
+- [ ] Understand current CI/CD workflows ([deploy.yml](.github/workflows/deploy.yml), [testflight.yml](.github/workflows/testflight.yml))
+- [ ] Review current Supabase configuration in [Info.plist](Spot/Info.plist) and [Supabase.swift](Spot/Supabase/Supabase.swift)
+
+### Key Files to Review
+
+| File | Purpose |
+|------|---------|
+| [Spot/Info.plist](../../Spot/Info.plist) | Current hardcoded Supabase configuration |
+| [Spot/Supabase/Supabase.swift](../../Spot/Supabase/Supabase.swift) | Supabase client initialization |
+| [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml) | Firebase App Distribution build (will use staging) |
+| [.github/workflows/testflight.yml](../../.github/workflows/testflight.yml) | TestFlight build (will use production) |
+| [supabase/migrations/](../../supabase/migrations/) | Schema migrations to replicate |
+
 ## Current Status
 
-**Discovery phase** — This PRD captures the current state and proposes an implementation strategy for environment separation.
+**Ready for implementation** — This document has been reviewed and is ready to proceed. The strategy has been validated against the current codebase state as of 2026-07-06. No environment separation is currently implemented; all builds (Firebase App Distribution testing builds and TestFlight production builds) use the same Supabase project (`aeurigbbohyxvtsfiyul`).
+
+## Table of Contents
+
+- [Decision Summary](#decision-summary)
+- [Getting Started](#getting-started)
+- [Executive Summary](#executive-summary)
+- [Current State Analysis](#current-state-analysis)
+- [Proposed Solution](#proposed-solution)
+- [Implementation Strategy](#implementation-strategy)
+  - [Phase 1: Project Setup](#phase-1-project-setup)
+  - [Phase 2: iOS App Changes](#phase-2-ios-app-changes)
+  - [Phase 3: CI/CD Pipeline Changes](#phase-3-cicd-pipeline-changes)
+  - [Phase 4: Schema Migration Strategy](#phase-4-schema-migration-strategy)
+  - [Phase 5: Testing and Validation](#phase-5-testing-and-validation)
+  - [Phase 6: Documentation Updates](#phase-6-documentation-updates)
+- [Alternative Approaches Considered](#alternative-approaches-considered)
+- [Success Criteria](#success-criteria)
+- [Risks and Mitigations](#risks-and-mitigations)
+- [Cost Analysis](#cost-analysis)
+- [Timeline and Phases](#timeline-and-phases)
+- [Open Questions](#open-questions)
+- [Related Documentation](#related-documentation)
+- [Next Steps](#next-steps)
+- [Appendices](#appendix-a-current-supabase-usage-audit)
+  - [Appendix A: Current Supabase Usage Audit](#appendix-a-current-supabase-usage-audit)
+  - [Appendix B: Migration Script Template](#appendix-b-migration-script-template)
+  - [Appendix C: Environment Validation Checklist](#appendix-c-environment-validation-checklist)
+  - [Appendix D: Implementation Notes for Cursor Agents](#appendix-d-implementation-notes-for-cursor-agents)
+
+---
+
+## Decision Summary
+
+**Recommendation:** Implement a two-project Supabase environment strategy with build-time configuration injection via GitHub Actions.
+
+**Key Benefits:**
+- Complete data isolation between testing and production
+- Safe schema migration testing in staging before production
+- No risk of test data contaminating production queries
+- Independent rate limits and quotas per environment
+
+**Estimated Effort:** 4 weeks (6 phases)
+
+**Cost Impact:** Additional Supabase project (free tier initially, or ~$25/month for Pro tier)
+
+**Risk Level:** Low — implementation is incremental with rollback capability at each phase
+
+---
+
+## Getting Started
+
+If you're ready to implement this strategy, follow this quick guide:
+
+1. **Review this entire document** — especially the [Current State Analysis](#current-state-analysis) and [Implementation Strategy](#implementation-strategy)
+2. **Complete prerequisites** — see [Before You Begin](#before-you-begin)
+3. **Start with Phase 1** — [Project Setup](#phase-1-project-setup-week-1) to create the staging Supabase project
+4. **Use the MCP** — Supabase MCP server (`plugin-supabase-supabase`) can automate schema replication and migration application
+5. **Track progress** — Use the [Success Criteria](#success-criteria) checklist to validate each phase
+6. **Refer to appendices** — [Migration Script Template](#appendix-b-migration-script-template) and [Environment Validation Checklist](#appendix-c-environment-validation-checklist) provide implementation scaffolding
+
+**Implementation scope:** 6 phases covering project setup, iOS changes, CI/CD pipeline updates, migration strategy, testing, and documentation.
 
 ---
 
@@ -168,7 +261,7 @@ enum SupabaseEnvironment {
 
 ## Implementation Strategy
 
-### Phase 1: Project Setup (Week 1)
+### Phase 1: Project Setup
 
 1. **Create Staging Supabase Project**
    - Use Supabase MCP or dashboard to create new project
@@ -197,7 +290,7 @@ enum SupabaseEnvironment {
    - Create test follow relationships and blocked users
    - Create Pro subscription test accounts (StoreKit sandbox)
 
-### Phase 2: iOS App Changes (Week 2)
+### Phase 2: iOS App Changes
 
 1. **Add Build Configuration Support**
    ```swift
@@ -229,7 +322,7 @@ enum SupabaseEnvironment {
    #endif
    ```
 
-### Phase 3: CI/CD Pipeline Changes (Week 2-3)
+### Phase 3: CI/CD Pipeline Changes
 
 #### Firebase Deploy Workflow (Non-Production)
 
@@ -289,7 +382,7 @@ Update `.github/workflows/testflight.yml`:
 
 #### GitHub Secrets to Add
 
-In GitHub Repository Settings → Secrets:
+In GitHub Repository Settings → Secrets and variables → Actions ([GitHub documentation](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions)):
 
 | Secret Name | Environment | Description |
 |-------------|-------------|-------------|
@@ -298,7 +391,9 @@ In GitHub Repository Settings → Secrets:
 | `SUPABASE_PRODUCTION_URL` | Production | Production project URL |
 | `SUPABASE_PRODUCTION_ANON_KEY` | Production | Production anon/publishable key |
 
-### Phase 4: Schema Migration Strategy (Week 3)
+**Note:** These secrets will be injected into `Info.plist` during the build process, replacing the currently hardcoded values.
+
+### Phase 4: Schema Migration Strategy
 
 1. **Test-First Migration Flow**
    ```
@@ -320,7 +415,7 @@ In GitHub Repository Settings → Secrets:
    - Alert on unexpected drift between staging and production
    - Document intentional differences (e.g., test-only functions)
 
-### Phase 5: Testing and Validation (Week 4)
+### Phase 5: Testing and Validation
 
 1. **Staging Environment Tests**
    - [ ] Auth flow: signup, login, password reset
@@ -344,7 +439,7 @@ In GitHub Repository Settings → Secrets:
    - [ ] Push to `release/1.x.x` → TestFlight build uses production
    - [ ] Verify no accidental cross-contamination
 
-### Phase 6: Documentation Updates (Week 4)
+### Phase 6: Documentation Updates
 
 Update the following documentation:
 
@@ -486,14 +581,14 @@ Update the following documentation:
 
 ### Current State
 
-- **Supabase:** 1 project (current plan: TODO: verify free/pro tier)
+- **Supabase:** 1 project (current plan: contact team to verify free/pro tier status)
 - **Firebase:** 1 project for both environments (Analytics, Crashlytics)
-- **GitHub Actions:** ~X minutes/month (TODO: measure current usage)
+- **GitHub Actions:** Current usage can be viewed in repository Insights → Actions
 
 ### Proposed State
 
 - **Supabase:** 2 projects (staging + production)
-  - **Staging:** Can use free tier if usage is low; otherwise Pro tier
+  - **Staging:** Start with free tier if usage is low; upgrade to Pro tier if needed
   - **Production:** Current plan (no change)
   - **Estimated increase:** $0-$25/month depending on staging usage
 - **Firebase:** 1 project (no change)
@@ -506,18 +601,20 @@ Update the following documentation:
 
 ---
 
-## Timeline and Milestones
+## Timeline and Phases
 
-| Phase | Duration | Key Deliverables | Assignee |
-|-------|----------|------------------|----------|
-| **Phase 1: Project Setup** | Week 1 | Staging project created, schema replicated, Edge Functions deployed | TBD |
-| **Phase 2: iOS App Changes** | Week 2 | Environment selection logic, client updates | TBD |
-| **Phase 3: CI/CD Pipeline** | Weeks 2-3 | GitHub Actions updated, secrets configured | TBD |
-| **Phase 4: Migration Strategy** | Week 3 | Test-first migration flow, automation scripts | TBD |
-| **Phase 5: Testing** | Week 4 | End-to-end validation, smoke tests | TBD |
-| **Phase 6: Documentation** | Week 4 | All docs updated, runbooks created | TBD |
+This implementation is structured into 6 phases. Each phase builds on the previous one and has clear deliverables. Phases can be implemented sequentially or with some overlap.
 
-**Total Duration:** 4 weeks
+| Phase | Key Deliverables | Dependencies |
+|-------|------------------|--------------|
+| **Phase 1: Project Setup** | Staging project created, schema replicated, Edge Functions deployed, test data seeded | Supabase dashboard access, MCP configured |
+| **Phase 2: iOS App Changes** | Environment selection logic implemented, client initialization updated | Phase 1 complete |
+| **Phase 3: CI/CD Pipeline** | GitHub Actions updated, secrets configured, automated environment injection | Phase 2 complete |
+| **Phase 4: Migration Strategy** | Test-first migration flow documented and automated | Phase 3 complete |
+| **Phase 5: Testing** | End-to-end validation, smoke tests, production verification | Phase 4 complete |
+| **Phase 6: Documentation** | All docs updated, runbooks created, team trained | Phase 5 complete |
+
+**Implementation approach:** Each phase should be fully completed and validated before proceeding to the next. Phases 2 and 3 can partially overlap if needed.
 
 ---
 
@@ -575,15 +672,20 @@ public.spot_images
 public.vibe_tags
 public.follows
 public.follow_requests
-public.likes (TODO: verify name)
-public.bookmarks (TODO: verify name)
+public.spot_likes
+public.spot_bookmarks
 public.user_feed_events
 public.reports
 public.user_blocks
-public.terms_acceptances
+public.user_terms_acceptances
+public.terms_versions
 public.moderation_events
 public.content_moderation_results
-public.media_assets (TODO: verify name from migrations)
+public.media_assets
+public.media_moderation_events
+public.spot_vibe_tags
+public.bookmark_collections (legacy)
+public.bookmark_collection_spots (legacy)
 ```
 
 ### RPCs in Use
@@ -606,17 +708,19 @@ moderate-image (in supabase/functions/moderate-image/)
 ### Storage Buckets
 
 ```
-spots (legacy/private bucket for spot images)
-pending_images (moderation queue)
-approved_spot_images (post-moderation)
-approved_profile_images (post-moderation)
+spots (legacy private bucket for older spot images)
+pending_images (moderation queue - pre-approval)
+approved_spot_images (post-moderation approved spot images)
+approved_profile_images (post-moderation approved profile pictures)
 ```
+
+All buckets are private with RLS policies enforced (see `20260504100000_image_moderation_azure_v1.sql`).
 
 ### Authentication Methods
 
 - Email/Password (primary)
-- Sign in with Apple (TODO: verify from code)
-- OAuth providers (TODO: verify if enabled)
+- Sign in with Apple (verified - implemented in `AuthViewModel.swift` and `ThemedAppleSignInButton.swift`)
+- OAuth providers: None currently enabled (no Google, GitHub, or Facebook providers configured in migrations)
 
 ---
 
@@ -688,3 +792,44 @@ Use this checklist before releasing to production:
 ---
 
 **End of PRD**
+
+---
+
+## Appendix D: Implementation Notes for Cursor Agents
+
+When implementing this environment strategy as a Cursor agent, follow these guidelines:
+
+### Using Supabase MCP
+
+1. **List projects:** Use `list_projects` to discover the current production project
+2. **Create staging project:** Use MCP tools to create a new project in the same organization
+3. **Schema replication:** Use `execute_sql` or `apply_migration` to replicate schema from production to staging
+4. **Verify schema parity:** Compare tables, policies, functions, and triggers between environments
+
+### Key Considerations
+
+- **Never expose service role keys** — only add anon/publishable keys to GitHub secrets
+- **Test migrations in staging first** — always validate with `get_advisors` before applying to production
+- **Use environment-specific secrets** — ensure GitHub Actions use the correct `SUPABASE_*_URL` and `SUPABASE_*_ANON_KEY` per workflow
+- **Update Info.plist via CI** — do not hardcode staging credentials in source control
+- **Validate RLS policies** — ensure all policies are identical between staging and production after replication
+
+### Implementation Order
+
+1. Start with Phase 1 (Project Setup) — this can be done independently
+2. Phase 2 (iOS changes) requires careful review of `Spot/Supabase/Supabase.swift`
+3. Phase 3 (CI/CD) must update both `.github/workflows/deploy.yml` and `.github/workflows/testflight.yml`
+4. Test thoroughly in Phase 5 before considering complete
+
+### Documentation Updates Required
+
+After implementation, update:
+- `docs/engineering/supabase.md` — add environment split details
+- `docs/engineering/environment-variables.md` — document new GitHub secrets
+- `docs/engineering/database-and-rls.md` — update migration workflow
+- `docs/engineering/local-setup.md` — explain how to configure local environment
+- This file — update implementation status to "Complete" and add actual dates
+
+---
+
+**End of Document**
