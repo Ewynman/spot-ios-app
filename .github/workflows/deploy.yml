@@ -167,35 +167,35 @@ jobs:
             exit 1
           fi
 
-      - name: Configure Supabase Environment (Staging)
+      - name: Configure Supabase Environment (Production)
         env:
-          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
-          SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          SUPABASE_PRODUCTION_URL: ${{ secrets.SUPABASE_PRODUCTION_URL }}
+          SUPABASE_PRODUCTION_ANON_KEY: ${{ secrets.SUPABASE_PRODUCTION_ANON_KEY }}
         run: |
           set -euo pipefail
           
-          # Firebase App Distribution builds use staging Supabase environment.
-          # If secrets are not set, fall back to hardcoded staging values (current project).
+          # Firebase App Distribution builds use production Supabase environment.
+          # If secrets are not set, fall back to hardcoded production values.
           
-          if [ -n "${SUPABASE_STAGING_URL:-}" ] && [ -n "${SUPABASE_STAGING_ANON_KEY:-}" ]; then
-            echo "✅ Using Supabase staging credentials from GitHub secrets"
-            SUPABASE_URL="$SUPABASE_STAGING_URL"
-            SUPABASE_KEY="$SUPABASE_STAGING_ANON_KEY"
+          if [ -n "${SUPABASE_PRODUCTION_URL:-}" ] && [ -n "${SUPABASE_PRODUCTION_ANON_KEY:-}" ]; then
+            echo "✅ Using Supabase production credentials from GitHub secrets"
+            SUPABASE_URL="$SUPABASE_PRODUCTION_URL"
+            SUPABASE_KEY="$SUPABASE_PRODUCTION_ANON_KEY"
           else
-            echo "⚠️  SUPABASE_STAGING_URL or SUPABASE_STAGING_ANON_KEY not set"
-            echo "⚠️  Using hardcoded staging values from SupabaseEnvironment.swift"
+            echo "⚠️  SUPABASE_PRODUCTION_URL or SUPABASE_PRODUCTION_ANON_KEY not set"
+            echo "⚠️  Using hardcoded production values from SupabaseEnvironment.swift"
             echo "⚠️  Add secrets to GitHub for production-ready configuration"
             # Keep existing Info.plist values (will use SupabaseEnvironment.swift defaults)
             exit 0
           fi
           
-          # Inject staging credentials into Info.plist
+          # Inject production credentials into Info.plist
           /usr/libexec/PlistBuddy -c "Set :Supabase:url ${SUPABASE_URL}" Spot/Info.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Add :Supabase:url string ${SUPABASE_URL}" Spot/Info.plist
           /usr/libexec/PlistBuddy -c "Set :Supabase:anonKey ${SUPABASE_KEY}" Spot/Info.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Add :Supabase:anonKey string ${SUPABASE_KEY}" Spot/Info.plist
           
-          echo "✅ Supabase staging configuration injected into Info.plist"
+          echo "✅ Supabase production configuration injected into Info.plist"
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
