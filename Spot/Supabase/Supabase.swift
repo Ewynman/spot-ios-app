@@ -34,9 +34,9 @@ enum SupabaseEnvironment {
             // Current project (will be used for Firebase App Distribution testing builds)
             return "https://aeurigbbohyxvtsfiyul.supabase.co"
         case .production:
-            // New production project (will be created and used for TestFlight/App Store)
+            // Production project (created: 2026-07-08, ID: gomdoguewaawdlvijahg)
             // This will be injected by CI/CD from GitHub secrets for release builds
-            return "https://PRODUCTION_PROJECT_ID.supabase.co"
+            return "https://gomdoguewaawdlvijahg.supabase.co"
         }
     }
     
@@ -48,7 +48,7 @@ enum SupabaseEnvironment {
             return "sb_publishable_5IKZU3dDw6C0-V9lRPc7vw_z_v8a08G"
         case .production:
             // Production anon key (will be injected by CI/CD from GitHub secrets)
-            return "PRODUCTION_ANON_KEY_PLACEHOLDER"
+            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvbWRvZ3Vld2Fhd2RsdmlqYWhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTY4MjIsImV4cCI6MjA5OTA5MjgyMn0.pNezI--Bxni589iGsW33ni8VxlE9tFq_oKmiXnGURxE"
         }
     }
     
