@@ -59,6 +59,7 @@ struct ConfirmEmailView: View {
                         }
                     ))
                     .keyboardType(.numberPad)
+                    .textContentType(index == 0 ? .oneTimeCode : nil)
                     .multilineTextAlignment(.center)
                     .font(FontManager.sectionHeader())
                     .foregroundColor(Constants.Colors.primary)
@@ -67,6 +68,11 @@ struct ConfirmEmailView: View {
                     .background(Constants.Colors.background)
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Constants.Colors.primary, lineWidth: 1))
                     .focused($focusedIndex, equals: index)
+                    .onChange(of: otpDigits[index]) { oldValue, newValue in
+                        if newValue.isEmpty && !oldValue.isEmpty && index > 0 {
+                            focusedIndex = index - 1
+                        }
+                    }
                 }
             }
             .padding(.top, 8)
