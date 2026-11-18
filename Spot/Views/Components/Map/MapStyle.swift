@@ -157,7 +157,10 @@ struct SpotMarkerStyleResolver {
             case .liked:
                 guard let id = spot.id, likedSpotIds.contains(id) else { return false }
             case .following:
-                guard let uid = spot.userId, followedUserIds.contains(uid) else { return false }
+                let followed = Set(followedUserIds.map { $0.lowercased() })
+                guard let uid = spot.userId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                      !uid.isEmpty,
+                      followed.contains(uid) else { return false }
             }
         }
         return true

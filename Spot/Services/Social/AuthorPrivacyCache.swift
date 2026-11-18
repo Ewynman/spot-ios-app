@@ -45,6 +45,20 @@ actor AuthorPrivacyCache {
     func onFollowRelationshipChanged(followeeUserId: String) {
         authorIdToEntry.removeValue(forKey: followeeUserId)
         followingFetchedAt = .distantPast
+        NotificationCenter.default.post(name: .followGraphDidChange, object: nil)
+    }
+
+    /// Followed user ids for the signed-in viewer, lowercased. Always refetches.
+    /// Empty when nobody is signed in.
+    func currentFollowedUserIds() async -> Set<String> {
+        guard SpotAuthBridge.currentUserId != nil else {
+            cachedFollowing = []
+            followingFetchedAt = .distantPast
+            return []
+        }
+        followingFetchedAt = .distantPast
+        await refreshFollowingIfNeeded()
+        return Set(cachedFollowing.map { $0.lowercased() })
     }
 
     /// Preload cache for the provided authors in a single batched pass.

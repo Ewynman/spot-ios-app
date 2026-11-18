@@ -509,6 +509,7 @@ enum SpotSupabaseRepository {
             cursor += n
         }
 
+        let profileImageURLs = await ProfileImageDisplayURL.resolveMany(rows.map { byUser[$0.user_id]?.profile_image_url })
         return rows.map { row in
             let u = byUser[row.user_id]
             let urls = resolvedBySpot[row.id] ?? []
@@ -530,7 +531,7 @@ enum SpotSupabaseRepository {
                 id: row.id.uuidString,
                 userId: row.user_id.uuidString,
                 username: u?.username ?? "User",
-                userProfileImageURL: u?.profile_image_url,
+                userProfileImageURL: ProfileImageDisplayURL.lookup(u?.profile_image_url, in: profileImageURLs),
                 imageURL: primary,
                 thumbnailURL: primary,
                 vibeTag: vibe,
@@ -743,6 +744,7 @@ enum SpotSupabaseRepository {
             previewById[sid] = url
         }
 
+        let profileImageURLs = await ProfileImageDisplayURL.resolveMany(rows.map { byUser[$0.user_id]?.profile_image_url })
         return rows.map { row in
             let sid = row.id.uuidString
             let u = byUser[row.user_id]
@@ -763,7 +765,7 @@ enum SpotSupabaseRepository {
                 id: sid,
                 userId: row.user_id.uuidString,
                 username: u?.username ?? "User",
-                userProfileImageURL: u?.profile_image_url,
+                userProfileImageURL: ProfileImageDisplayURL.lookup(u?.profile_image_url, in: profileImageURLs),
                 imageURL: preview,
                 thumbnailURL: preview,
                 vibeTag: vibe,

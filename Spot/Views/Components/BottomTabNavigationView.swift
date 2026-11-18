@@ -71,6 +71,7 @@ struct BottomTabNavigationView: View {
     @State private var showTourLocationPrePrompt = false
     /// Notification permission sheet shown after onboarding tour completes.
     @State private var showNotificationPermissionPrompt = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -172,9 +173,34 @@ struct BottomTabNavigationView: View {
             )
         }
         .onPreferenceChange(CoachFramesPrefKey.self) { coachFrames = $0 }
-        .onAppear(perform: evaluateFirstRunOnboarding)
-        .onChange(of: authVM.isAuthenticated) { _, _ in evaluateFirstRunOnboarding() }
-        .onChange(of: authVM.userId) { _, _ in evaluateFirstRunOnboarding() }
+        .onAppear {
+            evaluateFirstRunOnboarding()
+            syncFollowActivityMonitor()
+        }
+        .onChange(of: authVM.isAuthenticated) { _, _ in
+            evaluateFirstRunOnboarding()
+            syncFollowActivityMonitor()
+        }
+        .onChange(of: authVM.userId) { _, _ in
+            evaluateFirstRunOnboarding()
+            syncFollowActivityMonitor()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                FollowActivityMonitor.shared.refreshNow()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToFollowRequests)) { _ in
+            openFollowNotification(.followRequests(acceptRequesterUid: nil))
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToFollowRequestsAndAccept)) { output in
+            let requesterUid = output.userInfo?["requester_uid"] as? String
+            openFollowNotification(.followRequests(acceptRequesterUid: requesterUid))
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToProfile)) { output in
+            guard let userId = output.userInfo?["user_id"] as? String else { return }
+            openFollowNotification(.profile(userId: userId))
+        }
         .onChange(of: authVM.likedSpots) { _, _ in evaluateFirstRunOnboarding() }
         .onChange(of: authVM.bookmarkedSpots) { _, _ in evaluateFirstRunOnboarding() }
         .onReceive(NotificationCenter.default.publisher(for: .selectMainTab)) { output in
@@ -212,6 +238,19 @@ struct BottomTabNavigationView: View {
     private var currentTourTargetRect: CGRect? {
         guard let target = firstRunOnboarding.currentStep.target else { return nil }
         return coachFrames[target]
+    }
+
+    private func syncFollowActivityMonitor() {
+        if authVM.isAuthenticated, let userId = authVM.userId {
+            FollowActivityMonitor.shared.start(userId: userId)
+        } else {
+            FollowActivityMonitor.shared.stop()
+        }
+    }
+
+    private func openFollowNotification(_ destination: FollowNotificationRouter.Destination) {
+        FollowNotificationRouter.shared.destination = destination
+        selectTab(4)
     }
 
     private func selectTab(_ tab: Int) {

@@ -226,11 +226,12 @@ struct PostAuthSetupFlowView: View {
             .single()
             .execute()
             .value
+        let displayURL = await ProfileImageDisplayURL.resolve(row?.profile_image_url)
         await MainActor.run {
             if let row {
                 username = row.username
                 originalUsername = row.username
-                existingProfileImageURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
+                existingProfileImageURL = displayURL
             }
             profileLoadCompleted = true
         }
@@ -295,27 +296,24 @@ struct PostAuthSetupFlowView: View {
                 }
             }
 
-            var avatarURLToPersist = existingProfileImageURL
             if let image = selectedProfileImage {
                 guard let data = image.jpegData(compressionQuality: 0.7) else {
                     errorMessage = "Failed to process image."
                     return
                 }
-                avatarURLToPersist = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uid)
+                _ = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uid)
             }
 
             struct Patch: Encodable {
                 let username: String
                 let username_lower: String
-                let profile_image_url: String?
             }
 
             try await supabase
                 .from("users")
                 .update(Patch(
                     username: trimmed,
-                    username_lower: trimmed.lowercased(),
-                    profile_image_url: avatarURLToPersist
+                    username_lower: trimmed.lowercased()
                 ))
                 .eq("id", value: uid)
                 .execute()

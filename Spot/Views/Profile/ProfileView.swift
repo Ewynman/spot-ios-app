@@ -59,6 +59,9 @@ struct ProfileView: View {
     @State private var showLikesNav: Bool = false
     @State private var showBookmarksNav: Bool = false
     @State private var showFollowRequestsNav: Bool = false
+    @State private var acceptFollowRequesterUid: String?
+    @State private var notificationProfileUserId: String?
+    @ObservedObject private var followRouter = FollowNotificationRouter.shared
     @State private var showAlgorithmNav: Bool = false
     @State private var isMapExpanded: Bool = false
     @State private var showOtherUserMenu: Bool = false
@@ -642,6 +645,10 @@ struct ProfileView: View {
             if isSelf && viewModel.isPrivateProfile {
                 viewModel.startFollowRequestsListener(ownUserId: authVM.userId)
             }
+            consumeFollowNotificationRoute()
+        }
+        .onChange(of: followRouter.destination) { _, _ in
+            consumeFollowNotificationRoute()
         }
         .onChange(of: showSettingsNav) { _, isShowing in
             if !isShowing {
@@ -670,7 +677,16 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showFollowRequestsNav) {
-            FollowRequestsView()
+            FollowRequestsView(acceptRequesterUid: acceptFollowRequesterUid)
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { notificationProfileUserId != nil },
+            set: { if !$0 { notificationProfileUserId = nil } }
+        )) {
+            if let notificationProfileUserId {
+                ProfileView(userId: notificationProfileUserId, fromNavigationPush: true)
+                    .environmentObject(authVM)
+            }
         }
         .navigationDestination(isPresented: $showAlgorithmNav) {
             FeedProfileView()
@@ -758,6 +774,22 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, minHeight: 240, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("profile.spotsEmptyState")
+    }
+
+    private func consumeFollowNotificationRoute() {
+        guard isOwnProfile, !fromNavigationPush else { return }
+        guard let destination = followRouter.destination else { return }
+        followRouter.destination = nil
+        switch destination {
+        case .followRequests(let requesterUid):
+            acceptFollowRequesterUid = requesterUid
+            showFollowRequestsNav = true
+        case .profile(let profileUserId):
+            if profileUserId.lowercased() == authVM.userId?.lowercased() {
+                return
+            }
+            notificationProfileUserId = profileUserId
+        }
     }
 
     /// Root Profile tab re-tap: return to the main profile surface (not used when embedded from Home/Map/Search).

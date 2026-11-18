@@ -324,10 +324,14 @@ final class FeedRepository: ObservableObject {
     private func hydrateRows(_ rows: [HomeFeedRow]) async -> [Spot] {
         guard !rows.isEmpty else { return [] }
         let base: [Spot]
+        let profileImageURLs = await ProfileImageDisplayURL.resolveMany(rows.map(\.authorProfileImageUrl))
         if FeedFlags.hydrateOnlyPrimaryFeedImage {
             let urlMap = await FeedAPI.resolvePrimaryImageURLs(for: rows)
             base = rows.map { row in
-                row.toSpot(primaryURL: urlMap[row.spotId])
+                row.toSpot(
+                    primaryURL: urlMap[row.spotId],
+                    profileImageURL: ProfileImageDisplayURL.lookup(row.authorProfileImageUrl, in: profileImageURLs)
+                )
             }
         } else {
             var hydrated: [Spot] = []
@@ -338,7 +342,10 @@ final class FeedRepository: ObservableObject {
                     publicUrl: row.primaryPublicUrl,
                     storageBucket: row.primaryStorageBucket
                 )
-                hydrated.append(row.toSpot(primaryURL: url))
+                hydrated.append(row.toSpot(
+                    primaryURL: url,
+                    profileImageURL: ProfileImageDisplayURL.lookup(row.authorProfileImageUrl, in: profileImageURLs)
+                ))
             }
             base = hydrated
         }

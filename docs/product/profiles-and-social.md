@@ -49,5 +49,5 @@ Likes and bookmarks are loaded from their canonical relationship tables as compl
 
 ## Open questions / TODOs
 
-- Remote follow notifications are not implemented; see [notifications.md](../engineering/notifications.md).
+- Follow alerts are delivered on the signed-in device while the app is running, and on the next launch for events that arrived while it was killed. Lock-screen push while the process is not running still needs APNs. See [notifications.md](../engineering/notifications.md).
 - Likes and bookmark lists need real pagination for large accounts.

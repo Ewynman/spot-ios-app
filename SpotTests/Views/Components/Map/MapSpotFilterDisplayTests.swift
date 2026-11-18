@@ -54,4 +54,17 @@ struct MapSpotFilterDisplayTests {
         )
         #expect(out.map(\.id) == ["1"])
     }
+
+    @Test func followingFilterMatchesUserIdsRegardlessOfCase() {
+        let spots = [spot(id: "1", userId: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")]
+        let filter = SpotMapFilterState(dimensions: [.following], vibeTags: [])
+        let out = SpotMapDisplayFilter.spotsToDisplay(
+            spots,
+            filter: filter,
+            savedSpotIds: [],
+            likedSpotIds: [],
+            followedUserIds: ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]
+        )
+        #expect(out.map(\.id) == ["1"])
+    }
 }

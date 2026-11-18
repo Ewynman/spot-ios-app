@@ -10,7 +10,7 @@ Engineering, safety.
 
 ## Current status
 
-Verified for the Spot-image path. Profile avatars currently bypass this sequence.
+Verified for Spot images and profile photos. Profile photos call `set_profile_image_from_approved_asset_v1` instead of the Spot publish RPC.
 
 ## Details
 
@@ -53,5 +53,4 @@ sequenceDiagram
 
 ## Open questions / TODOs
 
-- Route profile avatars through this sequence.
 - Add cleanup for unlinked approved and failed assets.

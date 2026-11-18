@@ -7,6 +7,7 @@
 
 import Foundation
 import Supabase
+import UIKit
 
 /// Syncs the signed-in Supabase Auth user into `public.users` (id = auth user id).
 final class SupabaseUserService {
@@ -19,18 +20,118 @@ final class SupabaseUserService {
         return f
     }()
 
-    /// Uploads a JPEG to the `avatars` bucket; returns public URL string.
+    /// Moderates a JPEG and sets it as the signed-in user's profile photo.
+    /// Returns a display URL for immediate UI. The database stores a private
+    /// `spot-storage://` reference, not this signed URL.
     func uploadProfileAvatarJPEG(_ data: Data, userId: UUID) async throws -> String {
-        let path = "\(userId.uuidString.lowercased())/profile.jpg"
-        try await supabase.storage
+        let session = try await supabase.auth.session
+        guard session.user.id == userId else {
+            throw profileAvatarError("You can only update your own profile photo.", code: 403)
+        }
+        await syncCurrentUser()
+
+        let assetId = UUID()
+        let ownerFolder = userId.uuidString.lowercased()
+        let path = "\(ownerFolder)/\(assetId.uuidString.lowercased()).jpg"
+        struct MediaAssetInsert: Encodable {
+            let id: UUID
+            let owner_id: UUID
+            let kind: String
+            let status: String
+            let pending_bucket: String
+            let pending_path: String
+            let mime_type: String
+            let byte_size: Int
+        }
+
+        do {
+            try await supabase
+                .from("media_assets")
+                .insert(MediaAssetInsert(
+                    id: assetId,
+                    owner_id: userId,
+                    kind: "profile_image",
+                    status: "pending",
+                    pending_bucket: "pending_images",
+                    pending_path: path,
+                    mime_type: "image/jpeg",
+                    byte_size: data.count
+                ))
+                .execute()
+            try await supabase.storage
+                .from("pending_images")
+                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+        } catch {
+            SpotLogger.log(SupabaseUserServiceLogs.profileAvatarUploadFailed, details: [
+                "phase": "pending",
+                "error": error.localizedDescription
+            ])
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+
+        let moderate: (approved: Bool, reason: String?)
+        do {
+            moderate = try await SpotSupabaseRepository.invokeModerateImageFunction(mediaAssetId: assetId)
+        } catch {
+            SpotLogger.log(SupabaseUserServiceLogs.profileAvatarUploadFailed, details: [
+                "phase": "moderate",
+                "error": error.localizedDescription
+            ])
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+        if let message = ProfileAvatarModerationCopy.message(approved: moderate.approved, reason: moderate.reason) {
+            throw profileAvatarError(message, code: moderate.reason == "image_policy_rejected" ? 422 : 503)
+        }
+
+        struct AttachParams: Encodable {
+            let p_media_asset_id: UUID
+        }
+        let stored: String
+        do {
+            stored = try await supabase
+                .rpc("set_profile_image_from_approved_asset_v1", params: AttachParams(p_media_asset_id: assetId))
+                .execute()
+                .value
+        } catch {
+            SpotLogger.log(SupabaseUserServiceLogs.profileAvatarUploadFailed, details: [
+                "phase": "attach",
+                "error": error.localizedDescription
+            ])
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+
+        _ = try? await supabase.storage
             .from("avatars")
-            .upload(
-                path,
-                data: data,
-                options: FileOptions(contentType: "image/jpeg", upsert: true)
-            )
-        let url = try supabase.storage.from("avatars").getPublicURL(path: path)
-        return url.absoluteString
+            .remove(paths: ["\(ownerFolder)/profile.jpg"])
+
+        guard let display = await ProfileImageDisplayURL.resolve(stored) else {
+            SpotLogger.log(SupabaseUserServiceLogs.profileAvatarDisplaySignFailed, details: ["phase": "after_attach"])
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+        SpotLogger.log(SupabaseUserServiceLogs.profileAvatarUpdated, details: ["assetId": assetId.uuidString])
+        return display
+    }
+
+    /// Downloads a provider avatar and runs it through the same moderation path.
+    /// Used when auth metadata has a photo and the profile row does not.
+    func importRemoteProfileAvatar(from urlString: String, userId: UUID) async throws -> String {
+        guard let url = URL(string: urlString), url.scheme?.lowercased() == "https" else {
+            throw profileAvatarError("Invalid photo URL.", code: 400)
+        }
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.httpMethod = "GET"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+        guard data.count <= 5_242_880, let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: 0.7) else {
+            throw profileAvatarError(ProfileAvatarModerationCopy.unavailable, code: 503)
+        }
+        return try await uploadProfileAvatarJPEG(jpeg, userId: userId)
+    }
+
+    private func profileAvatarError(_ message: String, code: Int) -> NSError {
+        NSError(domain: "SpotImageModeration", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     /// Upserts `public.users` for the current session user.

@@ -21,6 +21,7 @@ struct RootView: View {
     @State private var showPostAuthSetup: Bool = false
     @State private var isResolvingPostAuthSetup: Bool = false
     @State private var hasResolvedPostAuthSetup: Bool = false
+    @State private var metadataAvatarImportAttemptedFor: Set<UUID> = []
     @State private var needsTermsUpdateAcceptance: Bool = false
     @State private var pendingActiveTermsVersion: ActiveTermsVersion?
     @State private var hasResolvedTermsAcceptance: Bool = false
@@ -398,17 +399,16 @@ struct RootView: View {
             let persistedPhotoURL = row.profile_image_url?.trimmingCharacters(in: .whitespacesAndNewlines)
             let metadataPhotoURL = await bestEffortAuthMetadataAvatarURL()
 
-            // Best-effort metadata sync: if the auth provider gave us an
-            // avatar URL but the row hasn't picked it up yet, persist it
-            // so the profile already shows a photo even before the user
-            // visits the optional setup flow.
-            if (persistedPhotoURL?.isEmpty ?? true), let metadataPhotoURL, !metadataPhotoURL.isEmpty {
-                struct AvatarPatch: Encodable { let profile_image_url: String }
-                _ = try? await supabase
-                    .from("users")
-                    .update(AvatarPatch(profile_image_url: metadataPhotoURL))
-                    .eq("id", value: uid)
-                    .execute()
+            // Provider photos are remote URLs. Download and moderate them
+            // instead of storing the URL, which would skip the image pipeline.
+            if (persistedPhotoURL?.isEmpty ?? true),
+               let metadataPhotoURL,
+               !metadataPhotoURL.isEmpty,
+               metadataAvatarImportAttemptedFor.insert(uid).inserted {
+                _ = try? await SupabaseUserService.shared.importRemoteProfileAvatar(
+                    from: metadataPhotoURL,
+                    userId: uid
+                )
             }
             needsProfileSetup = allowProfileCompletionGate && !usernameOk
         } catch {

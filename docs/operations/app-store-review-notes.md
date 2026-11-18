@@ -44,7 +44,7 @@ The repository implements Terms acknowledgement, server text filtering, reportin
 | Mechanism to block abusive users | "Block User" — ellipsis menu on another user's profile and on a Spot card. Both present a branded confirmation that names the user (`Block @username?`). Report sheets can also block via toggle. Block writes to `user_blocks`, the `homeFeedLocallyRemove` notification removes the blocked user's spots from the feed instantly, and `can_view_author` filters server-side from then on. |
 | Act on reports within 24 hours | `moderation_queue` view (service-role) prioritizes reports for the on-call moderator; SLA tracked by `select count(*) from moderation_queue where created_at < now() - interval '24 hours'`. |
 
-Spot images go through Azure Content Safety scoring (`media_assets` / `media_moderation_events`) and rejected uploads receive non-graphic messaging. **Profile photos currently upload directly to the public `avatars` bucket and bypass moderation.** This conflicts with the product safety requirement and must be resolved before representing profile-image moderation as implemented to App Review.
+Spot images and new profile photos go through Azure Content Safety scoring (`media_assets` / `media_moderation_events`). Rejected uploads receive non-graphic messaging. Profile photos are stored in private `approved_profile_images` after approval. Legacy public avatar URLs from before this path remain until the user replaces the photo.
 
 ### Privacy / support links
 

@@ -101,7 +101,7 @@ Reporting uses `submit_content_report`. Blocking from current UI paths inserts i
 | Firebase | Analytics and Crashlytics initialization; App Check is linked but not initialized in app code |
 | StoreKit 2 | `spotPro` purchase, restore, and transaction updates |
 | MapKit / Core Location | Map rendering, viewport discovery, location permission |
-| UserNotifications | Permission and local notification categories; remote push is not implemented |
+| UserNotifications | Permission, local follow alerts while the app can poll, and tap routing. Remote APNs push is not implemented |
 | Azure Content Safety | Server-side Spot-image analysis through `moderate-image` |
 
 ## Verified known limitations

@@ -10,7 +10,7 @@ Engineers, safety, review.
 
 ## Current status
 
-The Spot-image path is implemented through `supabase/functions/moderate-image/index.ts`. The profile-image schema exists, but the current iOS avatar uploader bypasses moderation; see the explicit gap below.
+Spot images and profile photos both go through `supabase/functions/moderate-image/index.ts`. Profile photos use `kind = profile_image`, then `set_profile_image_from_approved_asset_v1` stores a private storage reference.
 
 ## Details
 
@@ -57,11 +57,11 @@ Default Azure severity thresholds use a 0–6 scale and block at or above:
 
 The function returns JSON containing `approved: boolean`. Policy rejection returns HTTP 422. Provider, configuration, or Storage failures return retryable HTTP 503. The client intentionally maps these to non-graphic user messages.
 
-### Current profile-image gap
+### Profile images
 
-`SupabaseUserService.uploadProfileAvatarJPEG` writes directly to the public `avatars` bucket. It does not create `media_assets`, invoke `moderate-image`, or use `approved_profile_images`.
+`SupabaseUserService.uploadProfileAvatarJPEG` inserts an owned pending `media_assets` row (`kind = profile_image`), uploads the JPEG to `pending_images`, invokes `moderate-image`, and calls `set_profile_image_from_approved_asset_v1`. The RPC rejects anything that is not an approved profile asset owned by the caller. Authenticated clients cannot update `users.profile_image_url` directly.
 
-The product requirement remains that every profile image must be moderated, but that requirement is **not currently met**. Do not use the profile upload implementation as a pattern for new image flows.
+The stored value is `spot-storage://approved_profile_images/<path>`. `ProfileImageDisplayURL` signs that object for display. Older public `avatars` URLs still display until the user replaces the photo. A provider metadata photo is downloaded and run through the same pipeline instead of being saved as a raw URL.
 
 ### Logging
 
@@ -110,6 +110,5 @@ sequenceDiagram
 
 ## Open questions / TODOs
 
-- Migrate profile avatars to the implemented moderation architecture.
 - Add cleanup for approved-but-unlinked and failed media.
 - Verify deployed threshold overrides separately in each Supabase environment.

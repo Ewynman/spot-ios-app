@@ -29,7 +29,7 @@ final class ProfilePictureUploader {
                 let path = "\(userUUID.uuidString.lowercased())/profile.jpg"
                 SpotLogger.log(ProfilePictureUploaderLogs.uploadingToPath, details: ["path": path])
                 let imageUrl = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(imageData, userId: userUUID)
-                SpotLogger.log(ProfilePictureUploaderLogs.uploadedSuccessfully, details: ["url": imageUrl])
+                SpotLogger.log(ProfilePictureUploaderLogs.uploadedSuccessfully)
                 completion(.success(imageUrl))
             } catch {
                 SpotLogger.log(ProfilePictureUploaderLogs.uploadFailed, details: ["error": error.localizedDescription])

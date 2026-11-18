@@ -10,7 +10,7 @@ Engineering, product, QA, and operations.
 
 ## Current status
 
-Spot registers UserNotifications categories and can schedule local notifications. It does **not** register for remote notifications, store APNs tokens, or have a push backend. Notification action events are posted but are not consumed by production navigation.
+Spot registers UserNotifications categories and schedules local notifications from `FollowActivityMonitor` while the signed-in session is running. It does **not** register for remote notifications, store APNs tokens, or have a push backend. Tapping a follow notification opens Follow Requests or the other person's profile.
 
 ## Permission flow
 
@@ -42,11 +42,13 @@ Registered categories:
 
 ### Follow request received
 
-The scheduling helper exists but has no call site when another user creates a request. The profile flow polls the pending-request count; it does not schedule a notification. Cross-device delivery requires a push backend.
+`FollowActivityMonitor` polls pending requests for the signed-in user about every 30 seconds and again when the app becomes active. The first successful poll only records which requests already exist. A request that appears after that baseline schedules `notifyFollowRequestReceived` on this device — the recipient's device.
 
 ### Follow request accepted
 
-`FollowRequestsService.accept()` schedules a local “accepted” notification on the device performing the acceptance. That is the acceptor's device, not reliably the original requester's device. This is not a substitute for server-triggered push and should not be described as notifying the requester.
+The monitor remembers the signed-in user's outgoing pending requests. When one disappears and a `follows` row exists, it schedules `notifyFollowRequestAccepted` on the requester's device. A denial is not announced. `FollowRequestsService.accept()` does not schedule a notification on the acceptor's phone.
+
+This still requires the requester's app process to run a poll. Delivery to the lock screen while the app is killed needs APNs.
 
 ## Action handling
 
@@ -56,7 +58,7 @@ The `UNUserNotificationCenterDelegate` extension in `Spot/AppDelegate.swift` map
 - `.navigateToFollowRequestsAndAccept`;
 - `.navigateToProfile`.
 
-No production view currently observes these events. Tapping an action foregrounds the app, but the intended navigation is not wired.
+`BottomTabNavigationView` observes those events, selects the Profile tab, and `ProfileView` opens Follow Requests (and accepts when the action was Accept) or pushes the named profile. The screen reloads the relationship from Supabase before changing it.
 
 ## Security requirements for future push
 
@@ -81,7 +83,7 @@ flowchart TD
   D --> E
   F[Local notification action] --> G[AppDelegate maps action]
   G --> H[Post navigation event]
-  H --> I[Known gap: no production consumer]
+  H --> I[Profile tab opens requests or profile]
 ```
 
 ## Testing
@@ -93,14 +95,11 @@ Current useful checks:
 - foreground local delivery uses banner, sound, and badge;
 - denied authorization does not block app use.
 
-Do not write a test that claims the requester receives a follow-accepted notification until remote delivery exists. End-to-end action navigation should remain marked unavailable until consumers are wired.
+`FollowActivityDiff` covers which events are new after a baseline. Do not describe that as APNs delivery while the app is killed.
 
 ## Known limitations
 
-- Local notifications only; no APNs device-token registration or backend.
-- Follow-request-received helper has no trigger.
-- Follow-accepted local notification is scheduled on the wrong user's device for the intended social event.
-- Action navigation events have no production consumers.
+- Local notifications only; no APNs device-token registration or backend. Alerts fire when this device polls, including the next time the app becomes active.
 - No notification preference UI or notification history.
 
 ## Related docs
