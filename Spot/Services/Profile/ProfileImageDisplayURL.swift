@@ -12,10 +12,16 @@ import Supabase
 /// Legacy `https` values pass through. Moderated private objects are signed.
 enum ProfileImageDisplayURL {
     private static let signedURLExpirySeconds = 604_800
-    private static let cacheFreshnessSeconds: TimeInterval = 6 * 24 * 60 * 60
+
+    typealias SignedObject = (path: String, url: URL)
+    typealias Signer = @Sendable (String, [String]) async throws -> [SignedObject]
 
     static func resolve(_ raw: String?) async -> String? {
-        let resolved = await resolveMany([raw])
+        await resolve(raw, sign: liveSign)
+    }
+
+    static func resolve(_ raw: String?, sign: Signer) async -> String? {
+        let resolved = await resolveMany([raw], sign: sign)
         return lookup(raw, in: resolved)
     }
 
@@ -27,6 +33,10 @@ enum ProfileImageDisplayURL {
     /// Keys are the trimmed stored strings. Failed signs are omitted so callers
     /// do not fall back to a `spot-storage://` value `AsyncImage` cannot load.
     static func resolveMany(_ raws: [String?]) async -> [String: String] {
+        await resolveMany(raws, sign: liveSign)
+    }
+
+    static func resolveMany(_ raws: [String?], sign: Signer) async -> [String: String] {
         var output: [String: String] = [:]
         var pendingByBucket: [String: [String]] = [:]
         var rawKeysByObject: [String: [String]] = [:]
@@ -54,17 +64,13 @@ enum ProfileImageDisplayURL {
 
         for (bucket, paths) in pendingByBucket {
             do {
-                let signed = try await supabase.storage
-                    .from(bucket)
-                    .createSignedURLs(paths: paths, expiresIn: signedURLExpirySeconds)
+                let signed = try await sign(bucket, paths)
                 for item in signed {
-                    if case let .success(path, url) = item {
-                        let objectKey = "\(bucket)\n\(path)"
-                        let display = url.absoluteString
-                        await ProfileImageSignedURLCache.shared.store(key: objectKey, url: display)
-                        for rawKey in rawKeysByObject[objectKey] ?? [] {
-                            output[rawKey] = display
-                        }
+                    let objectKey = "\(bucket)\n\(item.path)"
+                    let display = item.url.absoluteString
+                    await ProfileImageSignedURLCache.shared.store(key: objectKey, url: display)
+                    for rawKey in rawKeysByObject[objectKey] ?? [] {
+                        output[rawKey] = display
                     }
                 }
             } catch {
@@ -77,6 +83,18 @@ enum ProfileImageDisplayURL {
         }
 
         return output
+    }
+
+    private static func liveSign(bucket: String, paths: [String]) async throws -> [SignedObject] {
+        let signed = try await supabase.storage
+            .from(bucket)
+            .createSignedURLs(paths: paths, expiresIn: signedURLExpirySeconds)
+        return signed.compactMap { item in
+            if case let .success(path, url) = item {
+                return (path, url)
+            }
+            return nil
+        }
     }
 
     private static func normalizedKey(_ raw: String?) -> String? {

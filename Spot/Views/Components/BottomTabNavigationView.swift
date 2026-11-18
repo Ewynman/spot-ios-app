@@ -187,7 +187,7 @@ struct BottomTabNavigationView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                FollowActivityMonitor.shared.refreshNow()
+                Task { await FollowActivityMonitor.shared.refreshNow() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToFollowRequests)) { _ in

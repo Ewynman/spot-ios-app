@@ -8,18 +8,34 @@
 import Foundation
 import Supabase
 
+@MainActor
+protocol FollowActivityReading {
+    func pendingRequests(userId: String) async throws -> [FollowIncomingNotice]
+    func outgoingPendingIds(userId: UUID) async throws -> [String]
+    func followingIds(userId: UUID) async throws -> [String]
+    func usernames(for userIds: [String]) async throws -> [String: String]
+}
+
 /// Watches the signed-in user's follow requests and outgoing requests while
 /// the app is running, then schedules a local notification on this device.
 /// Lock-screen delivery after the process is killed still needs APNs.
 @MainActor
 final class FollowActivityMonitor {
-    static let shared = FollowActivityMonitor()
+    @MainActor
+    static let shared = FollowActivityMonitor(reader: SupabaseFollowActivityReader())
 
     private var pollTask: Task<Void, Never>?
     private var activeUserId: String?
-    private let pollIntervalNanoseconds: UInt64 = 30_000_000_000
+    private let pollIntervalNanoseconds: UInt64
+    private let reader: any FollowActivityReading
 
-    private init() {}
+    init(
+        pollIntervalNanoseconds: UInt64 = 30_000_000_000,
+        reader: any FollowActivityReading
+    ) {
+        self.pollIntervalNanoseconds = pollIntervalNanoseconds
+        self.reader = reader
+    }
 
     func start(userId: String) {
         let normalized = FollowActivityDiff.normalize(userId)
@@ -41,9 +57,9 @@ final class FollowActivityMonitor {
         activeUserId = nil
     }
 
-    func refreshNow() {
+    func refreshNow() async {
         guard let activeUserId else { return }
-        Task { await self.poll(userId: activeUserId) }
+        await poll(userId: activeUserId)
     }
 
     private func loop(userId: String) async {
@@ -53,15 +69,15 @@ final class FollowActivityMonitor {
         }
     }
 
-    private func poll(userId: String) async {
+    func poll(userId: String) async {
         guard !Task.isCancelled else { return }
         guard let uid = UUID(uuidString: userId) else { return }
 
-        let page: FollowRequestsService.Page
+        let incoming: [FollowIncomingNotice]
         let outgoing: [String]
         do {
-            page = try await FollowRequestsService.shared.fetchPage(for: userId, start: 0, pageSize: 100)
-            outgoing = try await SocialGraphSupabase.outgoingPendingFollowTargetIds(requesterId: uid)
+            incoming = try await reader.pendingRequests(userId: userId)
+            outgoing = try await reader.outgoingPendingIds(userId: uid)
         } catch {
             SpotLogger.log(NotificationServiceLogs.followActivityPollFailed, details: [
                 "error": error.localizedDescription
@@ -72,7 +88,7 @@ final class FollowActivityMonitor {
         var followed: [String] = []
         var followLookupSucceeded = true
         do {
-            followed = try await SocialGraphSupabase.followingIds(followerId: uid)
+            followed = try await reader.followingIds(userId: uid)
         } catch {
             followLookupSucceeded = false
             SpotLogger.log(NotificationServiceLogs.followActivityPollFailed, details: [
@@ -89,13 +105,7 @@ final class FollowActivityMonitor {
             previousIncomingIDs: storedIncoming ?? [],
             previousOutgoingIDs: storedOutgoing ?? [],
             unresolvedOutgoingIDs: FollowActivityBaselineStore.unresolvedIDs(userId: userId),
-            currentIncoming: page.items.map {
-                FollowIncomingNotice(
-                    requestID: $0.id,
-                    requesterUid: $0.requesterUid,
-                    username: $0.username ?? ""
-                )
-            },
+            currentIncoming: incoming,
             currentOutgoingIDs: Set(outgoing),
             followedUserIDs: Set(followed),
             followLookupSucceeded: followLookupSucceeded
@@ -117,7 +127,12 @@ final class FollowActivityMonitor {
         }
 
         if !decision.acceptedUserIds.isEmpty {
-            let names = await usernames(for: decision.acceptedUserIds)
+            let names: [String: String]
+            do {
+                names = try await reader.usernames(for: decision.acceptedUserIds)
+            } catch {
+                names = [:]
+            }
             for id in decision.acceptedUserIds {
                 NotificationService.shared.notifyFollowRequestAccepted(
                     by: names[id] ?? "Someone",
@@ -127,32 +142,39 @@ final class FollowActivityMonitor {
             NotificationCenter.default.post(name: .followGraphDidChange, object: nil)
         }
     }
+}
 
-    private func usernames(for userIds: [String]) async -> [String: String] {
-        let uuids = userIds.compactMap { UUID(uuidString: $0) }
-        guard !uuids.isEmpty else { return [:] }
+@MainActor
+struct SupabaseFollowActivityReader: FollowActivityReading {
+    func pendingRequests(userId: String) async throws -> [FollowIncomingNotice] {
+        let page = try await FollowRequestsService.shared.fetchPage(for: userId, start: 0, pageSize: 100)
+        return page.items.map {
+            FollowIncomingNotice(requestID: $0.id, requesterUid: $0.requesterUid, username: $0.username ?? "")
+        }
+    }
+
+    func outgoingPendingIds(userId: UUID) async throws -> [String] {
+        try await SocialGraphSupabase.outgoingPendingFollowTargetIds(requesterId: userId)
+    }
+
+    func followingIds(userId: UUID) async throws -> [String] {
+        try await SocialGraphSupabase.followingIds(followerId: userId)
+    }
+
+    func usernames(for userIds: [String]) async throws -> [String: String] {
+        let uuids = userIds.compactMap(UUID.init(uuidString:))
+        if uuids.isEmpty { return [:] }
         struct Row: Decodable {
             let id: UUID
             let username: String
         }
-        do {
-            let rows: [Row] = try await supabase
-                .from(SupabaseTableName.usersPublic)
-                .select("id,username")
-                .in("id", values: uuids)
-                .execute()
-                .value
-            var names: [String: String] = [:]
-            for row in rows {
-                let trimmed = row.username.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    names[row.id.uuidString.lowercased()] = trimmed
-                }
-            }
-            return names
-        } catch {
-            return [:]
-        }
+        let rows: [Row] = try await supabase
+            .from(SupabaseTableName.usersPublic)
+            .select("id,username")
+            .in("id", values: uuids)
+            .execute()
+            .value
+        return FollowActivityDiff.usernamesById(rows.map { ($0.id, $0.username) })
     }
 }
 

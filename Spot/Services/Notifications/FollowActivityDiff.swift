@@ -90,4 +90,15 @@ enum FollowActivityDiff {
     static func normalize(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
+
+    static func usernamesById(_ rows: [(id: UUID, username: String)]) -> [String: String] {
+        var names: [String: String] = [:]
+        for row in rows {
+            let trimmed = row.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                names[row.id.uuidString.lowercased()] = trimmed
+            }
+        }
+        return names
+    }
 }

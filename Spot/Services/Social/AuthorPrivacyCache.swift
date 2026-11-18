@@ -50,14 +50,29 @@ actor AuthorPrivacyCache {
 
     /// Followed user ids for the signed-in viewer, lowercased. Always refetches.
     /// Empty when nobody is signed in.
-    func currentFollowedUserIds() async -> Set<String> {
-        guard SpotAuthBridge.currentUserId != nil else {
+    func currentFollowedUserIds(
+        loadFollowing: (@Sendable (UUID) async throws -> [String])? = nil
+    ) async -> Set<String> {
+        guard let viewerId = SpotAuthBridge.currentUserId, let uid = UUID(uuidString: viewerId) else {
             cachedFollowing = []
             followingFetchedAt = .distantPast
             return []
         }
         followingFetchedAt = .distantPast
-        await refreshFollowingIfNeeded()
+        do {
+            let ids: [String]
+            if let loadFollowing {
+                ids = try await loadFollowing(uid)
+            } else {
+                ids = try await SocialGraphSupabase.followingIds(followerId: uid)
+            }
+            cachedFollowing = Set(ids)
+            followingFetchedAt = Date()
+        } catch {
+            SpotLogger.log(AuthorPrivacyCacheLogs.refreshFollowingFailed, details: [
+                "error": error.localizedDescription
+            ])
+        }
         return Set(cachedFollowing.map { $0.lowercased() })
     }
 

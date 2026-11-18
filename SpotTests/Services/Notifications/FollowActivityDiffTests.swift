@@ -5,6 +5,7 @@
 //  Created by Edward Wynman on 11/18/26.
 //
 
+import Foundation
 import Testing
 @testable import Spot
 
@@ -103,5 +104,14 @@ struct FollowActivityDiffTests {
         )
         #expect(decision.acceptedUserIds.isEmpty)
         #expect(decision.nextUnresolvedIDs == ["target"])
+    }
+
+    @Test func usernamesByIdDropsBlanksAndLowercases() {
+        let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let names = FollowActivityDiff.usernamesById([
+            (id, "  Ada "),
+            (id, "   ")
+        ])
+        #expect(names == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": "Ada"])
     }
 }
