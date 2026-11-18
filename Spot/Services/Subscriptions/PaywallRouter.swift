@@ -43,6 +43,8 @@ extension Notification.Name {
     static let navigateToFollowRequestsAndAccept = Notification.Name("SpotNavigateToFollowRequestsAndAccept")
     /// Posted when a notification action requests navigation to a specific user profile.
     static let navigateToProfile = Notification.Name("SpotNavigateToProfile")
+    /// Posted after the signed-in user's follow list changes so the map can refresh.
+    static let followGraphDidChange = Notification.Name("SpotFollowGraphDidChange")
 }
 
 enum PaywallRouter {

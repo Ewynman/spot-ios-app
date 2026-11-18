@@ -20,9 +20,9 @@ Verified against the moderation migration, `SpotSupabaseRepository`, `FeedAPI`, 
 | --- | --- | --- |
 | `pending_images` | Private | New uploads awaiting moderation |
 | `approved_spot_images` | Private | Approved Spot imagery |
-| `approved_profile_images` | Private | Intended approved profile photos; not used by current iOS upload path |
+| `approved_profile_images` | Private | Approved profile photos. Signed for display when the object is the user's current avatar |
 | `spots` | Private | Legacy Spot imagery and the bucket assumed by home-feed batch signing |
-| `avatars` | Public | Current legacy profile avatar upload path |
+| `avatars` | Public | Legacy profile photos already stored as public URLs. New uploads do not write here |
 
 ### Spot media flow (summary)
 
@@ -44,9 +44,9 @@ legacy objects remain readable when attached to a visible Spot.
 
 ### Profile photos
 
-The schema supports `kind = 'profile_image'` and `approved_profile_images`, but current iOS code does not use that path. `SupabaseUserService.uploadProfileAvatarJPEG` uploads directly to the public `avatars/{userId}/profile.jpg` path and returns a public URL.
+New profile photos use pending upload, `moderate-image`, and `approved_profile_images`. `set_profile_image_from_approved_asset_v1` writes `users.profile_image_url` as `spot-storage://approved_profile_images/<path>` and sets `profile_image_asset_id`. Clients sign that path when rendering. Direct `UPDATE` of `profile_image_url` is revoked.
 
-This is a security and App Review gap. New profile-image work must migrate the client to pending upload, server moderation, and approved private storage; do not describe the current direct upload as compliant.
+Legacy rows may still hold a public `avatars` URL. Those keep working until the photo is replaced. After a successful moderated upload the client best-effort deletes `avatars/{userId}/profile.jpg`.
 
 ### Signed URLs
 
@@ -68,5 +68,4 @@ Account deletion performs best-effort client cleanup for `avatars` and `spots`; 
 
 - Define and implement retention/garbage collection for unlinked media and all moderation statuses.
 - Align Search signing with `spot_images.storage_bucket` the same way feed/map do.
-- Route profile avatars through the moderation pipeline.
 - Extend account-deletion Storage cleanup to all owned buckets.

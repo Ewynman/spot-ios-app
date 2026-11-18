@@ -266,13 +266,14 @@ struct SettingsView: View {
                 .execute()
                 .value
             let authUser = try? await supabase.auth.user()
+            let displayURL = await ProfileImageDisplayURL.resolve(row.profile_image_url)
             await MainActor.run {
                 username = row.username
                 originalUsername = username
                 name = (authUser?.userMetadata["full_name"]?.stringValue) ?? ""
                 email = row.email ?? (authUser?.email ?? SpotAuthBridge.currentUserEmail ?? "")
                 isPrivate = row.is_private
-                profileImageURL = row.profile_image_url
+                profileImageURL = displayURL
             }
         } catch {
             SpotLogger.log(SettingsViewLogs.loadProfileFailed, details: ["userId": userId, "error": error.localizedDescription])
@@ -733,13 +734,7 @@ struct SettingsView: View {
         }
         Task {
             do {
-                struct AvatarPatch: Encodable { let profile_image_url: String }
                 let url = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: uuid)
-                try await supabase
-                    .from("users")
-                    .update(AvatarPatch(profile_image_url: url))
-                    .eq("id", value: uuid)
-                    .execute()
                 await MainActor.run {
                     isUploadingPhoto = false
                     profileImageURL = url
@@ -747,6 +742,7 @@ struct SettingsView: View {
                     showToast(message: "Profile photo updated", isError: false)
                     SpotLogger.log(SettingsViewLogs.profilePhotoUpdated)
                 }
+                authVM.refreshUserFlags()
             } catch {
                 await MainActor.run {
                     isUploadingPhoto = false

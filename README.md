@@ -71,7 +71,7 @@ See [docs/engineering/testing.md](docs/engineering/testing.md) for philosophy an
 
 ## Security and safety
 
-Authentication and **Row Level Security (RLS)** on Supabase are authoritative for data access. **Image moderation** is required for Spot and profile media. Spot images use the moderation path; profile avatars currently bypass it, which is a documented safety gap. The app **does not** use Firebase Firestore or Firebase Storage for user or Spot data ([docs/engineering/data-plane.md](docs/engineering/data-plane.md)). See [docs/engineering/image-moderation.md](docs/engineering/image-moderation.md). Operational response: [docs/operations/incident-response.md](docs/operations/incident-response.md).
+Authentication and **Row Level Security (RLS)** on Supabase are authoritative for data access. **Image moderation** is required for Spot and profile media. New Spot images and profile photos both use the moderation path. Legacy profile photos that were saved as public avatar URLs remain until the user replaces them. The app **does not** use Firebase Firestore or Firebase Storage for user or Spot data ([docs/engineering/data-plane.md](docs/engineering/data-plane.md)). See [docs/engineering/image-moderation.md](docs/engineering/image-moderation.md). Operational response: [docs/operations/incident-response.md](docs/operations/incident-response.md).
 
 ## Universal Links
 

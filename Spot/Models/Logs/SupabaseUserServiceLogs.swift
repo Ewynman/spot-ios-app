@@ -16,14 +16,18 @@ enum SupabaseUserServiceLogs: SpotLog {
     case syncFailedPermissionDenied
     /// Other upsert failure (network, constraint, etc.).
     case syncFailedUpsert
+    case profileAvatarUpdated
+    case profileAvatarUploadFailed
+    case profileAvatarDisplaySignFailed
 
     var tag: String { "SupabaseUserService" }
     var level: LogLevel {
         switch self {
         case .syncStarted: return .debug
-        case .syncSucceeded: return .info
+        case .syncSucceeded, .profileAvatarUpdated: return .info
         case .syncSkippedNoSession: return .debug
-        case .syncFailedPermissionDenied, .syncFailedUpsert: return .error
+        case .syncFailedPermissionDenied, .syncFailedUpsert, .profileAvatarUploadFailed, .profileAvatarDisplaySignFailed:
+            return .error
         }
     }
     var message: String {
@@ -36,6 +40,12 @@ enum SupabaseUserServiceLogs: SpotLog {
             return "Supabase user sync failed: database denied write to public.users (check GRANT INSERT/UPDATE and RLS for authenticated)"
         case .syncFailedUpsert:
             return "Supabase user sync failed: could not upsert public.users"
+        case .profileAvatarUpdated:
+            return "Profile photo updated after moderation"
+        case .profileAvatarUploadFailed:
+            return "Profile photo moderation upload failed"
+        case .profileAvatarDisplaySignFailed:
+            return "Approved profile photo could not be signed for display"
         }
     }
 }

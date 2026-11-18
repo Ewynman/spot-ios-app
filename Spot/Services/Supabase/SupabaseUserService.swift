@@ -19,18 +19,17 @@ final class SupabaseUserService {
         return f
     }()
 
-    /// Uploads a JPEG to the `avatars` bucket; returns public URL string.
+    /// Moderates a JPEG and sets it as the signed-in user's profile photo.
+    /// Returns a display URL for immediate UI. The database stores a private
+    /// `spot-storage://` reference, not this signed URL.
     func uploadProfileAvatarJPEG(_ data: Data, userId: UUID) async throws -> String {
-        let path = "\(userId.uuidString.lowercased())/profile.jpg"
-        try await supabase.storage
-            .from("avatars")
-            .upload(
-                path,
-                data: data,
-                options: FileOptions(contentType: "image/jpeg", upsert: true)
-            )
-        let url = try supabase.storage.from("avatars").getPublicURL(path: path)
-        return url.absoluteString
+        try await ProfileAvatarUploadPipeline.upload(jpeg: data, userId: userId)
+    }
+
+    /// Downloads a provider avatar and runs it through the same moderation path.
+    /// Used when auth metadata has a photo and the profile row does not.
+    func importRemoteProfileAvatar(from urlString: String, userId: UUID) async throws -> String {
+        try await ProfileAvatarUploadPipeline.importRemote(from: urlString, userId: userId)
     }
 
     /// Upserts `public.users` for the current session user.

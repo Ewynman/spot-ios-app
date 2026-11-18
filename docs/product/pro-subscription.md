@@ -65,4 +65,3 @@ Built from `SubscriptionPriceLineFormatter` + `Product` subscription period.
 ## Open questions / TODOs
 
 - Confirm App Store Connect pricing, product metadata, and review screenshots outside the repository before release.
-- The map Following filter is visible to Pro users but does not yet receive followed-user IDs.

@@ -955,12 +955,12 @@ extension HomeFeedRow {
     /// Convert a feed row to the existing `Spot` UI model. The home feed cell
     /// only needs the primary image URL — full image arrays are loaded lazily
     /// in detail.
-    func toSpot(primaryURL: String?) -> Spot {
+    func toSpot(primaryURL: String?, profileImageURL: String?) -> Spot {
         Spot(
             id: spotId.uuidString,
             userId: userId.uuidString,
             username: authorUsername,
-            userProfileImageURL: authorProfileImageUrl,
+            userProfileImageURL: profileImageURL,
             imageURL: primaryURL,
             thumbnailURL: primaryURL,
             vibeTag: vibeName,
@@ -982,12 +982,12 @@ extension HomeFeedRow {
 
 extension MapSpotRow {
     /// Convert a map row to the existing `Spot` UI model.
-    func toSpot(primaryURL: String?) -> Spot {
+    func toSpot(primaryURL: String?, profileImageURL: String? = nil) -> Spot {
         Spot(
             id: spotId.uuidString,
             userId: userId.uuidString,
             username: authorUsername,
-            userProfileImageURL: authorProfileImageUrl,
+            userProfileImageURL: profileImageURL,
             imageURL: primaryURL,
             thumbnailURL: primaryURL,
             vibeTag: vibeName,

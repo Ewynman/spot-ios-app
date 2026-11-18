@@ -8,8 +8,11 @@
 import SwiftUI
 
 struct FollowRequestsView: View {
+    var acceptRequesterUid: String? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var items: [FollowRequest] = []
+    @State private var didAutoAccept = false
     @State private var isLoading: Bool = false
     /// Next offset for Supabase range pagination; nil when no more pages.
     @State private var nextPageStart: Int?
@@ -67,7 +70,10 @@ struct FollowRequestsView: View {
             }
         }
         .background(Color(hex: "F5F3EF"))
-        .task { await refresh() }
+        .task {
+            await refresh()
+            await autoAcceptIfNeeded()
+        }
         .navigationBarBackButtonHidden(true)
     }
 
@@ -168,6 +174,13 @@ struct FollowRequestsView: View {
             await MainActor.run { isLoading = false }
             SpotLogger.log(FollowRequestsViewLogs.loadMoreFailed, details: ["error": error.localizedDescription])
         }
+    }
+
+    private func autoAcceptIfNeeded() async {
+        guard !didAutoAccept, let target = acceptRequesterUid?.lowercased(), !target.isEmpty else { return }
+        didAutoAccept = true
+        guard let req = items.first(where: { $0.requesterUid.lowercased() == target }) else { return }
+        await accept(req)
     }
 
     private func accept(_ req: FollowRequest) async {

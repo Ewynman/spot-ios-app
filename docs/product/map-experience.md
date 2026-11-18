@@ -54,7 +54,7 @@ Home can also initiate this flow. Choosing **Open in Map** from a `HomeSpotCard`
 
 Pro-only filters cover vibe, saved, liked, and following. `MapFilterGate` hides filter controls for non-Pro users. Active pills use dark-green fill + off-white text. Filters are applied client-side to viewport RPC results.
 
-The Following filter is a known limitation: `MapView` currently passes an empty followed-user ID set, so that filter cannot return matching markers until social graph state is wired into the map.
+The Following filter keeps markers whose author is in the signed-in user's `follows` list. `MapView` reloads that set when the map appears and when a follow relationship changes. User ids are compared case-insensitively.
 
 ### Location permission
 
@@ -104,4 +104,4 @@ flowchart TD
 
 ## Open questions / TODOs
 
-- Wire followed-user IDs into the Pro Following filter.
+- None. The Pro Following filter uses the signed-in user's `follows` rows.

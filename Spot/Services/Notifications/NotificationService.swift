@@ -186,12 +186,13 @@ enum NotificationServiceLogs: SpotLog {
     case notificationFailed
     case notificationSkippedNotAuthorized
     case notificationActionHandled
+    case followActivityPollFailed
 
     var tag: String { "NotificationService" }
 
     var level: LogLevel {
         switch self {
-        case .notificationFailed: return .error
+        case .notificationFailed, .followActivityPollFailed: return .error
         case .notificationSent, .notificationSkippedNotAuthorized, .notificationActionHandled: return .info
         }
     }
@@ -202,6 +203,7 @@ enum NotificationServiceLogs: SpotLog {
         case .notificationFailed: return "Local notification failed"
         case .notificationSkippedNotAuthorized: return "Notification skipped: not authorized"
         case .notificationActionHandled: return "Notification action handled"
+        case .followActivityPollFailed: return "Follow activity poll failed"
         }
     }
 }

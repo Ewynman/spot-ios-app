@@ -26,6 +26,7 @@ struct MapView: View {
     @State private var lastCenteredCoordinate: CLLocationCoordinate2D?
     @State private var userHasMovedMap: Bool = false
     @State private var filterState: SpotMapFilterState = .empty
+    @State private var followedUserIds: Set<String> = []
     @State private var showVibePicker: Bool = false
     @State private var selectedSpotId: String?
     @State private var previewBottomReserved: CGFloat = 0
@@ -45,7 +46,7 @@ struct MapView: View {
                         filter: filterState,
                         savedSpotIds: Set(authVM.bookmarkedSpots),
                         likedSpotIds: Set(authVM.likedSpots),
-                        followedUserIds: [],
+                        followedUserIds: followedUserIds,
                         userMarker: userMarker,
                         suppressDefaultUserDot: true,
                         onRegionChanged: { region in
@@ -144,6 +145,13 @@ struct MapView: View {
             guard let updatedSpot = output.object as? Spot else { return }
             mapVM.locallyReplaceSpot(updatedSpot)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .followGraphDidChange)) { _ in
+            reloadFollowedAuthors()
+        }
+        .onChange(of: authVM.userId) { _, _ in
+            followedUserIds = []
+            reloadFollowedAuthors()
+        }
     }
 
     private var mapOnboardingTargets: some View {
@@ -194,6 +202,7 @@ struct MapView: View {
         if authVM.userId != nil {
             authVM.refreshUserFlags()
         }
+        reloadFollowedAuthors()
         if applyPendingMapFocus() || activeFocusRequest != nil {
             return
         }
@@ -471,12 +480,19 @@ struct MapView: View {
             filter: filter,
             savedSpotIds: Set(authVM.bookmarkedSpots),
             likedSpotIds: Set(authVM.likedSpots),
-            followedUserIds: []
+            followedUserIds: followedUserIds
         )
         if !stillMatches {
             selectedSpotId = nil
             previewBottomReserved = 0
             clearSelectionToken += 1
+        }
+    }
+
+    private func reloadFollowedAuthors() {
+        Task {
+            let ids = await AuthorPrivacyCache.shared.currentFollowedUserIds()
+            followedUserIds = ids
         }
     }
 

@@ -50,7 +50,13 @@ actor MapViewportLoader {
             )
 
             let urlMap = await FeedAPI.resolvePrimaryImageURLs(for: rows)
-            let hydrated = rows.map { $0.toSpot(primaryURL: urlMap[$0.spotId]) }
+            let profileImageURLs = await ProfileImageDisplayURL.resolveMany(rows.map(\.authorProfileImageUrl))
+            let hydrated = rows.map { row in
+                row.toSpot(
+                    primaryURL: urlMap[row.spotId],
+                    profileImageURL: ProfileImageDisplayURL.lookup(row.authorProfileImageUrl, in: profileImageURLs)
+                )
+            }
 
             viewportCache[cacheKey] = (hydrated, Date())
             viewportLRU.removeAll { $0 == cacheKey }

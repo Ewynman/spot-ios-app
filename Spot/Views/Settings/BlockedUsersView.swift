@@ -227,11 +227,12 @@ struct BlockedUsersView: View {
                     .in("id", values: ids)
                     .execute()
                     .value
+                let photoURLs = await ProfileImageDisplayURL.resolveMany(rows.map(\.profile_image_url))
                 let userDetails = rows.map { row in
                     BlockedUserInfo(
                         id: row.id.uuidString,
                         username: row.username,
-                        profileImageURL: row.profile_image_url
+                        profileImageURL: ProfileImageDisplayURL.lookup(row.profile_image_url, in: photoURLs)
                     )
                 }
 

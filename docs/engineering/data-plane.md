@@ -69,7 +69,7 @@ Firebase must **not** be used for:
 
 These do not change the data-plane decision, but they are important safety gaps:
 
-- Profile avatars upload directly to the public Supabase `avatars` bucket and currently bypass `media_assets` moderation.
+- New profile photos go through `media_assets` and `moderate-image`, then `approved_profile_images`. Legacy public `avatars` URLs remain readable until replaced.
 - Home-feed and map primary-image signing use `primary_storage_bucket` from the feed/map RPCs (legacy default `spots`).
 
 Fix these within Supabase Storage and the existing moderation pipeline. They are not reasons to add Firebase Storage.

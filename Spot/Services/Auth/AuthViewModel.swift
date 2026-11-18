@@ -439,6 +439,7 @@ class AuthViewModel: ObservableObject {
                     isProValue = row.is_pro
                 }
 
+                let profileImageURL = await ProfileImageDisplayURL.resolve(row.profile_image_url)
                 await MainActor.run {
                     self.isPro = isProValue
                     self.proUntil = proUntilDate
@@ -447,7 +448,7 @@ class AuthViewModel: ObservableObject {
                     } else {
                         self.customVibeTags = []
                     }
-                    self.currentUserProfileImageURL = row.profile_image_url
+                    self.currentUserProfileImageURL = profileImageURL
                     self.currentUserUsername = row.username
                 }
             } catch {
@@ -762,13 +763,10 @@ class AuthViewModel: ObservableObject {
         guard let image = pendingAvatarAfterVerification,
               let data = image.jpegData(compressionQuality: 0.7) else { return }
         let session = try await supabase.auth.session
-        let url = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: session.user.id)
-        struct AvatarPatch: Encodable { let profile_image_url: String }
-        try await supabase
-            .from("users")
-            .update(AvatarPatch(profile_image_url: url))
-            .eq("id", value: session.user.id)
-            .execute()
+        let displayURL = try await SupabaseUserService.shared.uploadProfileAvatarJPEG(data, userId: session.user.id)
+        await MainActor.run {
+            self.currentUserProfileImageURL = displayURL
+        }
     }
 
     private var pendingVerificationEmail: String?

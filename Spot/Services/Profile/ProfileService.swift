@@ -133,7 +133,7 @@ enum ProfileService {
         }
 
         let username = row.username.isEmpty ? "User" : row.username
-        let profileImageURL = row.profile_image_url
+        let profileImageURL = await ProfileImageDisplayURL.resolve(row.profile_image_url)
         let targetIsPrivate = row.is_private
         let targetIsPro = ProfileSupabaseSchema.effectiveIsPro(proUntilRaw: row.pro_until, isPro: row.is_pro)
 

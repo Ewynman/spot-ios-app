@@ -35,11 +35,12 @@ final class SpotSearchDataSource {
             .value
         let filtered = rows.filter { $0.username.lowercased().hasPrefix(lower) }
             .prefix(pageSize)
+        let photoURLs = await ProfileImageDisplayURL.resolveMany(filtered.map(\.profile_image_url))
         let items = filtered.map { row in
             [
                 "uid": row.id.uuidString,
                 "username": row.username,
-                "profileImageURL": row.profile_image_url as Any
+                "profileImageURL": ProfileImageDisplayURL.lookup(row.profile_image_url, in: photoURLs) as Any
             ]
         }
         return SearchPage(items: items, lastDocument: nil)
